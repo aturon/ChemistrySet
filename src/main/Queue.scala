@@ -1,6 +1,8 @@
 import java.util.concurrent.atomic._
 import scala.annotation.tailrec
 
+// Standard lock-free queue due to Michael and Scott.  Doesn't yet
+// perform exponential backoff.
 class Queue[A >: Null] {
   class Node(val data: A) {
     val next = new AtomicReference[Node](null)

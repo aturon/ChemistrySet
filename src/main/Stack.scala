@@ -1,6 +1,8 @@
 import java.util.concurrent.atomic._
 import scala.annotation.tailrec
 
+// Standard lock-free stack, due to Treiber.  Doesn't yet perform
+// exponential backoff.
 class Stack[A >: Null] {
   class Node(val data: A) {
     val next = new AtomicReference[Node](null)
@@ -24,10 +26,8 @@ class Stack[A >: Null] {
       val h = head.get
       if (h eq null) 
 	return None
-      else {
-	val ht = h.next.get
-	if (head compareAndSet (h, ht)) return Some(h.data) 
-      }
+      else if (head compareAndSet (h, h.next.get)) 
+	return Some(h.data) 
     }
     throw new Exception("Impossible")
   } 
