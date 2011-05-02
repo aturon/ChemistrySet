@@ -15,7 +15,58 @@ To try coding:
  - kcas
  - joins+cml
  - flat combiners
- 
+
+## 5/2/2011
+
+Is choice commutative?  Is join?
+
+Duality: send/recv, put/get.  Every reagent has a dual?  Note: the
+dual of & is *not* |
+
+When is coupling between communication and synchronization desirable?
+Is it easier to think of coupling as the default, with asynchrony as
+an option, or the other way around?
+
+Could forget about receiving altogether: do everything in terms of
+sync sending, with option to do async sending, and use join to match
+up "real" sends with "requests" to receive.  This might yield PCML's
+two queue representation.
+
+*In particular, this could consolidate logic about looking for matching 
+(dual) events.*
+
+Must such choices be made up front?
+
+Actually, the above doesn't quite make sense: it assumes the "join
+patterns" are somehow of opposite polarity to message sending, which
+is tantamount to having receives.  The "join" between two sides of a
+channel must probably be left implicit.  However, the code for dealing
+with senders and receivers can be made essentially symmetric.
+
+The idea of a "nonbacked" channel fits in here somewhere: perhaps it's
+missing one of the relevant queues?  Even nonbacked channels need a
+place to store joins.  This includes state cells.
+
+NB, need to ensure there is some way to guarantee FIFO ordering when
+desired.
+
+Handling nonlinear patterns could be problematic: need to communicate
+global context (e.g., already have message n on this channel) to local
+matching (e.g., looking for (another) message).
+
+Could be OK for value sent on a channel to depend on values from other
+channels -- just not *whether* we're sending on a channel.
+
+With double queues per channel, in slow path where both sides are
+reagents must CLAIM/CONSUME both a send and a receive event.
+
+Relative to the joins implementation, supporting e.g. disjunctions
+requires an additional layer of indirection between messages and their
+statuses (because you want the status of the entire reagent).
+
+Could CPS the matching process to assist stack allocation and type
+safety?
+
 ## 4/28/2011
 
 Think in CML terms about *composable* concurrency.  This entails, in
