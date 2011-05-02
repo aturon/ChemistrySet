@@ -3,6 +3,8 @@ import scala.annotation.tailrec
 
 trait Reagent {
   def tryClaim
+
+
 }
 
 class Channel {
