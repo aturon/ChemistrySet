@@ -16,6 +16,63 @@ To try coding:
  - joins+cml
  - flat combiners
 
+## 5/3/2011
+
+The need to have code attached to reagents stems primarily from their
+use as catalysts.
+
+something like
+
+    reactant { myChan(3) }
+    
+is probably too verbose for message sending.
+
+Another option: myChan(3) ! (for using as reactant) and myChan(3) !!
+(for catalyst)
+
+Then can treat myChan ! 3 as shorthand for myChan(3) !, which has a
+nice connection to the actor syntax...
+
+Can introduce traits to recover send-as-method structure of the join
+calculus -- could be pretty nice.
+
+Is there actually any need for unbacked channels?  In fact, does the
+Treiber stack need to be written in traditional join pattern style
+(i.e. with catalysts)?
+
+Trimmed code for push:
+
+    def push(x: A) {
+      val n = new Node(x, null)
+      while (true) {
+	n.next = head.get
+	if (head compareAndSet (n.next, n)) return
+      } 
+    }
+    
+Using a reactant:
+
+    def push(x: A) {
+      val n = new Node(x, null)
+      head.update(h => { n.next = h; n })
+    }
+    
+Or, with less concern for over-allocation:
+
+    def push(x: A) {
+      head.update(x::_)
+    }
+    
+For queue, could be interesting to compare M&S queue to one based on
+2CAS.  Also, don't forget about flat combining option.
+
+Order of claiming becomes much more complicated when *reagents* are
+being claimed.  It's no longer enough to order the channels.
+
+Liveness reasoning went: if I fail to claim a message, some other
+thread must've succeeded -- so, globally, the system has progressed.
+Try to find a similar scheme for reagents.
+
 ## 5/2/2011
 
 Is choice commutative?  Is join?
