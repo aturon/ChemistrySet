@@ -16,6 +16,59 @@ To try coding:
  - joins+cml
  - flat combiners
 
+## 5/5/2011
+
+Liveness concerns: nonlinear channel use already poses a problem for
+the scalable joins algorithm: order messages are grabbed is
+potentially arbitrary.
+
+A simple strategy for tie-breaking in this situation: thread local
+counter + thread id.  Easy way to globally order messages within a
+queue/bag/... without unduly synchronizing over it.  Order doesn't
+match order of insertion but that's unproblematic.  Could even be
+reasonable to *only* use this strategy, rather than assigning IDs to
+channels.  Downside is that accessing such thread-local data is
+probably slow.  (Could look into fiber-local data strategy as in
+Manticore's runtime).  Another alternative -- use the memory address
+of the reagent (can we get at this in the JVM?)
+
+Polling/claiming is complicated by the fact that matching reagents may
+themselves contain additional matching work.  One idea, for the sake
+of efficiency, is to actually *publicize* within the stored reagent
+the current claims (for the purpose of reagent helping).  That would
+probably complicate the protocol, but could even provide nonblocking
+guarantees.
+
+Think of swap channels as fundamentally synchronous, with an option to
+abandon a registered reagent's result for asynchrony.  That means that
+a swap channel reagent cannot react without a symmetric reagent.
+Therefore, invoking a swap channel causes a search for dual reagents,
+which to react may require additional reagents.  
+
+The situation feels a bit different for state.  Conceptually, there is
+an implicit catalyst
+
+    current(x)
+    
+which is updateable
+
+    current(x) & update(x,y) => current(y)
+
+State cells (need a better name) still require a bag to manage
+registered update reagents, which may need to be woken.  
+
+A way to bootstrap: have a notion of a one-off "base" reagent (need a
+term for that, too).  That is, you register a fixed collection of
+catalysts for it, and that's it.  This means no dynamic, threadsafe
+bag/queue/... structure needed.
+    
+Need to think about nonlinear uses of a *state cell* in a reagent.
+
+
+
+(Interesting tangential thought: rather than a no-op backoff, do
+limited GC during backoff?)
+
 ## 5/3/2011
 
 The need to have code attached to reagents stems primarily from their
@@ -34,7 +87,8 @@ Then can treat myChan ! 3 as shorthand for myChan(3) !, which has a
 nice connection to the actor syntax...
 
 Can introduce traits to recover send-as-method structure of the join
-calculus -- could be pretty nice.
+calculus -- could be pretty nice.  (Actually, this would require
+trait-based metaprogramming)
 
 Is there actually any need for unbacked channels?  In fact, does the
 Treiber stack need to be written in traditional join pattern style
