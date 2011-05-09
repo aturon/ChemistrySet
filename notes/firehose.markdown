@@ -38,6 +38,14 @@ Algebra of reagents:
     
 Relation to linear logic?
 
+What are the tradeoffs for using kCAS in implementing message
+consumption protocol?  Would still need to provide backtracking
+support, but could be simplified if no longer important to claim
+messages in a particular order.  A benefit is lock-freedom of the
+entire system.  In the Harris-Fraser-Pratt paper, the performance of
+kCAS versus fine-grained locking on a simple benchmark was comparable
+-- but only the latter gives nonblocking guarantees.
+
 Inert versus ionized
 
 ## 5/5/2011
