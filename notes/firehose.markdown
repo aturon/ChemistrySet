@@ -16,6 +16,30 @@ To try coding:
  - joins+cml
  - flat combiners
 
+## 5/9/2011
+
+What is the appropriate type discipline for reagents?  In the join
+calculus, synchronous channels have two types: the type of values
+carried over the channel, and the type of bodies of all chords
+involving the channel.
+
+Need sophisticated backtracking search to maximize concurrency: need
+to track the provenance of each desired atom, so that when claiming
+fails, can do partial rollback.  
+
+Algebra of reagents:
+
+    (a | b) & c  =  (a & c) | (b & c)
+    (a & b) | c !=  (a | c) & (b | c)
+    1 & a = a
+    0 & a = 0
+    0 | a = a
+    1 | a != 1
+    
+Relation to linear logic?
+
+Inert versus ionized
+
 ## 5/5/2011
 
 Liveness concerns: nonlinear channel use already poses a problem for
