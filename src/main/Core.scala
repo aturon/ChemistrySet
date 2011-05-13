@@ -3,70 +3,31 @@ package chemistry
 import java.util.concurrent.atomic._
 import scala.annotation.tailrec
 
-abstract class Claim {
-  def commit
-  def rollback
+class Reagent[A,B](molecules: Molecule[A,B]*)
+abstract class Molecule[A,B]
+case class Bonded[A,B,C](m1: Molecule[A,B], m2: Molecule[B,C]) 
+     extends Molecule[A,C]
+abstract class Atom[A,B] extends Molecule[A,B] {
+  // def isDualTo(a: Atom): Boolean
 }
 
-abstract class Atom {
-  def dualTo(a: Atom): Boolean
-}
-object Atom {
-  implicit def singletonMolecule(a: Atom): Molecule = Molecule(a)
-  implicit def singletonReagent(a: Atom): Reagent = Reagent(a)
-}
+private class Pure[A,B](f: A => B) extends Atom[A,B]
 
-class SwapChannel {
+private class First[A,B,C](a: Atom[A,B]) extends Atom[(A,C), (B,C)]
+
+private class Guard[A](p: A => Boolean) extends Atom[A,A]
+
+// val Always = new Guard(_ => false)
+
+private class SwapChannel[A,B](var dual: SwapChannel[B,A]) extends Atom[A,B] {
   
 }
 
-
-// guards, wrapped functions?
-
-
-// a molecule is conjunction of atoms
-class Molecule(private[chemistry] val allOf: Seq[Atom]) {
-  def and(m: Molecule) = new Molecule(allOf ++ m.allOf)
-
-  private class Worklist {
+class Ref[A](init: A) {
+  def update(f: A => A) = new Atom[Unit,A] {
     
   }
-
-//  def catalyze
-  def tryReact {
-    // need to ensure a molecule never reacts with itself (if it
-    // contains dual atoms)
-    val work = new Worklist
+  def update[B](f: (A,B) => A) = new Atom[B,A] {
+    
   }
 }
-
-object Molecule {
-  implicit def singletonReagent(m: Molecule): Reagent = Reagent(m)
-  def apply(allOf: Atom*) = new Molecule(allOf)
-}
-
-// a reagent is a disjunction of molecules
-class Reagent(private[chemistry] val oneOf: Seq[Molecule]) {
-  def and(r: Reagent) = new Reagent(
-    for (m1 <- oneOf; m2 <- r.oneOf) yield m1 and m2)
-  def or(r: Reagent) = new Reagent(oneOf ++ r.oneOf)
-
-//  def catalyze
-  def react {
-    // oneOf foreach 
-    // need "worklist" of atoms
-
-    // fast path: claim duals, then consume them
-  }
-}
-
-object Reagent {
-  def apply(oneOf: Molecule*) = new Reagent(oneOf)
-}
-
-// trait Reagent[A,B] {
-//   type Cursor
-//   def poll: Option[Cursor]
-//   def tryClaim(c: Cursor): Option[Claim]
-// }
-

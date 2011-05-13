@@ -1,10 +1,6 @@
 Need to read:
 
- - joins via pattern matching in scala
- - kcas
- - transactional events
  - asynchronous events
- - more of CML
  - more STM
  - more on lightweight threading (good blog fodder)
  - F# async workflows
@@ -15,6 +11,30 @@ To try coding:
  - kcas
  - joins+cml
  - flat combiners
+
+## 5/13/2011
+
+Arrow-like information flow seems to be at odds with a canonicalized,
+flattened representation.
+
+Nice example of (1) conjuction on send and (2) reactants: suppose you
+have two nonblocking collections, each exposing an add and remove
+reagent.  You can transfer from one to the other using a single
+conjoined send reactant.
+
+## 5/12/2011
+
+There are STM-like consistency issues in conjoining state updates: two
+disparate refs may be read at logically-distinct times, yielding an
+inconsistent snapshot.  This should coincide with a failing kCAS
+(modulo ABA), but could still pose a problem for guards, sequences,
+etc.  In the worst case, could this result in deadlock?
+
+This will depend on how blocking on a Ref is handled.
+
+Another issue: must ensure every possible combination of messages is
+tried (for handling guards).  When looking at messages from the same
+channel, must try every permutation.
 
 ## 5/9/2011
 
