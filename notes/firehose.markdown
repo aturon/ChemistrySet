@@ -12,6 +12,36 @@ To try coding:
  - joins+cml
  - flat combiners
 
+## 5/16/2011
+
+Handling the MSQueue seems to require monadic code: must read from one
+ref cell to determine another one to read.  Might be possible to
+introduce direct mechanism for this, however.
+
+Is monadic style compatible with catalysts?  Or with deadlock
+avoidance?
+
+    do x <- swap chan
+       y <- read x
+       guard y
+       
+Consider: chan contains message pointing to v, and *v = false.
+Reactant then blocks on the queue for chan -- but suppose it logs
+nothing regarding v.  If later *v = true without any change to chan, 
+there is a lost wakeup.
+
+An obvious solution is to log blocking calls on all possible
+interacted-with objects.  This could run into problems with memory
+consistency.  It is probably safe to log spurious blockers, but must
+also ensure all nonspurious blocking is logged.
+
+Could kCSS help?
+
+Maybe there's a way to get a kind of monadic style, while limiting
+information flow enough that logging can be avoided.
+
+    hoUpd: ((A,B) => A) => Reagent[(Ref[A],B),Unit]
+
 ## 5/13/2011
 
 Arrow-like information flow seems to be at odds with a canonicalized,
