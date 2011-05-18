@@ -12,13 +12,25 @@ sealed abstract class Reagent[A,B] {
     throw new Exception("Not implemented")
   }
 
+  def <&>[C](r: Reagent[A,C]): Reagent[A, (B,C)] = {
+    throw new Exception("Not implemented")
+  }
+
   def <|>(r: Reagent[A,B]): Reagent[A,B] = {
     throw new Exception("Not implemented")
   }
+
+  def map[C](f: B => C): Reagent[A,C] = &>(f)
+//  def filter[B](f: B => Boolean): Reagent[A,B] = &>({case x:B if f(x) => x})
 }
 object Reagent {
   implicit def partialFunctionToReagent[A,B](f: PartialFunction[A,B]):
     Reagent[A,B] = new Lift(f)
+  implicit def functionToReagent[A,B](f: A => B):
+    Reagent[A,B] = new Lift(new PartialFunction[A,B] {
+      def apply(a: A) = f(a)
+      def isDefinedAt(a: A) = true
+    })
   implicit def reagentToCatalyst(r: Reagent[Unit,Unit]): { def !! } = 
     new { def !! { throw new Exception("Not implemented") }}
   def catalyze(r: Reagent[Unit,Unit]) = r !!
@@ -54,6 +66,14 @@ object SwapChan {
 }
 
 class Ref[A](init: A) {
+  
+  // interface using separate reads/writes
+  
+  def rd: Reagent[Unit,A] = new Atom[Unit,A] {}
+  def wr: Reagent[A,Unit] = new Atom[A,Unit] {}
+
+  // interface using atomic update
+
   def upd(f: PartialFunction[A,A]): Reagent[Unit,Unit] = 
     new Atom[Unit,Unit] {}
   def updO[B](f: PartialFunction[A, (A,B)]): Reagent[Unit,B] = 
@@ -63,8 +83,14 @@ class Ref[A](init: A) {
   def updIO[B,C](f: PartialFunction[(A,B), (A,C)]): Reagent[B,C] = 
     new Atom[B,C] {}
 }
+object Ref {
+  def dynUpd[A](f: A => A): Reagent[Ref[A],Unit] = 
+    new Atom[Ref[A],Unit] {}
+}
 
 object Examples {
+  def cons[A](p:(List[A],A)) = p._2::p._1
+
   class TreiberStack[A] {
     val (push, pop) = {
       val (sPush, rPush) = SwapChan[A, Unit]
@@ -105,6 +131,20 @@ object Examples {
       (sPush, sPop)
     }
   }
+class EliminationBackoffStackUsingRW[A] {
+    val (push, pop) = {
+      val (sPush, rPush) = SwapChan[A, Unit]
+      val (sPop,  rPop)  = SwapChan[Unit, A]
+      val head = new Ref[List[A]](List())
+
+      head.rd <&> rPush &> (cons[A]_) &> head.wr !! ;
+      head.rd &> ::.unapply(_).lift
+
+      rPush &> rPop !!
+      
+      (sPush, sPop)
+    }
+  }
   class MSQueue[A >: Null] {
     val (enq, deq) = {
       class Node(val a: A) {
@@ -120,12 +160,12 @@ object Examples {
       val head = new Ref(sentinel)
       val tail = new Ref(sentinel)
 
-      // stuck...
-      // head.updO {
-      // 	case Node(x, n) => 
-      // } &> rDeq !!
+//      head.updO {
+//      	case Node(x, n) => 
+//      } &> rDeq !!
 
       (sEnq, sDeq)
     }
   }
 }
+

@@ -12,6 +12,10 @@ To try coding:
  - joins+cml
  - flat combiners
 
+## 5/17/2011
+
+
+
 ## 5/16/2011
 
 Handling the MSQueue seems to require monadic code: must read from one
@@ -41,6 +45,20 @@ Maybe there's a way to get a kind of monadic style, while limiting
 information flow enough that logging can be avoided.
 
     hoUpd: ((A,B) => A) => Reagent[(Ref[A],B),Unit]
+    
+Dynamic synchronization is OK, as long as it can never be the cause of
+blocking -- so asynchronous sends and unguarded updates are OK, but in
+the latter case anything read from the Ref cell cannot be used later
+in a guard.
+
+This is fine for a nonblocking MSQueue, but if we want to block when
+dequeuing from empty we're in trouble.  Does this obstacle represent
+the need for a genuine insight (in the Scalable synchronous queue
+paper, perhaps?) or is it incidental to the framework here?
+
+The limitation to static topology seems to rule out any data structure
+where, for example, unbounded search is needed to locate a reference
+to CAS.  E.g. hand-over-hand sets, skiplists/maps, ...
 
 ## 5/13/2011
 
