@@ -12,9 +12,16 @@ To try coding:
  - joins+cml
  - flat combiners
 
-## 5/17/2011
+## 5/19/2011
 
+May be able to finesse the MSQueue by incorporating ideas from guard
+and wrap in CML: allow pre and post synchronization.  "Chain
+reactions"
 
+Do channels need to be built in?  With conjunction, disjunction and
+kCAS may have enough to build up channel actions as derived reagents.
+One obstacle would be the blocking logic.  Another would be the
+"fastpath" version.  And what about catalysts?
 
 ## 5/16/2011
 
@@ -35,7 +42,7 @@ nothing regarding v.  If later *v = true without any change to chan,
 there is a lost wakeup.
 
 An obvious solution is to log blocking calls on all possible
-interacted-with objects.  This could run into problems with memory
+interacted-with objects.  This could run into problems with
 consistency.  It is probably safe to log spurious blockers, but must
 also ensure all nonspurious blocking is logged.
 
