@@ -10,6 +10,18 @@ To try coding:
  - kcas
  - flat combiners
 
+## 5/23/2011
+
+Think of catalysts as blocked reagents which, when awoken, leave
+behind another blocked copy.  So implementing catalysts ~ implementing
+blocked reagents.
+
+Signaling invariant on blocked reagents: always signaled when
+consumed by nonowning thread, never signaled otherwise.
+
+For guard, could take reagent-producing reagent (rather than
+reagent-producing thunk).  Still ask for "pure" code.
+
 ## 5/20/2011
 
 Reagents should implement apply, and subclass Function1.  That
