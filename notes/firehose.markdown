@@ -1,7 +1,6 @@
 Need to read:
 
  - asynchronous events
- - more STM
  - more on lightweight threading (good blog fodder)
  - F# async workflows
 
@@ -9,8 +8,18 @@ To try coding:
 
  - stack/queue tests with concurrent dequeuing
  - kcas
- - joins+cml
  - flat combiners
+
+## 5/20/2011
+
+Reagents should implement apply, and subclass Function1.  That
+recovers join-calculus style reading as function calls.  Is there a
+reasonable unapply (perhaps for reagents of type Unit -> a)?
+
+Could imagine a tighter library of nonblocking, noncatalyzing
+reagents, which can then be used to implement the full library.  Is
+this a useful separation for the API?  e.g. any nonblocking reagent is
+guaranteed to be formally nonblocking?
 
 ## 5/19/2011
 
@@ -21,7 +30,10 @@ reactions"
 Do channels need to be built in?  With conjunction, disjunction and
 kCAS may have enough to build up channel actions as derived reagents.
 One obstacle would be the blocking logic.  Another would be the
-"fastpath" version.  And what about catalysts?
+"fastpath" version.  And what about catalysts?  Finally, the
+interaction with guards is wrong: the library needs to explore all
+possible message combinations, looking for any possibility of
+successful matching.
 
 ## 5/16/2011
 

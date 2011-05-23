@@ -106,6 +106,14 @@ object Examples {
       (sPush, sPop)
     }
   }
+  class TreiberStackNoChans[A] {
+    private val head = new Ref[List[A]](List())
+    val push = head.updI {case (xs,x) => x::xs}
+    val pop  = head.updO {
+      case x::xs => (xs, Some(x))
+      case emp   => (emp,  None)
+    }
+  }
   class BlockingStack[A] {
     val (push, pop) = {
       val (sPush, rPush) = SwapChan[A, Unit]
