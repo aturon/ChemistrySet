@@ -10,6 +10,30 @@ To try coding:
  - kcas
  - flat combiners
 
+## 5/31/2011
+
+CML-style doFn, blockFn internal interface could be a nice design for
+incorporating blocking (and therefore catalysts).
+
+Tension between CML-style guards (which fire once, ever) and guards
+that fire on every retry.  The former can be used for allocation, the
+latter for nonblocking search algorithms, etc.  Perhaps allow
+programming both within the "chain reaction" monad?  Is this getting
+too complicated?
+
+The monadic interface is attractive since it makes explicit the
+desired side effects of CML guards.  But how to specify the
+linearization point?  One simple option: as the last computation in a
+bind.
+
+For push:
+
+    
+
+Also, will this whole strategy work with "helping" algorithms?
+
+Implicit coercions to emulate overloading on function types?
+
 ## 5/23/2011
 
 Think of catalysts as blocked reagents which, when awoken, leave
