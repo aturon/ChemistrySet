@@ -10,6 +10,14 @@ To try coding:
  - kcas
  - flat combiners
 
+## 6/1/2011
+
+Post-sync actions are definitely important for catalysts, but may also
+be important for reagents when you want to expose a reagent with an
+abstract post action.
+
+Using a chain reaction as a catalyst...?
+
 ## 5/31/2011
 
 CML-style doFn, blockFn internal interface could be a nice design for
@@ -24,11 +32,7 @@ too complicated?
 The monadic interface is attractive since it makes explicit the
 desired side effects of CML guards.  But how to specify the
 linearization point?  One simple option: as the last computation in a
-bind.
-
-For push:
-
-    
+bind.    
 
 Also, will this whole strategy work with "helping" algorithms?
 

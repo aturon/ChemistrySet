@@ -108,14 +108,16 @@ object Examples {
   }
   class TreiberStackNoChans[A] {
     private val head = new Ref[List[A]](List())
-    val push = head.updI {case (xs,x) => x::xs}
-    val pop  = head.updO {
+    val push = head updI {
+      case (xs,x) => x::xs
+    }
+    val pop  = head updO {
       case x::xs => (xs, Some(x))
       case emp   => (emp,  None)
     }
   }
   class BlockingStack[A] {
-    val (push, pop) = {
+    val (push, pop) ={ 
       val (sPush, rPush) = SwapChan[A, Unit]
       val (sPop,  rPop)  = SwapChan[Unit, A]
       val head = new Ref[List[A]](List())
@@ -139,7 +141,7 @@ object Examples {
       (sPush, sPop)
     }
   }
-class EliminationBackoffStackUsingRW[A] {
+  class EliminationBackoffStackUsingRW[A] {
     val (push, pop) = {
       val (sPush, rPush) = SwapChan[A, Unit]
       val (sPop,  rPop)  = SwapChan[Unit, A]
@@ -153,26 +155,45 @@ class EliminationBackoffStackUsingRW[A] {
       (sPush, sPop)
     }
   }
-  class MSQueue[A >: Null] {
-    val (enq, deq) = {
-      class Node(val a: A) {
-	val next = new Ref[Node](null)
-      }
-      object Node {
-	def unapply(n: Node): Option[(A, Ref[Node])] = Some((n.a, n.next))
-      }
-
-      val (sEnq, rEnq) = SwapChan[A, Unit]
-      val (sDeq, rDeq) = SwapChan[Unit, Option[A]]
+  class DCASQueue [A >: Null] {
+    class Node(val a: A) {
+      val next = new Ref[Node](null)
+    }
+    object Node {
+      def unapply(n: Node): Option[(A, Ref[Node])] = Some((n.a, n.next))
+    }
+    private val (head, tail) = {
       val sentinel = new Node(null)
-      val head = new Ref(sentinel)
-      val tail = new Ref(sentinel)
+      (new Ref(sentinel), new Ref(sentinel))
+    }
+    val enq = tail.read wrap {
+      case Node(_
+    val deq = head updO {
+      case Node(_, Ref(n @ Node(x, _))) => (n, Some(x))
+      case emp => (emp, None)
+    }              
+  }
+  class MSQueue[A >: Null] {
+    class Node(val a: A) {
+      val next = new Ref[Node](null)
+    }
+    object Node {
+      def unapply(n: Node): Option[(A, Ref[Node])] = Some((n.a, n.next))
+    }
+    private val (head, tail) = {
+      val sentinel = new Node(null)
+      (new Ref(sentinel), new Ref(sentinel))
+    }
 
-//      head.updO {
-//      	case Node(x, n) => 
-//      } &> rDeq !!
-
-      (sEnq, sDeq)
+    val catchUpTail = tail updO {
+      case n @ Node(_, r @ Ref(null)) => (n, ret r)
+      case Node(_, Ref(n)) => (n, catchUpTail)
+    }
+    val enq = (catchUpTail <&> new Node(_, null)) >>= 
+              (tailCdr, n) => tailCdr.cas(null, n) wrap tail.cas(_, n)
+    val deq = head updO {
+      case Node(_, n @ Node(x, xs)) => (n, Some(x))
+      case emp => (emp, None)
     }
   }
 }
