@@ -185,6 +185,26 @@ object Examples {
       (new Ref(sentinel), new Ref(sentinel))
     }
 
+    val enq = guard (x: A) => tail updO {
+      case n @ Node(_, r @ Ref(null)) => (n, Some(r))
+      case Node(_, Ref(n)) => (n, None)
+    } 
+
+    val enq = guard (x: A) => for {
+      tailCdr <- tail updO {
+	case n @ Node(_, r @ Ref(null)) => (n, r)
+	case Node(_, Ref(n)) => (n, null)
+      }
+      _ <- if (tailCdr eq null) enq(x)
+	   else 
+    } yield ()
+      
+    val enq = guard (x: A) => 
+      (for { (_, tailNext) <- tail.read
+	     
+       }
+tail.read &> pi2) >>=
+
     val catchUpTail = tail updO {
       case n @ Node(_, r @ Ref(null)) => (n, ret r)
       case Node(_, Ref(n)) => (n, catchUpTail)
