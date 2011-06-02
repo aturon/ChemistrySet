@@ -166,13 +166,25 @@ object Examples {
       val sentinel = new Node(null)
       (new Ref(sentinel), new Ref(sentinel))
     }
-    val enq = tail.read wrap {
-      case Node(_
+    val enq = guard (x: A) => for {
+      oldTail @ Node(_, tailNext) <- tail.read
+      n = new Node(x)
+      tailNext.cas(null, n) & tail.cas(oldTail, n)
+    }
     val deq = head updO {
       case Node(_, Ref(n @ Node(x, _))) => (n, Some(x))
       case emp => (emp, None)
     }              
   }
+
+    // val enq = guard (x: A) => for { 
+    //   Node(_, r @ Ref(n)) <- tail.read
+    //   n match {
+    // 	case Node(_, n2) => tailNext.cas(n, n2) commitThen enq(x)
+    // 	case _ => r.cas(n, new Node(x))
+    //   }
+    // }
+
   class MSQueue[A >: Null] {
     class Node(val a: A) {
       val next = new Ref[Node](null)
@@ -184,36 +196,13 @@ object Examples {
       val sentinel = new Node(null)
       (new Ref(sentinel), new Ref(sentinel))
     }
-
-    val enq = guard (x: A) => tail updO {
-      case n @ Node(_, r @ Ref(null)) => (n, Some(r))
-      case Node(_, Ref(n)) => (n, None)
-    } 
-
-    val enq = guard (x: A) => for {
-      tailCdr <- tail updO {
-	case n @ Node(_, r @ Ref(null)) => (n, r)
-	case Node(_, Ref(n)) => (n, null)
-      }
-      _ <- if (tailCdr eq null) enq(x)
-	   else 
-    } yield ()
-      
-    val enq = guard (x: A) => 
-      (for { (_, tailNext) <- tail.read
-	     
-       }
-tail.read &> pi2) >>=
-
-    val catchUpTail = tail updO {
-      case n @ Node(_, r @ Ref(null)) => (n, ret r)
-      case Node(_, Ref(n)) => (n, catchUpTail)
+    val enq = guard (x: A) => tail.read match {
+      case n@Node(_, Ref(nt@Node(_, _))) => tail.cas(n, nt) commitThen enq(x)
+      case   Node(_, r)                  => r.cas(null, new Node(x))
     }
-    val enq = (catchUpTail <&> new Node(_, null)) >>= 
-              (tailCdr, n) => tailCdr.cas(null, n) wrap tail.cas(_, n)
     val deq = head updO {
-      case Node(_, n @ Node(x, xs)) => (n, Some(x))
-      case emp => (emp, None)
+      case Node(_, Ref(n@Node(x, _))) => (n, Some(x))
+      case emp                        => (emp, None)
     }
   }
 }
