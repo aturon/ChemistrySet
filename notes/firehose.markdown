@@ -8,7 +8,13 @@ To try coding:
 
  - stack/queue tests with concurrent dequeuing
  - kcas
- - flat combiners
+ 
+Further examples of reagents:
+ - additional stack/queue operations a la JUC
+ - flat combiner version of stack/queue
+ - hand-over-hand set
+ - lazy set
+ - skiplist-based map
 
 ## 6/1/2011
 

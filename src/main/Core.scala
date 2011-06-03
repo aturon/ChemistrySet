@@ -92,21 +92,6 @@ object Examples {
   def cons[A](p:(List[A],A)) = p._2::p._1
 
   class TreiberStack[A] {
-    val (push, pop) = {
-      val (sPush, rPush) = SwapChan[A, Unit]
-      val (sPop,  rPop)  = SwapChan[Unit, Option[A]]
-      val head = new Ref[List[A]](List())
-
-      rPush &> head.updI {case (xs,x) => x::xs} !! ;
-      head.updO {
-	case x::xs => (xs, Some(x))
-	case emp   => (emp,  None)
-      } &> rPop !!
-      
-      (sPush, sPop)
-    }
-  }
-  class TreiberStackNoChans[A] {
     private val head = new Ref[List[A]](List())
     val push = head updI {
       case (xs,x) => x::xs
@@ -120,10 +105,10 @@ object Examples {
     val (push, pop) ={ 
       val (sPush, rPush) = SwapChan[A, Unit]
       val (sPop,  rPop)  = SwapChan[Unit, A]
-      val head = new Ref[List[A]](List())
+      val stack = new TreiberStack[A]
 
-      rPush &> head.updI {case (xs,x) => x::xs} !! ;
-      head.updO {case x::xs => (xs, x)} &> rPop !!
+      rPush &> stack.push !! ;
+      stack.pop &> { case Some(x) => x } &> rPop !! 
       
       (sPush, sPop)
     }
@@ -132,25 +117,11 @@ object Examples {
     val (push, pop) = {
       val (sPush, rPush) = SwapChan[A, Unit]
       val (sPop,  rPop)  = SwapChan[Unit, A]
-      val head = new Ref[List[A]](List())
+      val stack = new TreiberStack[A]
 
-      rPush &> head.updI {case (xs,x) => x::xs} !! ;
-      head.updO {case x::xs => (xs, x)} &> rPop !! ;
-      rPush &> rPop !!
-      
-      (sPush, sPop)
-    }
-  }
-  class EliminationBackoffStackUsingRW[A] {
-    val (push, pop) = {
-      val (sPush, rPush) = SwapChan[A, Unit]
-      val (sPop,  rPop)  = SwapChan[Unit, A]
-      val head = new Ref[List[A]](List())
-
-      head.rd <&> rPush &> (cons[A]_) &> head.wr !! ;
-      head.rd &> ::.unapply(_).lift
-
-      rPush &> rPop !!
+      rPush &> stack.push !! ;
+      stack.pop &> rPop !! ;
+      rPush &> Some(_) &> rPop !!
       
       (sPush, sPop)
     }
@@ -176,15 +147,6 @@ object Examples {
       case emp => (emp, None)
     }              
   }
-
-    // val enq = guard (x: A) => for { 
-    //   Node(_, r @ Ref(n)) <- tail.read
-    //   n match {
-    // 	case Node(_, n2) => tailNext.cas(n, n2) commitThen enq(x)
-    // 	case _ => r.cas(n, new Node(x))
-    //   }
-    // }
-
   class MSQueue[A >: Null] {
     class Node(val a: A) {
       val next = new Ref[Node](null)
@@ -206,4 +168,3 @@ object Examples {
     }
   }
 }
-
