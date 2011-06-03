@@ -16,6 +16,15 @@ Further examples of reagents:
  - lazy set
  - skiplist-based map
 
+## 6/3/2011
+
+How is the transition from "doFn" to "blockFn" handled?  E.g. in the
+elimination stack example?
+
+Major problem with extra per-retry allocation: causes per-react data
+(which will be freed on completion) to be promoted, effectively
+leading to a (temporary) memory leak.
+
 ## 6/1/2011
 
 Post-sync actions are definitely important for catalysts, but may also
