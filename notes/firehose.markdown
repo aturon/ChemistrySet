@@ -15,6 +15,54 @@ Further examples of reagents:
  - hand-over-hand set
  - lazy set
  - skiplist-based map
+ 
+## 6/5/2011
+
+    r.upd(f) = r.read >>= ((dup &> left(f) &> r.cas) + r.upd(f))
+
+    r.upd(f) = for {
+      oldVal <- r.read 
+      newVal = f(oldVal)
+      r.cas(oldVal, newVal) + r.upd(f)
+    }
+
+Basic question here: what is the semantics of failure?  Failure can
+happen through
+
+ - a lifted partial function
+ - a failing CAS (if CAS is exposed directly)
+ - an empty dual endpoint
+ 
+To handle the general optimistic concurrency pattern of
+read-compute-CAS, we (1) need to support CAS directly and (2) need a
+failing CAS to be able to retry the entire sequence.  On the other
+hand, in some cases it's useful to perform a precomputation only once,
+e.g. for allocation.
+
+A related problem is blocking.  If arbitrary partial functions are
+allowed, will be difficult or impossible to tell which reference cells
+need to be monitored.  Even worse: monadic sequences could completely
+obscure the reads/computation that led to a blocking situation.
+
+What if all blocking were mediated through channels?  Seems to imply
+reading choice as partially internal, rather than fully external.
+
+*Try to make more use of choice*.
+
+Looping retry is expressible through a combination of choice and CML
+guards -- and this retains the CML guard semantics.  Since the idiom
+can be neatly packaged as a higher-order combinator, there seems to be
+little downside.
+
+Another nice thing about loops-as-infinite-choice: nonblocking
+algorithms needn't be explicitly distinguished.  They simply avoid the
+blocking stage forever.  This does prevent any type-based
+"nonblocking" assertion, but that was probably gone with guards/cas
+loops anyway.
+
+Need to think about interaction between recursive use of choice and
+reagent flattening.  Consider: looping implementation of upd,
+surrounded by use of &>.
 
 ## 6/3/2011
 

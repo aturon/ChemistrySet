@@ -101,17 +101,34 @@ object Examples {
       case emp   => (emp,  None)
     }
   }
-  class BlockingStack[A] {
-    val (push, pop) ={ 
-      val (sPush, rPush) = SwapChan[A, Unit]
-      val (sPop,  rPop)  = SwapChan[Unit, A]
-      val stack = new TreiberStack[A]
-
-      rPush &> stack.push !! ;
-      stack.pop &> { case Some(x) => x } &> rPop !! 
-      
-      (sPush, sPop)
+  class TreiberStack2[A] {
+    private val head = new Ref[List[A]](List())
+    val push = guard (x => 
+      val n = List(x)
+      loop {
+	head match { case Ref(xs) => n.tail = xs; head.cas(xs, n) }
+      })
+    val pop  = head updO {
+      case x::xs => (xs, Some(x))
+      case emp   => (emp,  None)
     }
+  }
+  class BlockingStack[A] {
+    private val (sPush, rPush) = SwapChan[A, Unit]
+    private val (sPop,  rPop)  = SwapChan[Unit, A]
+    private val stack = new TreiberStack[A]
+
+    rPush &> stack.push !! ;
+    stack.pop &> { case Some(x) => x } &> rPop !! 
+      
+    val push = sPush
+    val pop  = sPop
+  }
+  class BlockingElimStack[A] {
+    private val (elimPush, elimPop) = SwapChan[A, Unit]
+    private val stack = new TreiberStack[A]
+    val push = elimPush <+> stack.push
+    val pop  = elimPop  <+> (stack.pop &> { case Some(x) => x })
   }
   class EliminationBackoffStack[A] {
     val (push, pop) = {
