@@ -105,9 +105,7 @@ object Examples {
     private val head = new Ref[List[A]](List())
     val push = guard (x => 
       val n = List(x)
-      loop {
-	head match { case Ref(xs) => n.tail = xs; head.cas(xs, n) }
-      })
+      loop { head upd (xs => n.tail = xs; n) })
     val pop  = head updO {
       case x::xs => (xs, Some(x))
       case emp   => (emp,  None)
@@ -143,6 +141,12 @@ object Examples {
       (sPush, sPop)
     }
   }
+  class EliminationBackoffStack2[A] {
+    private val (elimPush, elimPop) = SwapChan[A, Unit]
+    private val stack = new TreiberStack[A]
+    val push = elimPush <+> stack.push
+    val pop  = (elimPop &> Some(_)) <+> stack.pop
+  }
   class DCASQueue [A >: Null] {
     class Node(val a: A) {
       val next = new Ref[Node](null)
@@ -176,9 +180,31 @@ object Examples {
       (new Ref(sentinel), new Ref(sentinel))
     }
     val enq = guard (x: A) => tail.read match {
-      case n@Node(_, Ref(nt@Node(_, _))) => tail.cas(n, nt) commitThen enq(x)
+      case n@Node(_, Ref(nt@Node(_, _))) => (tail.cas(n, nt) <+> always) >> enq(x)
       case   Node(_, r)                  => r.cas(null, new Node(x))
     }
+    val deq = head updO {
+      case Node(_, Ref(n@Node(x, _))) => (n, Some(x))
+      case emp                        => (emp, None)
+    }
+  }
+  class MSQueue2[A >: Null] {
+    class Node(val a: A) {
+      val next = new Ref[Node](null)
+    }
+    object Node {
+      def unapply(n: Node): Option[(A, Ref[Node])] = Some((n.a, n.next))
+    }
+    private val (head, tail) = {
+      val sentinel = new Node(null)
+      (new Ref(sentinel), new Ref(sentinel))
+    }
+    val enq = guard (x => 
+      val node = new Node(x)
+      loop { tail.read >>= {
+	case n@Node(_, Ref(nt@Node(_, _))) => tail.cas(n, nt).attempt; never
+	case   Node(_, r)                  => r.cas(null, node)
+      }})
     val deq = head updO {
       case Node(_, Ref(n@Node(x, _))) => (n, Some(x))
       case emp                        => (emp, None)

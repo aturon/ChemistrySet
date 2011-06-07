@@ -10,12 +10,20 @@ To try coding:
  - kcas
  
 Further examples of reagents:
+
  - additional stack/queue operations a la JUC
  - flat combiner version of stack/queue
  - hand-over-hand set
  - lazy set
  - skiplist-based map
  
+## 6/7/2011
+
+Should be able to block on a conjunction of a `send` and an `upd`.
+With looping definition of `upd`, this may not be possible.
+
+"loop { ... }" is basically "nonBlocking { ... }"
+
 ## 6/5/2011
 
     r.upd(f) = r.read >>= ((dup &> left(f) &> r.cas) + r.upd(f))
