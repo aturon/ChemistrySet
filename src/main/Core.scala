@@ -202,7 +202,7 @@ object Examples {
     val enq = guard (x => 
       val node = new Node(x)
       loop { tail.read >>= {
-	case n@Node(_, Ref(nt@Node(_, _))) => tail.cas(n, nt).attempt; never
+	case n@Node(_, Ref(nt@Node(_, _))) => tail.cas(n, nt).attempt; retry
 	case   Node(_, r)                  => r.cas(null, node)
       }})
     val deq = head updO {

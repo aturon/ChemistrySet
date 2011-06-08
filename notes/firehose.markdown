@@ -69,6 +69,22 @@ Some conjectured laws:
     retryLoop o retryLoop = retryLoop
     retryLoop a &> retryLoop b = retryLoop (a &> b)
     retryLoop a <+> retryLoop b = retryLoop (a <+> b)
+    
+An "unhandled" retryable failure could be understood to retry the
+entire reagent.  I.e., there is an implicit `retryLoop` placed around
+a reagent when it's asked to react.
+
+How do we understand
+
+    r.cas(...) <+> retryLoop a
+    r.cas(...) &> retryLoop a
+    
+May be reasonable to either (1) statically distinguish between
+pre-reagents (which have no retry) and reagents (which do) or (2)
+implicitly add a retryLoop for choices.
+
+Two variants of choice: one explores alternatives upon retryable
+failure, the other only on blocking failure.
  
 ## 6/7/2011
 
