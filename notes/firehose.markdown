@@ -28,7 +28,47 @@ Refine implementation of react:
  - if ALL choices have enrolled, after a final doFn attempt, block
 
 Notice that blocking is prevented in any situation where a branch
-repeatedly yields a viable kCAS
+repeatedly yields a viable kCAS.
+
+Take CAS as primitive, upd as derived.  Introduce `loop` construct as
+a way of handling failed CASes only (a partial function failure will
+escape the loop).  Feels a bit like exception handling...
+
+*Sidenote*: should think about exception handling in reagents, as
+ well.
+ 
+ ---
+ 
+Two kinds of "failures" for reagents:
+ 
+ - blocking, as caused by a guard or send
+ - retryable, as caused by a failing CAS
+ 
+`cas` succeeds or raises a retryable failure:
+ 
+    Ref[A].cas: A => Reagent[A, ()]
+    
+`retryLoop` "catches" retryable failures and retries reagent at that
+point; blocking failures pass through.  *NB*: retryable failures are
+not re-raiseable, so never escape:
+    
+    retryLoop: Reagent[A,B] => Reagent[A,B]
+
+We can encode `upd` using something like the following:
+    
+    r.upd(f) = retryLoop (guard x => for {
+      oldVal <- r.read 
+      y <- f(oldVal, x) &> left r.cas(oldVal) &> pi2
+    } yield y
+
+Note that the blocking behavior of `upd` now falls out of the
+partiality semantics on lifted functions.
+
+Some conjectured laws:
+
+    retryLoop o retryLoop = retryLoop
+    retryLoop a &> retryLoop b = retryLoop (a &> b)
+    retryLoop a <+> retryLoop b = retryLoop (a <+> b)
  
 ## 6/7/2011
 
