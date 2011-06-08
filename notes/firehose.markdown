@@ -17,6 +17,19 @@ Further examples of reagents:
  - lazy set
  - skiplist-based map
  
+## 6/8/2011
+
+Refine implementation of react:
+
+ - take flattened choice
+ - attempt doFn for each choice branch
+ - for each doFn that does NOT yield a kCAS (i.e., polling fails),
+   enroll reagent as blocker
+ - if ALL choices have enrolled, after a final doFn attempt, block
+
+Notice that blocking is prevented in any situation where a branch
+repeatedly yields a viable kCAS
+ 
 ## 6/7/2011
 
 Should be able to block on a conjunction of a `send` and an `upd`.
@@ -712,11 +725,13 @@ type 'a event
 ## THE STACK EXAMPLE
 
 Treiber's:
+
     Push(x) & State(s) => State(x:s) 
     Pop() & State(x:s) => State(s);   SOME x
     Pop() & State(nil) => State(nil); NONE
 
 With blocking Pop:
+
     Push(x) & Pop() => { return x; }
 
 What kinds of channels are Push and Pop?
