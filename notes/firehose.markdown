@@ -16,7 +16,66 @@ Further examples of reagents:
  - hand-over-hand set
  - lazy set
  - skiplist-based map
+
+## 6/9/2011
+
+If a retryLoop is included in `upd` and `send` operations, it will not
+be possible to, say, read a channel from some reference cell, attempt
+to send on the channel, and on failure to CAS a message retry the
+whole thing.  But, actually, the more interesting case there is
+dealing with a *blocking* failure; and `upd` is a derived construct
+anyway, so there's no real limitation there.
+
+The problem with this definition of `upd`
+
+    r.upd(f) = retryLoop (guard x => for {
+      oldVal <- r.read 
+      y <- f(oldVal, x) &> left r.cas(oldVal) &> pi2
+    } yield y
+    
+is that the blocking caused by partiality of `f` does not connect to
+the read of `r`.  In fact, if the initial read does not satisfy `f`,
+this would block forever.
+
+Better would be:
+
+    r.upd(f) = retryLoop (arrowDo x -> {
+      oldVal <- r.read <- ()
+      newVal <- f <- (oldVal, x)
+      r.cas <- (oldVal, newVal)
+    })
+
+This requires adding `read` as a reagent constructor.  Should be OK:
+inconsistent reads, or reads that don't agree with a CAS attempt,
+could be retried.
+
+Alternatively, could do away with CAS, and just have `read` and
+`write` constructs.  How would they layer?  Think of fan-out for
+reads, fan-in for writes: each must be guaranteed to give the same
+value, but reads are the system's responsibility, whereas writes are
+the programmer's.  I.e., guarantee read consistency by retrying,
+guarantee write consistency by throwing exception when violated.
+
+Still need to think about:
+
+ - blocking on a CAS (with the above, it would actually be blocking on
+   read)
+ - catalyzing `retryLoop` 
  
+An interesting example, where both endpoints of a channel are used:
+
+    // Counter-based semaphore in join calculus
+    acq & avail(n) => n match { case S(S(m)) => avail(S(m))
+                              | case S(Z) => empty }
+    rel & avail(n) => avail(S(n))
+    rel & empty    => avail(S(z))
+    
+    // As reagent
+    rAcq &> rAvail &> { case S(S(m)) => S(m) } &> sAvail
+    rAcq &> rAvail &> { case S(z) => () } &> sEmpty
+    rRel &> rAvail &> S(_) &> sAvail
+    rRel &> rEmpty &> ((_) => S(z)) &> sAvail
+
 ## 6/8/2011
 
 Refine implementation of react:
