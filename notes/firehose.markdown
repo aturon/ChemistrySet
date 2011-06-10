@@ -17,6 +17,58 @@ Further examples of reagents:
  - lazy set
  - skiplist-based map
 
+## 6/10/2011
+
+Allowing STM-like treatment of reference cells (so multiple
+reads/write permitted) is probably not too costly: have to have "redo"
+logs anyway, to track the kCAS clauses.  Can avoid allocation by
+keeping thread-local space sufficient to hold these.
+
+Reasonable Ref operations: `read`, `cas`.  Drop `write` in favor of
+`cas`.
+
+OTOH, have a nice defn of `upd`:
+
+    r.upd(f) = arrowDo x -> {
+      oldVal <- r.read <- ()
+      (newVal, output) <- f <- (oldVal, x)
+      () <- r.write <- newVal
+      output
+    }
+    
+(but `write` is easily definable with `read` and `cas`)
+
+Difference between monadic bind and CML-style `guard`: with bind you
+can write
+
+    rChan >>= (someRef => someRef.read &> lift (ensure(p)))
+    
+where `p` is a predicate.  This means that, when blocking, must enroll
+as blocker in *every* ref-cell currently visible in `rChan` messages,
+as well as a blocker for `rChan` itself.
+
+With guards, you can at best write
+
+    rChan &> guard {
+      val someRef = otherRef.read!
+      someRef.read &> lift(ensure(p))
+    }
+    
+but the point is that the computation of a reagent within the guard
+cannot in any way depend on *which* value was read off the channel.
+Note: this depends on giving guard type
+
+    guard: (=> Reagent[A,B]) => Reagent[A,B]
+    
+Guards are also useful even if general monadic bind is provided: they
+offer a way to say "I don't care about an atomicity guarantee for this
+computation *of* a reagent", which is a key point for many nonblocking
+algorithms.  For example, the Michael-Scott queue, when enqueuing,
+first must discover the tail node.  This list traversal doesn't
+require, and shouldn't be given, any atomicity guarantees by the
+library.  But the result of the traversal is a computed reagent (to
+put the new node in place).
+
 ## 6/9/2011
 
 If a retryLoop is included in `upd` and `send` operations, it will not
