@@ -3,69 +3,54 @@ package chemistry
 import java.util.concurrent.atomic._
 import scala.annotation.tailrec
 
-private abstract class KCAS[A] {
-  def attempt(): Option[A]
+object Util {
+  def undef[A]: A = throw new Exception()
 }
 
-class Reagent[A,B] private (val choices: List[Molecule[A,B]]) {
+private abstract class Outcome
+private case object ShouldBlock extends Outcome
+private case object ShouldRetry extends Outcome
+private case class Success(a: Any) extends Outcome
+
+class Reagent[A,B](val choices: List[List[Atom]]) {
+  private def attempt(m: List[Atom], a: Any): Outcome = {
+    @tailrec def exec(m: List[Atom], a: Any): Outcome = m match{
+      case Lift(f) :: rest => exec(rest, f(a))
+//      case Thunk(f) :: rest => exec(f() ++ rest, a)
+      case Fst(atom) :: rest => 
+      case List() => Success(a)
+    }
+    exec(m, a)
+  }
+
   def !(a: A): B = {
     // initial cut: nonblocking version
-    def tryChoices(cs: List[Molecule[A,B]): B = cs match {
-      case c :: cs1 => c.poll(a) match {
-	case Some(b, kcas) => if (kcas()) b else tryChoices(cs1)
-	case None => tryChoices(cs1)
+    @tailrec def tryChoices(cs: List[List[Atom]]): B = cs match {
+      case c :: cs1 => attempt(c,a) match {
+	case Success(b) => b.asInstanceOf[B]
+	case _ => tryChoices(cs1)
       }
       case List() => {
-	backoff()
+	// backoff()
 	tryChoices(choices) // retry all choices
       }
     }
     tryChoices(choices)
   }
 
-  def &>[C](r: Reagent[B,C]): Reagent[A,C]
-  def <+>(r: Reagent[A,B]): Reagent[A,B]
-}
-object Reagent {
-/*
-  implicit def partialFunctionToReagent[A,B](f: PartialFunction[A,B]):
-    Reagent[A,B] = new Lift(f)
-  implicit def functionToReagent[A,B](f: A => B):
-    Reagent[A,B] = new Lift(new PartialFunction[A,B] {
-      def apply(a: A) = f(a)
-      def isDefinedAt(a: A) = true
-    })
-  implicit def reagentToCatalyst(r: Reagent[Unit,Unit]): { def !! } = 
-    new { def !! { throw new Exception("Not implemented") }}
-  def catalyze(r: Reagent[Unit,Unit]) = r !!
-*/
+  def &>[C](r: Reagent[B,C]): Reagent[A,C] = Util.undef
+  def <+>(r: Reagent[A,B]): Reagent[A,B] = Util.undef
 }
 
-private abstract class Molecule[A,B] {
-  def poll(a: A): Option[(B, KCAS)]
-}
+// private sealed abstract class Molecule[A,B]
+// private case class Join[A,B,C](a: Atom[A,B], m: Molecule[B,C]) extends Molecule[A,C]
+//private case class Done[A]() extends Molecule[A,A]
 
-private class Bonded[A,B,C](val m1: Molecule[A,B], val m2: Molecule[B,C]) extends Molecule[A,C] {
-  def poll(a: A): Option[(C, KCAS)] = {
-    m1.poll(a) match {
-      case Some(b, kcas1) => m2.poll(b) match {
-	case Some(c, kcas2) => Some(c, kcas1 & kcas2)
-	case None => None
-      }
-    }
-  }
-}
-
-private abstract class Atom[A,B] extends Molecule[A,B] {
-// def isDualTo(a: Atom): Boolean
-}
-
-private class Lift[A,B](f: PartialFunction[A,B]) extends Atom[A,B]
-
-/*
-private class Fst[A,B,C](a: Atom[A,B]) extends Atom[(A,C), (B,C)]
-private class Snd[A,B,C](a: Atom[A,B]) extends Atom[(C,A), (C,B)]
-*/
+sealed abstract class Atom
+private case class Lift[A,B](f: PartialFunction[A,B]) extends Atom
+private case class Thunk[A,B](f: () => Reagent[A,B])  extends Atom
+private case class Fst(a: Atom) extends Atom
+private case class Snd(a: Atom) extends Atom
 
 /*
 private class Endpoint[A,B] extends Atom[A,B] {
@@ -82,8 +67,8 @@ object SwapChan {
 */
 
 class Ref[A](init: A) {
-  def read: Reagent[Unit, A]
-  def cas:  Reagent[(A,A), Unit]
+//  def read: Reagent[Unit, A]
+//  def cas:  Reagent[(A,A), Unit]
 
   // interface using separate reads/writes
 /*  
@@ -105,7 +90,7 @@ class Ref[A](init: A) {
 */
 }
 
-/* */
+/* 
 
 object Examples {
   def cons[A](p:(List[A],A)) = p._2::p._1
@@ -231,4 +216,4 @@ object Examples {
   }
 }
 
-/* */
+*/
