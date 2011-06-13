@@ -3,27 +3,31 @@ package chemistry
 import java.util.concurrent.atomic._
 import scala.annotation.tailrec
 
-sealed abstract class Reagent[A,B] {
+private abstract class KCAS[A] {
+  def attempt(): Option[A]
+}
+
+class Reagent[A,B] private (val choices: List[Molecule[A,B]]) {
   def !(a: A): B = {
-    throw new Exception("Not implemented")
+    // initial cut: nonblocking version
+    def tryChoices(cs: List[Molecule[A,B]): B = cs match {
+      case c :: cs1 => c.poll(a) match {
+	case Some(b, kcas) => if (kcas()) b else tryChoices(cs1)
+	case None => tryChoices(cs1)
+      }
+      case List() => {
+	backoff()
+	tryChoices(choices) // retry all choices
+      }
+    }
+    tryChoices(choices)
   }
 
-  def &>[C](r: Reagent[B,C]): Reagent[A,C] = {
-    throw new Exception("Not implemented")
-  }
-
-  def <&>[C](r: Reagent[A,C]): Reagent[A, (B,C)] = {
-    throw new Exception("Not implemented")
-  }
-
-  def <|>(r: Reagent[A,B]): Reagent[A,B] = {
-    throw new Exception("Not implemented")
-  }
-
-  def map[C](f: B => C): Reagent[A,C] = &>(f)
-//  def filter[B](f: B => Boolean): Reagent[A,B] = &>({case x:B if f(x) => x})
+  def &>[C](r: Reagent[B,C]): Reagent[A,C]
+  def <+>(r: Reagent[A,B]): Reagent[A,B]
 }
 object Reagent {
+/*
   implicit def partialFunctionToReagent[A,B](f: PartialFunction[A,B]):
     Reagent[A,B] = new Lift(f)
   implicit def functionToReagent[A,B](f: A => B):
@@ -34,25 +38,36 @@ object Reagent {
   implicit def reagentToCatalyst(r: Reagent[Unit,Unit]): { def !! } = 
     new { def !! { throw new Exception("Not implemented") }}
   def catalyze(r: Reagent[Unit,Unit]) = r !!
+*/
 }
 
-private abstract case class Choice[A,B](between: Molecule[A,B]*) 
-		      extends Reagent[A,B]
+private abstract class Molecule[A,B] {
+  def poll(a: A): Option[(B, KCAS)]
+}
 
-private abstract class Molecule[A,B] extends Reagent[A,B]
-
-private case class Bonded[A,B,C](m1: Molecule[A,B], m2: Molecule[B,C]) 
-	     extends Molecule[A,C]
+private class Bonded[A,B,C](val m1: Molecule[A,B], val m2: Molecule[B,C]) extends Molecule[A,C] {
+  def poll(a: A): Option[(C, KCAS)] = {
+    m1.poll(a) match {
+      case Some(b, kcas1) => m2.poll(b) match {
+	case Some(c, kcas2) => Some(c, kcas1 & kcas2)
+	case None => None
+      }
+    }
+  }
+}
 
 private abstract class Atom[A,B] extends Molecule[A,B] {
-  // def isDualTo(a: Atom): Boolean
+// def isDualTo(a: Atom): Boolean
 }
 
 private class Lift[A,B](f: PartialFunction[A,B]) extends Atom[A,B]
 
+/*
 private class Fst[A,B,C](a: Atom[A,B]) extends Atom[(A,C), (B,C)]
 private class Snd[A,B,C](a: Atom[A,B]) extends Atom[(C,A), (C,B)]
+*/
 
+/*
 private class Endpoint[A,B] extends Atom[A,B] {
   var dual: Endpoint[B,A] = null
 }
@@ -64,16 +79,21 @@ object SwapChan {
     (c1, c2)
   }
 }
+*/
 
 class Ref[A](init: A) {
-  
+  def read: Reagent[Unit, A]
+  def cas:  Reagent[(A,A), Unit]
+
   // interface using separate reads/writes
-  
+/*  
   def rd: Reagent[Unit,A] = new Atom[Unit,A] {}
   def wr: Reagent[A,Unit] = new Atom[A,Unit] {}
+*/
 
   // interface using atomic update
 
+/*
   def upd(f: PartialFunction[A,A]): Reagent[Unit,Unit] = 
     new Atom[Unit,Unit] {}
   def updO[B](f: PartialFunction[A, (A,B)]): Reagent[Unit,B] = 
@@ -82,11 +102,10 @@ class Ref[A](init: A) {
     new Atom[B,Unit] {}
   def updIO[B,C](f: PartialFunction[(A,B), (A,C)]): Reagent[B,C] = 
     new Atom[B,C] {}
+*/
 }
-object Ref {
-  def dynUpd[A](f: A => A): Reagent[Ref[A],Unit] = 
-    new Atom[Ref[A],Unit] {}
-}
+
+/* */
 
 object Examples {
   def cons[A](p:(List[A],A)) = p._2::p._1
@@ -211,3 +230,5 @@ object Examples {
     }
   }
 }
+
+/* */

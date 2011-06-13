@@ -16,6 +16,25 @@ Further examples of reagents:
  - hand-over-hand set
  - lazy set
  - skiplist-based map
+ - synchronization examples from Scalable Joins
+ - other classic join calculus examples
+ - classic CML examples
+
+## 6/11/2011
+
+Implementation concerns:
+
+ - want to work with reagents in canonicalized form (DNF)
+ - need to keep track of use of `retryLoop`
+ - note, `retryLoop` is likely to cause per-retry allocation
+   regardless
+ - may be possible to re-use canonicalized representation
+ 
+May not be reasonable semantics for combination of: `retryLoop`,
+catalysis, blocking.  In particular, the reagent produced by the
+loop's thunk may differ over time, so no single place to enroll as a
+catalyst -- especially given that the memory read in computing the
+reagent is inaccessible to the library.
 
 ## 6/10/2011
 
