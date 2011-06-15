@@ -1,3 +1,5 @@
+#Buildr.settings.build['scala.version'] = "2.9.0-1"
+
 require 'buildr/scala'
 repositories.remote << 'http://www.ibiblio.org/maven2'
 repositories.remote << 'http://repo.codahale.com'
@@ -10,6 +12,7 @@ define 'ChemistrySet', :layout=>nj_layout do
   compile.with Dir[_("lib/*.jar")]
   compile.with 'com.codahale:simplespec_2.8.1::0.2.0'
   compile.options.deprecation = 'true'
+  compile.options.debug = 'false'
   run.using :main => "Runner"
   project.version = '0.0.1'
   package :jar
