@@ -2,25 +2,81 @@ package chemistry
 
 import java.util.concurrent.atomic._
 import scala.annotation.tailrec
+import scala.collection.mutable._
 
-object Util {
+private object Util {
   def undef[A]: A = throw new Exception()
 }
 
-private abstract class Outcome
-private case object ShouldBlock extends Outcome
-private case object ShouldRetry extends Outcome
-private case class Success(a: Any) extends Outcome
+sealed private class Transaction {
+  private case class CASLog(ov: Any, nv: Any)
+  private val redoLog = HashMap.empty[AtomicReference[Any], CASLog]
 
-class Reagent[A,B](val choices: List[List[Atom]]) {
+  def read[A](r: Ref[A]): A = redoLog.getOrElseUpdate(r.data, {
+    val cur = r.data.get()
+    CASLog(cur, cur)
+  }).nv.asInstanceOf[A]
+
+  def cas[A](r: Ref[A], ov: A, nv: A) = Util.undef
+
+  def attempt: Boolean = Util.undef
+}
+
+class Reagent[A,B] private (private val choices: List[List[Atom]]) {
+  private abstract class Outcome
+  private case object ShouldBlock extends Outcome
+  private case object ShouldRetry extends Outcome
+  private case class Success(a: Any) extends Outcome
+
   private def attempt(m: List[Atom], a: Any): Outcome = {
-    @tailrec def exec(m: List[Atom], a: Any): Outcome = m match{
-      case Lift(f) :: rest => exec(rest, f(a))
-//      case Thunk(f) :: rest => exec(f() ++ rest, a)
-      case Fst(atom) :: rest => 
-      case List() => Success(a)
+    val istack = ArrayStack(m)   // note: these should be re-used at
+    val dstack = ArrayStack(a)   //       least across choices/retries
+    var trans  = new Transaction
+
+    while (!istack.isEmpty) istack.top match {
+      case List() => 
+	istack.pop
+      case atom :: rest => {
+	istack.update(0,rest)	// consume the instruction
+	atom match {		// interpret the instruction
+	  case Map(f) => {
+	    val data = dstack.pop
+	    if (f.isDefinedAt(data)) 
+	      dstack.push(f(data))
+	    else return ShouldBlock
+	  }
+	  case Thunk(f) => 
+	    istack.push(f().choices.head)
+	  case Split => {
+	    val (x,y) = dstack.pop
+	    dstack.push(y)
+	    dstack.push(x)
+	  }
+	  case Swap => {
+	    val x = dstack.pop
+	    val y = dstack.pop
+	    dstack.push(x)
+	    dstack.push(y)
+	  }
+	  case Merge => {
+	    val x = dstack.pop
+	    val y = dstack.pop
+	    dstack.push((x,y))
+	  }
+	  case Read(r) => {
+	    dstack.update(0, trans.read(r))
+	  }
+	  case CAS(r) => {
+	    val (ov,nv) = dstack.pop
+	    dstack.push(trans.cas(r, ov, nv))
+	  }
+	}
+      }
     }
-    exec(m, a)
+
+    // assert(dstack.size eq 1)
+
+    if (trans.attempt) Success(dstack.pop) else ShouldRetry
   }
 
   def !(a: A): B = {
@@ -38,19 +94,33 @@ class Reagent[A,B](val choices: List[List[Atom]]) {
     tryChoices(choices)
   }
 
-  def &>[C](r: Reagent[B,C]): Reagent[A,C] = Util.undef
-  def <+>(r: Reagent[A,B]): Reagent[A,B] = Util.undef
+  def &>[C](next: Reagent[B,C]): Reagent[A,C] = new Reagent(for {
+    choice <- this.choices
+    nextChoice <- next.choices
+  } yield choice ++ nextChoice)
+  def <+>(that: Reagent[A,B]): Reagent[A,B] = new Reagent(this.choices ++ that.choices)
+
+  def onLeft[C]: Reagent[(A,C), (B,C)] = 
+    new Reagent(for (c <- choices) yield Split +: c :+ Merge)
+  def onRight[C]: Reagent[(C,A), (C,B)] = 
+    new Reagent(for (c <- choices) yield Split +: Swap +: c :+ Swap :+ Merge)
+}
+private object Reagent {
+  def fromAtom[A,B](a: Atom): Reagent[A,B] = new Reagent(List(List(a)))
 }
 
-// private sealed abstract class Molecule[A,B]
-// private case class Join[A,B,C](a: Atom[A,B], m: Molecule[B,C]) extends Molecule[A,C]
-//private case class Done[A]() extends Molecule[A,A]
-
-sealed abstract class Atom
-private case class Lift[A,B](f: PartialFunction[A,B]) extends Atom
+private sealed abstract class Atom
+private case class Map[A,B](f: PartialFunction[A,B]) extends Atom
 private case class Thunk[A,B](f: () => Reagent[A,B])  extends Atom
-private case class Fst(a: Atom) extends Atom
-private case class Snd(a: Atom) extends Atom
+private case object Split extends Atom
+private case object Swap extends Atom
+private case object Merge extends Atom
+private case class Read[A](r: Ref[A]) extends Atom
+private case class CAS[A](r: Ref[A]) extends Atom
+
+object Lift {
+  def apply[A,B](f: PartialFunction[A,B]) = Reagent.fromAtom(new Map(f))
+}
 
 /*
 private class Endpoint[A,B] extends Atom[A,B] {
@@ -67,8 +137,10 @@ object SwapChan {
 */
 
 class Ref[A](init: A) {
-//  def read: Reagent[Unit, A]
-//  def cas:  Reagent[(A,A), Unit]
+  private[chemistry] val data = new AtomicReference[Any](init)
+
+  def read: Reagent[Unit, A]     = Reagent.fromAtom(new Read(this))
+  def cas:  Reagent[(A,A), Unit] = Reagent.fromAtom(new CAS(this))
 
   // interface using separate reads/writes
 /*  

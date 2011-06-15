@@ -20,6 +20,14 @@ Further examples of reagents:
  - other classic join calculus examples
  - classic CML examples
 
+## 6/13/2011
+
+Don't worry about allocation: very conservatively, given exponential
+backoff, will retry less than 32 times/s.  Even if allocating 100
+objects (at 16b/object, see <http://norvig.com/java-iaq.html>), that's
+~50k for the first second, and <1.6k/s after that (but probably
+would've gone into sleep(1) loop by then).
+
 ## 6/11/2011
 
 Implementation concerns:
