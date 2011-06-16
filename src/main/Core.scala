@@ -37,16 +37,45 @@ private case class Read[A](r: Ref[A]) extends Atom
 private case class CAS[A](r: Ref[A]) extends Atom
 private case class CASAux[A](r: Ref[A]) extends Atom
 
+private case class Upd[A,B](r: Ref[A], f: (A,B) => A) extends Atom
+
+private case class TLData(istack: ArrayStack[List[Atom]],
+			  dstack: ArrayStack[Any],
+			  astack: ArrayStack[Any])
+
+private object ThreadLocalStorage {  
+  val data = new ThreadLocal[TLData]() {
+    override def initialValue() =
+      TLData(ArrayStack(List()), ArrayStack(()), ArrayStack(()))
+  }
+}
+
 class Reagent[A,B] private (private val choices: List[List[Atom]]) {
   private abstract class Outcome
   private case object ShouldBlock extends Outcome
   private case object ShouldRetry extends Outcome
   private case class Success(a: Any) extends Outcome
 
+  // private val istack = ArrayStack[List[Atom]](List())
+  // private val dstack = ArrayStack[Any](())
+  // private val astack = ArrayStack[Any](())
+
   private def attempt(m: List[Atom], a: Any): Outcome = {
-    val istack = ArrayStack(m)   // note: these should be re-used at
-    val dstack = ArrayStack(a)   //       least across choices/retries
-    val astack = ArrayStack[Any](())
+    val TLData(istack, dstack, astack) = ThreadLocalStorage.data.get()
+
+    istack.drain((_) => {})
+    istack.push(m)
+
+    dstack.drain((_) => {})
+    dstack.push(a)
+
+    astack.drain((_) => {})
+    astack.push(())
+
+    // val istack = ArrayStack(m)   // note: these should be re-used at
+    // val dstack = ArrayStack(a)   //       least across choices/retries
+    // val astack = ArrayStack[Any](())
+
 //    var trans  = new Transaction
 
     while (!istack.isEmpty) {
@@ -125,6 +154,11 @@ class Reagent[A,B] private (private val choices: List[List[Atom]]) {
 	      val nv = dstack.pop()
 	      val ov = astack.pop()
 	      r.data.compareAndSet(ov, nv)
+	    }
+	    case Upd(r, f) => {
+	      val ov = r.data.get()
+	      r.data.compareAndSet(ov, f(ov, dstack.pop()))
+	      dstack.push(())
 	    }
 	  }
 	}
@@ -247,9 +281,10 @@ class Ref[A](init: A) {
 
 class TreiberStack[A] {
   private val head = new Ref[List[A]](List())
-  val pushReagent = head.updI[A]({
-    case (xs,x) => x::xs
-  })
+  // val pushReagent = head.updI[A]({
+  //   case (xs,x) => x::xs
+  // })
+  val pushReagent = Reagent.fromAtoms[A,Unit](Upd[List[A],A](head,(xs,x) => x::xs))
   val popReagent = head updO {
     case x::xs => (xs, Some(x))
     case emp   => (emp,  None)
@@ -339,6 +374,7 @@ object Bench extends Application {
 
   def getTime = (new Date()).getTime
   def withTime(msg: String)(thunk: => Unit) {
+    thunk // warm up
     println(msg)
     var sum: Long = 0
     for (i <- 1 to trials) {
