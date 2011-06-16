@@ -6,7 +6,10 @@ private object Util {
   def undef[A]: A = throw new Exception()
 }
 
-// sealed private class Transaction {
+sealed private abstract class LogEntry
+private case class CASLog[A](r: Ref[A], ov: A, nv: A) extends LogEntry
+
+sealed private class Transaction {
 //   private case class CASLog(ov: Any, nv: Any)
 //   private val redoLog = HashMap.empty[AtomicReference[Any], CASLog]
 
@@ -18,192 +21,135 @@ private object Util {
 //   def cas[A](r: Ref[A], ov: A, nv: A) = Util.undef
 
 //   def attempt: Boolean = Util.undef
-// }
 
-private sealed abstract class Atom
-private case object Dup extends Atom
-private case object Split extends Atom
-private case object Swap extends Atom
-private case object Merge extends Atom
-private case object PushToAux extends Atom
-private case object PopFromAux extends Atom
-private case object DupToAux extends Atom
-private case class Push[A](a: A) extends Atom
-private case object Pop extends Atom
-private case class Apply[A,B](f: PartialFunction[A,B]) extends Atom
-private case class Thunk[A,B](f: () => Reagent[A,B])  extends Atom
-private case class ThunkPush[A](a: () => A) extends Atom
-private case class Read[A](r: Ref[A]) extends Atom
-private case class CAS[A](r: Ref[A]) extends Atom
-private case class CASAux[A](r: Ref[A]) extends Atom
+  var shouldBlock = false
+  var log = ArrayBuffer[LogEntry]()
+}
 
-private case class Upd[A,B](r: Ref[A], f: (A,B) => A) extends Atom
+private case object ShouldBlock
+private case object ShouldRetry
 
-private case class TLData(istack: ArrayStack[List[Atom]],
-			  dstack: ArrayStack[Any],
-			  astack: ArrayStack[Any])
-
-private object ThreadLocalStorage {  
-  val data = new ThreadLocal[TLData]() {
-    override def initialValue() =
-      TLData(ArrayStack(List()), ArrayStack(()), ArrayStack(()))
+private object Atom {
+  def bind[A](a: Any, f: A => Any): Any = {
+    a match {
+      case ShouldBlock => ShouldBlock
+      case ShouldRetry => ShouldRetry
+      case _ => f(a.asInstanceOf[A])
+    }
   }
 }
 
-class Reagent[A,B] private (private val choices: List[List[Atom]]) {
-  private abstract class Outcome
-  private case object ShouldBlock extends Outcome
-  private case object ShouldRetry extends Outcome
-  private case class Success(a: Any) extends Outcome
+private sealed abstract class Atom[A,B] extends Function2[A,Transaction,Any]
 
-  // private val istack = ArrayStack[List[Atom]](List())
-  // private val dstack = ArrayStack[Any](())
-  // private val astack = ArrayStack[Any](())
+private case class OnLeft[A,B,C](a: Atom[A,B]) extends Atom[(A,C),(B,C)] {
+  def apply(data: (A,C), trans: Transaction): Any = 
+    Atom.bind(a(data._1, trans), ((_:B), data._2))
+}
 
-  private def attempt(m: List[Atom], a: Any): Outcome = {
-    val TLData(istack, dstack, astack) = ThreadLocalStorage.data.get()
+private case class OnRight[A,B,C](a: Atom[A,B]) extends Atom[(C,A),(C,B)] {
+  def apply(data: (C,A), trans: Transaction): Any = 
+    Atom.bind(a(data._2, trans), (data._1, (_:B)))
+}
 
-    istack.drain((_) => {})
-    istack.push(m)
+private case class ApplyPfn[A,B](f: PartialFunction[A,B]) extends Atom[A,B] {
+  def apply(data: A, trans: Transaction): Any = 
+    if (f.isDefinedAt(data)) f(data) 
+    else ShouldBlock
+}
 
-    dstack.drain((_) => {})
-    dstack.push(a)
+private case class Apply[A,B](f: Function[A,B]) extends Atom[A,B] {
+  def apply(data: A, trans: Transaction): B = 
+    f(data)
+}
 
-    astack.drain((_) => {})
-    astack.push(())
+// private case class Thunk[A,B](f: () => Reagent[A,B]) extends Atom[A,B] {
+//   def apply(data: A, trans: Transaction): B = 
+//     f().choices.head(data, trans)
+// }
 
-    // val istack = ArrayStack(m)   // note: these should be re-used at
-    // val dstack = ArrayStack(a)   //       least across choices/retries
-    // val astack = ArrayStack[Any](())
+private case class Read[A](r: Ref[A]) extends Atom[Unit, A] {
+  def apply(data: Unit, trans: Transaction): A = 
+    r.data.get()
+}
 
-//    var trans  = new Transaction
+private case class CAS[A](r: Ref[A]) extends Atom[(A,A), Unit] {
+  def apply(data: (A,A), trans: Transaction): Unit = 
+    r.data.compareAndSet(data._1, data._2)
+}
 
-    while (!istack.isEmpty) {
-      // print("dstack: ")
-      // println(dstack)
-      // print("astack: ")
-      // println(astack)
-
-      // istack.top match {
-      // 	case atom :: _ => {
-      // 	  println("")
-      // 	  print("> ")
-      // 	  println(atom)
-      // 	  println("")
-      // 	}
-      // 	case _ => {}
-      // }      
-
-      istack.top match {
-	case List() => 
-	  istack.pop
-	case Push(_) :: Pop :: rest => istack.update(0,rest)
-	case Merge :: Split :: rest => istack.update(0,rest)
-	case Split :: Merge :: rest => istack.update(0,rest)
-	case atom :: rest => {
-	  istack.update(0,rest)	// consume the instruction
-	  atom match {		// interpret the instruction
-	    case Dup => 
-	      dstack.dup()
-	    case Split => {
-	      val (x,y) = dstack.pop()
-	      dstack.push(x)
-	      dstack.push(y)
-	    }
-	    case Swap => {
-	      val x = dstack.pop()
-	      val y = dstack.pop()
-	      dstack.push(x)
-	      dstack.push(y)
-	    }
-	    case Merge => {
-	      val y = dstack.pop()
-	      val x = dstack.pop()
-	      dstack.push((x,y))
-	    }
-	    case PushToAux => 
-	      astack.push(dstack.pop())
-	    case PopFromAux =>
-	      dstack.push(astack.pop())
-	    case DupToAux =>
-	      astack.push(dstack.top)
-	    case Push(a) => 
-	      dstack.push(a)
-	    case Pop =>
-	      dstack.pop
-	    case Apply(f) => {
-	      val data = dstack.pop()
-	      if (f.isDefinedAt(data)) 
-		dstack.push(f(data))
-	      else return ShouldBlock
-	    }
-	    case Thunk(f) =>
-	      istack.push(f().choices.head)
-	    case ThunkPush(f) =>
-	      dstack.push(f())
-	    case Read(r) => {
-  //	    dstack.update(0, trans.read(r))
-	      dstack.push(r.data.get())
-	    }
-	    case CAS(r) => {
-	      val nv = dstack.pop()
-	      val ov = dstack.pop()
-	      r.data.compareAndSet(ov, nv)
-	    }
-	    case CASAux(r) => {
-	      val nv = dstack.pop()
-	      val ov = astack.pop()
-	      r.data.compareAndSet(ov, nv)
-	    }
-	    case Upd(r, f) => {
-	      val ov = r.data.get()
-	      r.data.compareAndSet(ov, f(ov, dstack.pop()))
-	      dstack.push(())
-	    }
-	  }
-	}
-      }
-    }
-
-    // assert(dstack.size eq 1)
-
-    //if (trans.attempt) Success(dstack.pop) else ShouldRetry
-    Success(dstack.pop)
+private case class Upd[A,B,C](r: Ref[A], f: (A,B) => (A,C)) extends Atom[B,C] {
+  def apply(data: B, trans: Transaction): C = {
+    val ov = r.data.get()
+    val (nv, ret) = f(ov, data)
+    r.data.compareAndSet(ov, nv)
+//    trans.log += CASLog(r, ov, nv)
+    ret
   }
+}
 
-  def !(a: A): B = {
+private case class UpdI[A,B](r: Ref[A], f: (A,B) => A) extends Atom[B,Unit] {
+  def apply(data: B, trans: Transaction): Unit = {
+    val ov = r.data.get()
+    val nv = f(ov, data)
+    r.data.compareAndSet(ov, nv)
+//    trans.log += CASLog(r, ov, nv)
+    ()
+  }
+}
+
+private case class Compose[A,B,C](a: Atom[A,B], b: Atom[B,C]) extends Atom[A,C] {
+  def apply(data: A, trans: Transaction): Any = 
+    Atom.bind(a(data, trans), b((_:B), trans))
+}
+
+class Reagent[A,B] private (private val choices: List[Atom[A,B]]) {
+  def !(x: A): B = {
     // initial cut: nonblocking version
-    @tailrec def tryChoices(cs: List[List[Atom]]): B = cs match {
-      case c :: cs1 => attempt(c,a) match {
-	case Success(b) => b.asInstanceOf[B]
-	case _ => tryChoices(cs1)
+    @tailrec def tryChoices(cs: List[Atom[A,B]]): B = cs match {
+      case a :: as => {
+//	val trans = new Transaction()
+	val res = a(x, null)
+	res match {
+	  case ShouldBlock => tryChoices(as)
+	  case _ => res.asInstanceOf[B]
+	}
       }
       case List() => {
 	// backoff()
 	tryChoices(choices) // retry all choices
       }
     }
-    tryChoices(choices)
+//    tryChoices(choices)
+
+    choices.head(x,null).asInstanceOf[B]
+
   }
 
   def &>[C](next: Reagent[B,C]): Reagent[A,C] = new Reagent(for {
     choice <- this.choices
     nextChoice <- next.choices
-  } yield choice ++ nextChoice)
-  def <+>(that: Reagent[A,B]): Reagent[A,B] = new Reagent(this.choices ++ that.choices)
-
+  } yield Compose(choice, nextChoice))
+  def <+>(that: Reagent[A,B]): Reagent[A,B] = 
+    new Reagent(this.choices ++ that.choices)
   def onLeft[C]: Reagent[(A,C), (B,C)] = 
-    new Reagent(for (c <- choices) yield Split +: c :+ Merge)
+    new Reagent(for (a <- choices) yield OnLeft[A,B,C](a))
   def onRight[C]: Reagent[(C,A), (C,B)] = 
-    new Reagent(for (c <- choices) yield Split +: Swap +: c :+ Swap :+ Merge)
+    new Reagent(for (a <- choices) yield OnRight[A,B,C](a))
 }
 private object Reagent {
-  def fromAtoms[A,B](as: Atom*): Reagent[A,B] = new Reagent(List(as.toList))
+  def fromAtom[A,B](a: Atom[A,B]): Reagent[A,B] = new Reagent(List(a))
 }
 
 object Lift {
-  def apply[A,B](f: PartialFunction[A,B]) = Reagent.fromAtoms(Apply(f))
+  def apply[A,B](f: PartialFunction[A,B]): Reagent[A,B] = 
+    Reagent.fromAtom(ApplyPfn(f))
+  def apply[A,B](f: Function[A,B]): Reagent[A,B] = 
+    Reagent.fromAtom(Apply(f))
 }
+
+// object Loop {
+//   def apply[A,B](f: => Reagent[A,B]): Reagent[A,B] = Reagent.fromAtoms(Thunk(() => f))
+// }
 
 /*
 private class Endpoint[A,B] extends Atom[A,B] {
@@ -221,77 +167,44 @@ object SwapChan {
 
 class Ref[A](init: A) {
 //  private[chemistry] val data = new AtomicReference[Any](init)
-  val data = new AtomicReference[Any](init)
+  val data = new AtomicReference[A](init)
 
-  def read: Reagent[Unit, A] = 
-    Reagent.fromAtoms(	// ()
-      Pop,		// 
-      Read(this)	// A
-    )
-  def cas:  Reagent[(A,A), Unit] = 
-    Reagent.fromAtoms(	// (A<ov>,A<nv>)
-      Split,		// A<nv>,A<ov>
-      Swap,		// A<ov>,A<nv>
-      CAS(this),	// 
-      Push(())		// ()
-    )
+  def read: Reagent[Unit, A] = Reagent.fromAtom(Read(this))
+  def cas: Reagent[(A,A), Unit] = Reagent.fromAtom(CAS(this))
+  def upd[B,C](f: (A,B) => (A,C)): Reagent[B, C] = Reagent.fromAtom(Upd(this, f))
+  def updI[B](f: (A,B) => A): Reagent[B, Unit] = Reagent.fromAtom(UpdI(this, f))
 
-  // interface using atomic update
+  //*** NOTE: upd can be defined in terms of read and cas as follows.
+  //*** It's a bit slower, though.
 
-  def upd(f: PartialFunction[A,A]): Reagent[Unit,Unit] = 
-    Reagent.fromAtoms(	// ()
-      Read(this),	// (),A
-      Dup,		// (),A,A
-      Apply(f),		// (),A,A
-      CAS(this)		// ()
-    )
-  def updO[B](f: PartialFunction[A, (A,B)]): Reagent[Unit,B] = 
-    Reagent.fromAtoms(	// ()
-      Pop,		//
-      Read(this),	// A
-      Dup,		// A,A
-      Apply(f),		// A,(A,B)
-      Split,		// A,A,B
-      PushToAux,	// A,A		B
-      CAS(this),	//		B
-      PopFromAux	// B
-    )
-  def updI[B](f: PartialFunction[(A,B), A]): Reagent[B,Unit] = 
-    Reagent.fromAtoms(	// B
-      Read(this),	// B,A
-      DupToAux,		// B,A		A
-      Swap,		// A,B		A
-      Merge,		// (A,B)	A
-      Apply(f),		// A		A
-      CASAux(this),	// 
-      Push(())		// ()
-    )
-  def updIO[B,C](f: PartialFunction[(A,B), (A,C)]): Reagent[B,C] = 
-    Reagent.fromAtoms(	// B		
-      Read(this),	// B,A
-      DupToAux,		// B,A		A
-      Swap,		// A,B		A
-      Merge,		// (A,B)	A
-      Apply(f),		// (A,C)	A
-      Split,		// A,C		A
-      Swap,		// C,A		A
-      CASAux(this)	// C
-    )
+  // def upd[B,C](f: (A,B) => (A,C)): Reagent[B,C] = (
+  //   Lift((x:B) => (x, ()))
+  //   &> read.onRight[B]
+  //   &> Lift((pair: (B,A)) => {
+  //        val (arg, ov) = pair
+  //        val (nv, ret) = f(ov, arg)
+  //        ((ov, nv), ret)
+  //      })
+  //   &> cas.onLeft[C]
+  //   &> Lift((pair: (Unit, C)) => pair._2)
+  // )
 }
 
 class TreiberStack[A] {
   private val head = new Ref[List[A]](List())
-  // val pushReagent = head.updI[A]({
-  //   case (xs,x) => x::xs
-  // })
-  val pushReagent = Reagent.fromAtoms[A,Unit](Upd[List[A],A](head,(xs,x) => x::xs))
-  val popReagent = head updO {
-    case x::xs => (xs, Some(x))
-    case emp   => (emp,  None)
+  // val pushRA: Reagent[A, Unit] = head upd { 
+  //   (xs, x:A) => (x::xs, ()) 
+  // }
+  val pushRA: Reagent[A, Unit] = head updI { 
+    (xs, x:A) => x::xs
+  }
+  val popRA:  Reagent[Unit,Option[A]] = head.upd {
+    case (x::xs, ()) => (xs,  Some(x))
+    case (emp,   ()) => (emp, None)
   }
 
-  def push(x:A): Unit = pushReagent ! x
-  def pop(): Option[A] = popReagent ! ()
+  def push(x: A) { pushRA ! x }
+  def pop(): Option[A] = popRA ! ()
 }
 
 class Stack[A >: Null] {
@@ -309,7 +222,7 @@ class Stack[A >: Null] {
     } 
   }
 
-  def pop: Option[A] = {
+  def pop(): Option[A] = {
     while (true) {
       val h = head.get
       if (h eq null) 
@@ -366,41 +279,63 @@ class Stack[A >: Null] {
 //   }
 // }
 
-object Bench extends Application {
+object Bench extends App {
   import java.util.Date
 
   val d = new Date()
-  val trials = 50
+  val trials = 5
+  val iters = 500000
 
   def getTime = (new Date()).getTime
   def withTime(msg: String)(thunk: => Unit) {
-    thunk // warm up
-    println(msg)
+    for (i <- 1 to 5) thunk // warm up
+    print(msg)
     var sum: Long = 0
     for (i <- 1 to trials) {
+      System.gc()
       val t = getTime
       thunk
       val t2 = getTime
-      println(t2 - t)
+      print(".")
       sum += (t2 - t)
     } 
-    print("avg: ")
-    println(sum / trials)
+    print("\n  ")
+    print((trials * iters) / (1000 * sum))
+    println(" iters/us")
   }
 
-  withTime("Reagent-based") {
-    val ts = new TreiberStack[java.util.Date]()
-    for (i <- 1 to 100000)
-      ts.push(d)
+  withTime("ArrayStack") {
+    val s = new ArrayStack[java.util.Date]()
+    for (i <- 1 to iters) {
+      s.push(d)
+      //s.pop()
+    }
+  }
+
+  withTime("java.util.Stack") {
+    val s = new java.util.Stack[java.util.Date]()
+    for (i <- 1 to iters) {
+      s.push(d)
+      //s.pop()
+    }
   }
 
   withTime("Direct") {
-    val ts = new Stack[java.util.Date]()
-    for (i <- 1 to 100000)
-      ts.push(d)
+    val s = new Stack[java.util.Date]()
+    for (i <- 1 to iters) {
+      s.push(d)
+      //s.pop()
+    }
+  }
+
+  withTime("Reagent-based") {
+    val s = new TreiberStack[java.util.Date]()
+    for (i <- 1 to iters) {
+      s.push(d)
+      //s.pop()
+    }
   }
 }
-
 
 /* 
 
