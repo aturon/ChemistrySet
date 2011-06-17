@@ -1,3 +1,6 @@
-target
-reports
+target/
+reports/
 *~
+lib_managed/
+src_managed/
+project/boot/

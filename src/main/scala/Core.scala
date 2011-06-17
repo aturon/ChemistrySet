@@ -193,44 +193,6 @@ sealed class TreiberStack[A] {
   def pop(): Option[A] = popRA ! ()
 }
 
-sealed class Stack[A >: Null] {
-  class Node(val data: A, var next: Node) 
-
-  // head always points to top of stack,
-  //   from which the rest of the stack is reachable
-  private val head = new AtomicReference[Node](null)
-
-  def push(x: A) {
-    val n = new Node(x, null)
-    while (true) {
-      n.next = head.get
-      if (head compareAndSet (n.next, n)) return
-    } 
-  }
-
-  def pop(): Option[A] = {
-    while (true) {
-      val h = head.get
-      if (h eq null) 
-	return None
-      else if (head compareAndSet (h, h.next)) 
-	return Some(h.data) 
-    }
-    throw new Exception("Impossible")
-  } 
-
-  // definitely possible to do this all at once with a CAS on head
-  def popAll: List[A] = {
-    @tailrec def grabAll(acc: List[A]): List[A] = 
-      pop match {
-	case None => acc
-	case Some(x) => grabAll(x :: acc)
-      }
-    grabAll(List()).reverse
-  }
-}
-
-
 // object Test extends Application {
 //   val s1 = new TreiberStack[Integer]()
 //   s1.pop() match {
