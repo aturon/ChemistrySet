@@ -7,7 +7,7 @@ private object Util {
 }
 
 sealed private abstract class LogEntry
-private case class CASLog[A](r: Ref[A], ov: A, nv: A) extends LogEntry
+private case class CASLog[A](r: AtomicReference[A], ov: A, nv: A) extends LogEntry
 
 sealed private class Transaction {
 //   private case class CASLog(ov: Any, nv: Any)
@@ -42,23 +42,23 @@ private object Atom {
 private sealed abstract class Atom[A,B] extends Function2[A,Transaction,Any]
 
 private case class OnLeft[A,B,C](a: Atom[A,B]) extends Atom[(A,C),(B,C)] {
-  def apply(data: (A,C), trans: Transaction): Any = 
+  @inline final def apply(data: (A,C), trans: Transaction): Any = 
     Atom.bind(a(data._1, trans), ((_:B), data._2))
 }
 
 private case class OnRight[A,B,C](a: Atom[A,B]) extends Atom[(C,A),(C,B)] {
-  def apply(data: (C,A), trans: Transaction): Any = 
+  @inline final def apply(data: (C,A), trans: Transaction): Any = 
     Atom.bind(a(data._2, trans), (data._1, (_:B)))
 }
 
 private case class ApplyPfn[A,B](f: PartialFunction[A,B]) extends Atom[A,B] {
-  def apply(data: A, trans: Transaction): Any = 
+  @inline final def apply(data: A, trans: Transaction): Any = 
     if (f.isDefinedAt(data)) f(data) 
     else ShouldBlock
 }
 
 private case class Apply[A,B](f: Function[A,B]) extends Atom[A,B] {
-  def apply(data: A, trans: Transaction): B = 
+  @inline final def apply(data: A, trans: Transaction): B = 
     f(data)
 }
 
@@ -67,43 +67,43 @@ private case class Apply[A,B](f: Function[A,B]) extends Atom[A,B] {
 //     f().choices.head(data, trans)
 // }
 
-private case class Read[A](r: Ref[A]) extends Atom[Unit, A] {
-  def apply(data: Unit, trans: Transaction): A = 
-    r.data.get()
+private case class Read[A](r: AtomicReference[A]) extends Atom[Unit, A] {
+  @inline final def apply(data: Unit, trans: Transaction): A = 
+    r.get()
 }
 
-private case class CAS[A](r: Ref[A]) extends Atom[(A,A), Unit] {
-  def apply(data: (A,A), trans: Transaction): Unit = 
-    r.data.compareAndSet(data._1, data._2)
+private case class CAS[A](r: AtomicReference[A]) extends Atom[(A,A), Unit] {
+  @inline final def apply(data: (A,A), trans: Transaction): Unit = 
+    r.compareAndSet(data._1, data._2)
 }
 
-private case class Upd[A,B,C](r: Ref[A], f: (A,B) => (A,C)) extends Atom[B,C] {
-  def apply(data: B, trans: Transaction): C = {
-    val ov = r.data.get()
+private case class Upd[A,B,C](r: AtomicReference[A], f: (A,B) => (A,C)) extends Atom[B,C] {
+  @inline final def apply(data: B, trans: Transaction): C = {
+    val ov = r.get()
     val (nv, ret) = f(ov, data)
-    r.data.compareAndSet(ov, nv)
+    r.compareAndSet(ov, nv)
 //    trans.log += CASLog(r, ov, nv)
     ret
   }
 }
 
-private case class UpdI[A,B](r: Ref[A], f: (A,B) => A) extends Atom[B,Unit] {
-  def apply(data: B, trans: Transaction): Unit = {
-    val ov = r.data.get()
+private case class UpdI[A,B](r: AtomicReference[A], f: (A,B) => A) extends Atom[B,Unit] {
+  @inline final def apply(data: B, trans: Transaction): Unit = {
+    val ov = r.get()
     val nv = f(ov, data)
-    r.data.compareAndSet(ov, nv)
-//    trans.log += CASLog(r, ov, nv)
+    r.compareAndSet(ov, nv)
+    trans.log += CASLog(r, ov, nv)
     ()
   }
 }
 
 private case class Compose[A,B,C](a: Atom[A,B], b: Atom[B,C]) extends Atom[A,C] {
-  def apply(data: A, trans: Transaction): Any = 
+  @inline def apply(data: A, trans: Transaction): Any = 
     Atom.bind(a(data, trans), b((_:B), trans))
 }
 
 class Reagent[A,B] private (private val choices: List[Atom[A,B]]) {
-  def !(x: A): B = {
+  @inline final def !(x: A): B = {
     // initial cut: nonblocking version
     @tailrec def tryChoices(cs: List[Atom[A,B]]): B = cs match {
       case a :: as => {
@@ -121,8 +121,13 @@ class Reagent[A,B] private (private val choices: List[Atom[A,B]]) {
     }
 //    tryChoices(choices)
 
-    choices.head(x,null).asInstanceOf[B]
-
+    val trans = new Transaction()
+    val res = choices.head(x, trans)
+    res match {
+      case ShouldBlock => Util.undef
+      case _ => res.asInstanceOf[B]
+    }
+    //choices.head(x,null).asInstanceOf[B]
   }
 
   def &>[C](next: Reagent[B,C]): Reagent[A,C] = new Reagent(for {
@@ -169,10 +174,10 @@ class Ref[A](init: A) {
 //  private[chemistry] val data = new AtomicReference[Any](init)
   val data = new AtomicReference[A](init)
 
-  def read: Reagent[Unit, A] = Reagent.fromAtom(Read(this))
-  def cas: Reagent[(A,A), Unit] = Reagent.fromAtom(CAS(this))
-  def upd[B,C](f: (A,B) => (A,C)): Reagent[B, C] = Reagent.fromAtom(Upd(this, f))
-  def updI[B](f: (A,B) => A): Reagent[B, Unit] = Reagent.fromAtom(UpdI(this, f))
+  def read: Reagent[Unit, A] = Reagent.fromAtom(Read(data))
+  def cas: Reagent[(A,A), Unit] = Reagent.fromAtom(CAS(data))
+  def upd[B,C](f: (A,B) => (A,C)): Reagent[B, C] = Reagent.fromAtom(Upd(data, f))
+  def updI[B](f: (A,B) => A): Reagent[B, Unit] = Reagent.fromAtom(UpdI(data, f))
 
   //*** NOTE: upd can be defined in terms of read and cas as follows.
   //*** It's a bit slower, though.
@@ -195,7 +200,7 @@ class TreiberStack[A] {
   // val pushRA: Reagent[A, Unit] = head upd { 
   //   (xs, x:A) => (x::xs, ()) 
   // }
-  val pushRA: Reagent[A, Unit] = head updI { 
+  final val pushRA: Reagent[A, Unit] = head updI { 
     (xs, x:A) => x::xs
   }
   val popRA:  Reagent[Unit,Option[A]] = head.upd {
@@ -203,7 +208,13 @@ class TreiberStack[A] {
     case (emp,   ()) => (emp, None)
   }
 
-  def push(x: A) { pushRA ! x }
+  final def push(x: A) { pushRA ! x }
+//  private val at = UpdI(head.data, (xs:List[A], x:A) => x::xs)
+//  private val at = UpdI(head.data, AnonFn)
+  // val hd = new AtomicReference[List[A]](List())
+//  def push(x: A) {
+//     at(x, null)
+//  }
   def pop(): Option[A] = popRA ! ()
 }
 
