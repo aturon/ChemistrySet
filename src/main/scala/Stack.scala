@@ -32,7 +32,7 @@ class Stack[A >: Null] {
   } 
 
   // definitely possible to do this all at once with a CAS on head
-  def popAll: List[A] = {
+  def popAll(): List[A] = {
     @tailrec def grabAll(acc: List[A]): List[A] = 
       pop match {
 	case None => acc
