@@ -5,23 +5,27 @@ abstraction. -- John Reppy
 
 <!-- more -->
 
-Concurrent ML (CML) was introduced to resolve an apparent tension.  On
-the one hand, we want to program with synchronous message passing
-protocols as abstract, but first-class values.  But if we do this in
-the obvious way--by representing them as functions--we have lost too
-much information: we will be unable to form 
+Concurrent ML (CML) was introduced to resolve an apparent tension:  
 
-<quote>
-If we make the operation abstract, we lose the flexibility of
-selective communication; but if we expose the protocol to allow
-selective communication, we lose the safety and ease of maintenance
-provided by abstraction.  To resolve this conflict requires
-introducing a new abstraction mechanism that preserves the synchronous
-nature of the abstraction.  First-class synchronous operations provide
-this new abstraction mechanism.
-</quote>
+- On the one hand, we want to program with synchronous message passing
+protocols as abstract, first-class values.
+- On the other hand, if we do this in the obvious way--by representing
+them as functions--we have lost too much information.
 
-That's John Reppy on Concurrent ML (CML).  
+In particular, if I give you two thunks `f` and `g` that
+each internally execute a message-passing protocol, there is no
+apparent way to form the *selective choice* `f + g` that offers both
+protocols but executes only one of them.
+
+CML's answer is to provide an abstract data type `event` representing
+a synchronous protocol whose internal representation is effectively a
+log of message-passing operations, interleaved with .
+
+The obvious assumption to question here is the representation: we can
+offer an abstract data type of synchronous protocols without using
+functions as the internal representation.  
+
+
 
 
     channel : unit -> 'a chan
@@ -56,45 +60,3 @@ Synchronize on an event, yielding its result.
 
     receive : 'a chan -> 'a event
     transmit : ('a chan * 'a) -> unit event
-
-
-
-
-
-
-
-
-    wait : thread_id -> unit event
-
-Wait until given thread dies.
-
-    waitUntil : time -> unit event
-    timeOut : time -> unit event
-
-Synchronize with a clock, either absolutely or relatively.
-
-    syncOnInput : int -> unit event
-    syncOnOutput : int -> unit event
-
-Synchronize on the status of file descriptors.
-
-    poll : 'a event -> 'a option
-
-Nonblocking synchronization attempt.  (Note: seems to have semantics
-like "if event is available, performs it"; see 7.5.5 of the diss)    
-
-    select : 'a event list -> 'a
-
-Just sync o choose.
-
-    wrapHandler : ('a event * (exn -> 'a)) -> 'a event
-
-Similar to wrap, but adds an exception handler.
-
-    spawn : (unit -> unit) -> thread_id
-
-    sameThread : (thread_id * thread_id) -> bool
-    sameChannel : (channel * channel) -> bool
-
-    accept : 'a chan -> a
-    send : ('a chan * 'a) -> unit
