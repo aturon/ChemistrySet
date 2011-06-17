@@ -23,7 +23,9 @@ sealed private class Transaction {
 //   def attempt: Boolean = Util.undef
 
   var shouldBlock = false
-  var log = ArrayBuffer[LogEntry]()
+//  var log = ArrayBuffer[LogEntry]()
+  //val log = ArrayStack[Unit](())
+  var log: List[LogEntry] = List()
 }
 
 private case object ShouldBlock
@@ -87,16 +89,6 @@ private case class Upd[A,B,C](r: AtomicReference[A], f: (A,B) => (A,C)) extends 
   }
 }
 
-private case class UpdI[A,B](r: AtomicReference[A], f: (A,B) => A) extends Atom[B,Unit] {
-  @inline final def apply(data: B, trans: Transaction): Unit = {
-    val ov = r.get()
-    val nv = f(ov, data)
-    r.compareAndSet(ov, nv)
-    trans.log += CASLog(r, ov, nv)
-    ()
-  }
-}
-
 private case class Compose[A,B,C](a: Atom[A,B], b: Atom[B,C]) extends Atom[A,C] {
   @inline def apply(data: A, trans: Transaction): Any = 
     Atom.bind(a(data, trans), b((_:B), trans))
@@ -104,30 +96,21 @@ private case class Compose[A,B,C](a: Atom[A,B], b: Atom[B,C]) extends Atom[A,C] 
 
 class Reagent[A,B] private (private val choices: List[Atom[A,B]]) {
   @inline final def !(x: A): B = {
-    // initial cut: nonblocking version
-    @tailrec def tryChoices(cs: List[Atom[A,B]]): B = cs match {
-      case a :: as => {
+    while (true) {
+      var cs = choices;
+      while (!cs.isEmpty) {
 //	val trans = new Transaction()
-	val res = a(x, null)
-	res match {
-	  case ShouldBlock => tryChoices(as)
-	  case _ => res.asInstanceOf[B]
-	}
+	val res = cs.head(x, null)
+    	res match {
+    	  case ShouldBlock => {}
+    	  case _ => return res.asInstanceOf[B]
+    	}
+	cs = cs.tail
       }
-      case List() => {
-	// backoff()
-	tryChoices(choices) // retry all choices
-      }
-    }
-//    tryChoices(choices)
 
-    val trans = new Transaction()
-    val res = choices.head(x, trans)
-    res match {
-      case ShouldBlock => Util.undef
-      case _ => res.asInstanceOf[B]
+      // backoff
     }
-    //choices.head(x,null).asInstanceOf[B]
+    Util.undef
   }
 
   def &>[C](next: Reagent[B,C]): Reagent[A,C] = new Reagent(for {
@@ -171,16 +154,14 @@ object SwapChan {
 */
 
 class Ref[A](init: A) {
-//  private[chemistry] val data = new AtomicReference[Any](init)
   val data = new AtomicReference[A](init)
 
   def read: Reagent[Unit, A] = Reagent.fromAtom(Read(data))
   def cas: Reagent[(A,A), Unit] = Reagent.fromAtom(CAS(data))
   def upd[B,C](f: (A,B) => (A,C)): Reagent[B, C] = Reagent.fromAtom(Upd(data, f))
-  def updI[B](f: (A,B) => A): Reagent[B, Unit] = Reagent.fromAtom(UpdI(data, f))
 
   //*** NOTE: upd can be defined in terms of read and cas as follows.
-  //*** It's a bit slower, though.
+  //*** It's slower, though.
 
   // def upd[B,C](f: (A,B) => (A,C)): Reagent[B,C] = (
   //   Lift((x:B) => (x, ()))
@@ -195,30 +176,24 @@ class Ref[A](init: A) {
   // )
 }
 
-class TreiberStack[A] {
+sealed class TreiberStack[A] {
   private val head = new Ref[List[A]](List())
   // val pushRA: Reagent[A, Unit] = head upd { 
   //   (xs, x:A) => (x::xs, ()) 
   // }
-  final val pushRA: Reagent[A, Unit] = head updI { 
-    (xs, x:A) => x::xs
+  val pushRA: Reagent[A, Unit] = head upd { 
+    (xs, x:A) => (x::xs, ())
   }
-  val popRA:  Reagent[Unit,Option[A]] = head.upd {
+  val popRA:  Reagent[Unit,Option[A]] = head upd {
     case (x::xs, ()) => (xs,  Some(x))
     case (emp,   ()) => (emp, None)
   }
 
-  final def push(x: A) { pushRA ! x }
-//  private val at = UpdI(head.data, (xs:List[A], x:A) => x::xs)
-//  private val at = UpdI(head.data, AnonFn)
-  // val hd = new AtomicReference[List[A]](List())
-//  def push(x: A) {
-//     at(x, null)
-//  }
+  def push(x: A) { pushRA ! x }
   def pop(): Option[A] = popRA ! ()
 }
 
-class Stack[A >: Null] {
+sealed class Stack[A >: Null] {
   class Node(val data: A, var next: Node) 
 
   // head always points to top of stack,
@@ -294,12 +269,12 @@ object Bench extends App {
   import java.util.Date
 
   val d = new Date()
-  val trials = 5
-  val iters = 500000
+  val trials = 10
+  val iters = 100000
 
   def getTime = (new Date()).getTime
   def withTime(msg: String)(thunk: => Unit) {
-    for (i <- 1 to 5) thunk // warm up
+    for (i <- 1 to 3) thunk // warm up
     print(msg)
     var sum: Long = 0
     for (i <- 1 to trials) {
