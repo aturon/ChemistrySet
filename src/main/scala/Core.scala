@@ -151,8 +151,9 @@ sealed class Reagent[-A,+B] private[chemistry] (
   @inline final def <&[C](that: Reagent[C,A]): Reagent[C,B] = 
     that &> this
 }
-private object Reagent {
-  def fromAtom[A,B](a: Atom[A,B]): Reagent[A,B] = new Reagent(List(a))
+object Reagent {
+  private[chemistry] def fromAtom[A,B](a: Atom[A,B]): Reagent[A,B] = 
+    new Reagent(List(a))
 
   implicit def function2Reagent[A,B](f: Function[A,B]): Reagent[A,B] =
     Lift(f)
@@ -242,13 +243,6 @@ sealed class MSQueue[A >: Null] {
   private case class Node(data: A, next: Ref[Node] = new Ref(null))
   private val head = new Ref(Node(null))
   private val tail = new Ref(head.read!())
-
-  // val enq = guard (x => {
-  //   val node = new Node(x)
-  //   loop { tail.read >>= {
-  //     case n@Node(_, Ref(nt@Node(_, _))) => tail.cas(n, nt).attempt; retry
-  //     case   Node(_, r)                  => r.cas(null, node)
-  //   }}})
 
   val enq: Reagent[A, Unit] = Loop {
     tail.read ! () match {
@@ -392,3 +386,60 @@ object Examples {
 }
 
 */
+
+
+
+// object Bench extends App {
+//   import java.util.Date
+
+//   val d = new Date()
+//   val trials = 10
+//   val iters = 100000
+
+//   def getTime = (new Date()).getTime
+//   def withTime(msg: String)(thunk: => Unit) {
+//     for (i <- 1 to 3) thunk // warm up
+//     print(msg)
+//     var sum: Long = 0
+//     for (i <- 1 to trials) {
+//       System.gc()
+//       val t = getTime
+//       thunk
+//       val t2 = getTime
+//       print(".")
+//       sum += (t2 - t)
+//     } 
+//     print("\n  ")
+//     print((trials * iters) / (1000 * sum))
+//     println(" iters/us")
+//   }
+
+//   withTime("ArrayQueue") {
+//     val s = new scala.collection.mutable.Queue[java.util.Date]()
+//     for (i <- 1 to iters) {
+//       s.enqueue(d)
+//       //s.pop()
+//     }
+//   }
+
+//   withTime("java.util.Queue") {
+//     val s = new java.util.LinkedList[java.util.Date]()
+//     for (i <- 1 to iters) {
+//       s.offer(d)
+//     }
+//   }
+
+//   withTime("Direct") {
+//     val s = new Queue[java.util.Date]()
+//     for (i <- 1 to iters) {
+//       s.enqueue(d)
+//     }
+//   }
+
+//   withTime("Reagent-based") {
+//     val s = new MSQueue[java.util.Date]()
+//     for (i <- 1 to iters) {
+//       s.enq ! d
+//     }
+//   }
+// }
