@@ -9,7 +9,7 @@ object Runner {
     // we simply pass in the CLI args,
     // we could of course also just pass hardcoded arguments to the caliper Runner
 
-    CaliperRunner.main(classOf[StackPushPop], args: _*)
+    CaliperRunner.main(classOf[StackPush], args: _*)
   }
   
 }
