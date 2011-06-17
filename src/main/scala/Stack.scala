@@ -1,3 +1,5 @@
+package chemistry
+
 import java.util.concurrent.atomic._
 import scala.annotation.tailrec
 
@@ -18,7 +20,7 @@ class Stack[A >: Null] {
     } 
   }
 
-  def pop: Option[A] = {
+  def pop(): Option[A] = {
     while (true) {
       val h = head.get
       if (h eq null) 

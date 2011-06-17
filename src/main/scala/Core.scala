@@ -1,3 +1,5 @@
+package chemistry
+
 import java.util.concurrent.atomic._
 import scala.annotation.tailrec
 import scala.collection.mutable._
@@ -191,98 +193,6 @@ sealed class TreiberStack[A] {
 
   def push(x: A) { pushRA ! x }
   def pop(): Option[A] = popRA ! ()
-}
-
-// object Test extends Application {
-//   val s1 = new TreiberStack[Integer]()
-//   s1.pop() match {
-//     case None => println("Test 1: pass")
-//     case _    => println("Test 1: fail")
-//   }
-
-//   val s2 = new TreiberStack[Integer]()
-//   s2.push(1)
-//   s2.pop() match{
-//     case None => println("Test 2: fail")
-//     case _    => println("Test 2: pass")
-//   }
-
-//   val s3 = new TreiberStack[Integer]()
-//   s3.push(1)
-//   s3.pop()
-//   s3.pop() match {
-//     case None => println("Test 3: pass")
-//     case _    => println("Test 3: fail")
-//   }
-
-//   val s4 = new TreiberStack[Integer]()
-//   s4.push(1)
-//   s4.push(2)
-//   (s4.pop(), s4.pop()) match {
-//     case (Some(x), Some(y)) => 
-//       if (x.intValue == 2 && y.intValue == 1)
-// 	println("Test 4: pass")
-//       else println("Test 4: fail")
-//     case _    => println("Test 4: fail")
-//   }
-// }
-
-object Bench extends App {
-  import java.util.Date
-
-  val d = new Date()
-  val trials = 10
-  val iters = 100000
-
-  def getTime = (new Date()).getTime
-  def withTime(msg: String)(thunk: => Unit) {
-    for (i <- 1 to 3) thunk // warm up
-    print(msg)
-    var sum: Long = 0
-    for (i <- 1 to trials) {
-      System.gc()
-      val t = getTime
-      thunk
-      val t2 = getTime
-      print(".")
-      sum += (t2 - t)
-    } 
-    print("\n  ")
-    print((trials * iters) / (1000 * sum))
-    println(" iters/us")
-  }
-
-  withTime("ArrayStack") {
-    val s = new ArrayStack[java.util.Date]()
-    for (i <- 1 to iters) {
-      s.push(d)
-      //s.pop()
-    }
-  }
-
-  withTime("java.util.Stack") {
-    val s = new java.util.Stack[java.util.Date]()
-    for (i <- 1 to iters) {
-      s.push(d)
-      //s.pop()
-    }
-  }
-
-  withTime("Direct") {
-    val s = new Stack[java.util.Date]()
-    for (i <- 1 to iters) {
-      s.push(d)
-      //s.pop()
-    }
-  }
-
-  withTime("Reagent-based") {
-    val s = new TreiberStack[java.util.Date]()
-    for (i <- 1 to iters) {
-      s.push(d)
-      //s.pop()
-    }
-  }
 }
 
 /* 
