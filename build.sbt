@@ -23,5 +23,19 @@ libraryDependencies ++= Seq(
   "com.codahale" % "simplespec_2.9.0-1" % "0.3.4"
 )
 
-fork in run := true
+//fork in run := true
 
+fork := true
+
+//javaOptions ++= Seq("-XX:MaxInlineSize=100000", "-XX:FreqInlineSize=100000", "-XX:LoopUnrollLimit=100000", "-XX:InlineSmallCode=100000")
+
+javaOptions += "-server"
+
+javaOptions += "-XX:+DoEscapeAnalysis"
+
+//javaOptions += "-XX:+PrintCompilation"
+//javaOptions += "-XX:+PrintInlining"
+
+javaOptions += "-XX:CompileThreshold=1000"
+
+//javaOptions += "-Xprof"

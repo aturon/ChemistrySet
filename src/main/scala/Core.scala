@@ -31,12 +31,81 @@ sealed private class Transaction {
   var log: List[LogEntry] = List()
 }
 
-private case object ShouldBlock
-private case object ShouldRetry
+private abstract class WaiterStatus
+private case object Catalyst extends WaiterStatus
+private case object Waiting  extends WaiterStatus
+private case object Finished extends WaiterStatus
 
-private sealed abstract class Atom[-A,+B] extends Function2[A,Transaction,Any]
-private object Atom {
-  def bind[A](a: Any, f: A => Any): Any = {
+sealed private case class Waiter[A,B](
+  r: Reagent[A, B], arg: A, status: Ref[WaiterStatus], thread: system.Thread, var answer: B
+)
+
+private abstract class Failed
+private case object ShouldBlock extends Failed
+private case object ShouldRetry extends Failed
+
+sealed abstract class Reagent[-A,+B] {
+  // "doFn" in the CML implementation
+  protected def tryReact(data: A, trans: Transaction): Any 
+  // "blockFn" in the CML implementation
+  protected def logWait(w: Waiter[A,B]): Unit
+
+  @inline final def !(a: A): B = tryReact(a, null) match {
+    case (_ : FailedAttempt) => {	// enter slow path
+      val status = new Ref[WaiterStatus](Waiting)
+      val recheck: Reagent[Unit, B] = 
+	Const(Waiting, Finished) &> status.cas &> Const(a) &> this
+      val waiter = Waiter(this, a, status, Thread.currentThread())
+      @tailrec def recheckThenBlock = status.read ! () match {
+	case Finished => waiter.answer
+	case _ => recheck.tryReact((), null) match {
+	  case ShouldRetry => recheckThenBlock // should backoff
+	  case ShouldBlock => LockSupport.park(waiter); recheckThenblock
+	  case result => result.asInstanceOf[B] 
+	}
+      }
+      logWait(waiter)
+      recheckThenBlock
+    }
+    case result => result.asInstanceOf[B] // fastpath: got result
+					  // without enqueuing waiter
+  }
+
+  @inline final def !?(a: A): Option[B] = {
+    tryReact(a, null) match {
+      case ShouldRetry => None	// should we actually retry here?  if
+				// we do, more informative: a failed
+				// attempt entails a linearization
+				// where no match was possible.  but
+				// could loop!
+      case ShouldBlock => None
+      case result => Some(result.asInstanceOf[B])
+    }
+  }
+
+  @inline final def &>[C](next: Reagent[B,C]): Reagent[A,C] = 
+    Reagent.Compose(this, next)
+  // @inline final def <+>[C <: A, D >: B](
+  //   that: Reagent[C,D]): Reagent[C,D] = 
+  //   new Reagent(this.choices ++ that.choices)
+  @inline final def onLeft[C]: Reagent[(A,C), (B,C)] = 
+    Reagent.OnLeft[A,B,C](this)
+  @inline final def onRight[C]: Reagent[(C,A), (C,B)] = 
+    Reagent.OnRight[A,B,C](this)
+
+  // @inline final def !?(x: A): Option[B] = 
+  //   ((this &> Lift(Some(_): Option[B])) <+> Const(None)) ! x
+
+  @inline final def <&[C](that: Reagent[C,A]): Reagent[C,B] = 
+    that &> this
+}
+object Reagent {
+  implicit def function2Reagent[A,B](f: Function[A,B]): Reagent[A,B] =
+    Lift(f)
+  implicit def partialFunction2Reagent[A,B](f: PartialFunction[A,B]): Reagent[A,B]
+    = Lift(f)
+
+  private def bind[A](a: Any, f: A => Any): Any = {
     a match {
       case ShouldBlock => ShouldBlock
       case ShouldRetry => ShouldRetry
@@ -44,143 +113,74 @@ private object Atom {
     }
   }
 
-  sealed case class OnLeft[A,B,C](a: Atom[A,B]) extends Atom[(A,C),(B,C)] {
-    @inline final def apply(data: (A,C), trans: Transaction): Any = 
-      Atom.bind(a(data._1, trans), ((_:B), data._2))
+  sealed case class OnLeft[A,B,C](a: Reagent[A,B]) extends Reagent[(A,C),(B,C)] {
+    @inline final def tryReact(data: (A,C), trans: Transaction): Any = 
+      bind(a(data._1, trans), ((_:B), data._2))
+    @inline final def logWait(w: Waiter[A,B]) = a.logWait(w)
   }
 
-  sealed case class OnRight[A,B,C](a: Atom[A,B]) extends Atom[(C,A),(C,B)] {
-    @inline final def apply(data: (C,A), trans: Transaction): Any = 
-      Atom.bind(a(data._2, trans), (data._1, (_:B)))
+  sealed case class OnRight[A,B,C](a: Reagent[A,B]) extends Reagent[(C,A),(C,B)] {
+    @inline final def tryReact(data: (C,A), trans: Transaction): Any = 
+      bind(a(data._2, trans), (data._1, (_:B)))
+    @inline final def logWait(w: Waiter[A,B]) = a.logWait(w)
   }
 
-  sealed case class ApplyPfn[A,B](f: PartialFunction[A,B]) extends Atom[A,B] {
-    @inline final def apply(data: A, trans: Transaction): Any = 
+  sealed case class ApplyPfn[A,B](f: PartialFunction[A,B]) extends Reagent[A,B] {
+    @inline final def tryReact(data: A, trans: Transaction): Any = 
       if (f.isDefinedAt(data)) f(data) 
       else ShouldBlock
+    @inline final def logWait(w: Waiter[A,B]) {}
   }
 
-  sealed case class Apply[A,B](f: Function[A,B]) extends Atom[A,B] {
-    @inline final def apply(data: A, trans: Transaction): B = 
-      f(data)
+  sealed case class Apply[A,B](f: Function[A,B]) extends Reagent[A,B] {
+    @inline final def tryReact(data: A, trans: Transaction): B = f(data)
+    @inline final def logWait(w: Waiter[A,B]) {}
   }
 
-  sealed case class Thunk[A,B](f: () => Reagent[A,B]) extends Atom[A,B] {
-    @inline final def apply(data: A, trans: Transaction): Any = 
-      f().choices.head(data, trans)
+  sealed case class Thunk[A,B](f: () => Reagent[A,B]) extends Reagent[A,B] {
+    @inline final def tryReact(data: A, trans: Transaction): Any = 
+      f()(data, trans)
+    @inline final def logWait(w: Waiter[A,B]) {} // "nonblocking" treatment of thunks
   }
 
-  sealed case class Const[A,B](a: A) extends Atom[B,A] {
-    @inline final def apply(data: B, trans: Transaction): A = a
+  sealed case class Const[A,B](a: A) extends Reagent[B,A] {
+    @inline final def tryReact(data: B, trans: Transaction): A = a
+    @inline final def logWait(w: Waiter[A,B]) {}
   }
 
-  case object Retry extends Atom[Any,Nothing] {
-    @inline final def apply(data: Any, trans: Transaction): Any = ShouldRetry
+  case object Retry extends Reagent[Any,Nothing] {
+    @inline final def tryReact(data: Any, trans: Transaction): Any = ShouldRetry
+    @inline final def logWait(w: Waiter[A,B]) {}
   }
 
-  sealed case class Read[A](r: AtomicReference[A]) extends Atom[Unit, A] {
-    @inline final def apply(data: Unit, trans: Transaction): A = 
-      r.get()
-  }
-
-  sealed case class CAS[A](r: AtomicReference[A]) extends Atom[(A,A), Unit] {
-    @inline final def apply(data: (A,A), trans: Transaction): Unit = 
-      r.compareAndSet(data._1, data._2)
-  }
-
-  sealed case class KnownCAS[A](r: AtomicReference[A], ov: A, nv: A) 
-	       extends Atom[Unit, Unit] {
-    @inline final def apply(data: Unit, trans: Transaction): Unit = 
-      r.compareAndSet(ov, nv)
-  }
-
-  sealed case class Upd[A,B,C](r: AtomicReference[A], f: (A,B) => (A,C)) 
-	       extends Atom[B,C] {
-    @inline final def apply(data: B, trans: Transaction): C = {
-      val ov = r.get()
-      val (nv, ret) = f(ov, data)
-      r.compareAndSet(ov, nv)
-  //    trans.log += CASLog(r, ov, nv)
-      ret
+  sealed case class Compose[A,B,C](a: Reagent[A,B], b: Reagent[B,C]) 
+	       extends Reagent[A,C] {
+    @inline def tryReact(data: A, trans: Transaction): Any = 
+      bind(a.tryReact(data, trans), b.tryReact(_: B, trans))
+    @inline final def logWait(w: Waiter[A,B]) {
+      a.logWait(w)
+      b.logWait(w)
     }
   }
-
-  sealed case class Compose[A,B,C](a: Atom[A,B], b: Atom[B,C]) 
-	       extends Atom[A,C] {
-    @inline def apply(data: A, trans: Transaction): Any = 
-      Atom.bind(a(data, trans), b((_:B), trans))
-  }
-}
-
-sealed class Reagent[-A,+B] private[chemistry] (
-  private[chemistry] val choices: List[Atom[A,B]]) {
-  @inline final def !(x: A): B = {
-    while (true) {
-      var cs = choices;
-      while (!cs.isEmpty) {
-//	val trans = new Transaction()
-	val res = cs.head(x, null)
-    	res match {
-    	  case ShouldBlock => {}
-    	  case _ => return res.asInstanceOf[B]
-    	}
-	cs = cs.tail
-      }
-
-      // backoff
-    }
-    Util.undef
-  }
-
-  @inline final def &>[C](next: Reagent[B,C]): Reagent[A,C] = 
-    new Reagent(for {
-      choice <- this.choices
-      nextChoice <- next.choices
-    } yield Atom.Compose(choice, nextChoice))
-  @inline final def <+>[C <: A, D >: B](
-    that: Reagent[C,D]): Reagent[C,D] = 
-    new Reagent(this.choices ++ that.choices)
-  @inline final def onLeft[C]: Reagent[(A,C), (B,C)] = 
-    new Reagent(for (a <- choices) yield Atom.OnLeft[A,B,C](a))
-  @inline final def onRight[C]: Reagent[(C,A), (C,B)] = 
-    new Reagent(for (a <- choices) yield Atom.OnRight[A,B,C](a))
-
-  @inline final def !?(x: A): Option[B] = 
-    ((this &> Lift(Some(_): Option[B])) <+> Const(None)) ! x
-
-  @inline final def <&[C](that: Reagent[C,A]): Reagent[C,B] = 
-    that &> this
-}
-object Reagent {
-  private[chemistry] def fromAtom[A,B](a: Atom[A,B]): Reagent[A,B] = 
-    new Reagent(List(a))
-
-  implicit def function2Reagent[A,B](f: Function[A,B]): Reagent[A,B] =
-    Lift(f)
-  implicit def partialFunction2Reagent[A,B](f: PartialFunction[A,B]): Reagent[A,B]
-    = Lift(f)
 }
 
 object Lift {
-  def apply[A,B](f: PartialFunction[A,B]): Reagent[A,B] = 
-    Reagent.fromAtom(Atom.ApplyPfn(f))
-  def apply[A,B](f: Function[A,B]): Reagent[A,B] = 
-    Reagent.fromAtom(Atom.Apply(f))  
+  def apply[A,B](f: PartialFunction[A,B]): Reagent[A,B] = Reagent.ApplyPfn(f)
+  def apply[A,B](f: Function[A,B]): Reagent[A,B] = Reagent.Apply(f)
 }
 
 object Loop {
-  def apply[A,B](f: => Reagent[A,B]): Reagent[A,B] = 
-    Reagent.fromAtom(Atom.Thunk(() => f))
+  def apply[A,B](f: => Reagent[A,B]): Reagent[A,B] = Reagent.Thunk(() => f)
 }
 
 object Const {
-  def apply[A,B](a: A): Reagent[B,A] = Reagent.fromAtom(Atom.Const(a))
+  def apply[A,B](a: A): Reagent[B,A] = Reagent.Const(a)
 }
 
-object Retry extends Reagent[Any, Nothing](List(Atom.Retry))
+import Reagent.Retry
 
 /*
-private class Endpoint[A,B] extends Atom[A,B] {
+private class Endpoint[A,B] extends Reagent[A,B] {
   var dual: Endpoint[B,A] = null
 }
 object SwapChan {
@@ -193,15 +193,44 @@ object SwapChan {
 }
 */
 
-class Ref[A](init: A) {
-  val data = new AtomicReference[A](init)
+class Ref[A](init: A) extends AtomicReference[A](init) {
+//  private final var data = new AtomicReference[A](init)
 
-  def read: Reagent[Unit, A] = Reagent.fromAtom(Atom.Read(data))
-  def cas: Reagent[(A,A), Unit] = Reagent.fromAtom(Atom.CAS(data))
-  def cas(ov: A, nv: A): Reagent[Unit, Unit] = 
-    Reagent.fromAtom(Atom.KnownCAS(data, ov, nv))
-  def upd[B,C](f: (A,B) => (A,C)): Reagent[B, C] = 
-    Reagent.fromAtom(Atom.Upd(data, f))
+  private val waiters = new MSQueue[]()
+
+  case object read extends Reagent[Unit, A] {
+    @inline final def tryReact(data: Unit, trans: Transaction): A = get()
+    @inline final def logWait(w: Waiter[A,B]) {
+    }
+  }
+
+  case object cas extends Reagent[(A,A), Unit] {
+    @inline final def tryReact(data: (A,A), trans: Transaction): Unit = 
+      compareAndSet(data._1, data._2)
+    @inline final def logWait(w: Waiter[A,B]) {}
+  }
+
+  // sealed case class KnownCAS[A,B](r: AtomicReference[A], ov: B => A, nv: B => A) 
+  // 	       extends Reagent[B, Unit] {
+  //   @inline final def tryReact(data: B, trans: Transaction): Unit = 
+  //     r.compareAndSet(ov(data), nv(data))
+  // }
+
+  // sealed case class CASFrom[A](r: AtomicReference[A], ov: A) 
+  // 	       extends Reagent[A, Unit] {
+  //   @inline final def tryReact(data: A, trans: Transaction): Unit = 
+  //     r.compareAndSet(ov, data)
+  // }
+
+  sealed case class upd[B,C](f: (A,B) => (A,C)) extends Reagent[B,C] {
+    @inline final def tryReact(data: B, trans: Transaction): C = {
+      val ov = get()
+      val (nv, ret) = f(ov, data)
+      compareAndSet(ov, nv)
+      ret
+    }
+    @inline final def logWait(w: Waiter[A,B]) {}
+  }
 
   //*** NOTE: upd can be defined in terms of read and cas as follows.
   //*** It's slower, though.
@@ -219,14 +248,11 @@ class Ref[A](init: A) {
   // )
 }
 object Ref {
-  @inline final def unapply[A](r: Ref[A]): Option[A] = Some(r.data.get()) 
+  @inline final def unapply[A](r: Ref[A]): Option[A] = Some(r.get()) 
 }
 
 sealed class TreiberStack[A] {
   private val head = new Ref[List[A]](List())
-  // val pushRA: Reagent[A, Unit] = head upd { 
-  //   (xs, x:A) => (x::xs, ()) 
-  // }
   val pushRA: Reagent[A, Unit] = head upd { 
     (xs, x:A) => (x::xs, ())
   }
@@ -243,16 +269,14 @@ sealed class MSQueue[A >: Null] {
   private case class Node(data: A, next: Ref[Node] = new Ref(null))
   private val head = new Ref(Node(null))
   private val tail = new Ref(head.read!())
-
-  val enq: Reagent[A, Unit] = Loop {
+  final val enq: Reagent[A, Unit] = Loop {
     tail.read ! () match {
       case Node(_, ref@Ref(null)) =>
-	ref.cas <& ((a: A) => (null, Node(a)))
+	ref.cas <& ((a:A) => (null, Node(a)))
       case ov@Node(_, Ref(nv)) => 
-  	tail.cas(ov,nv) !? (); Retry
+    	tail.cas <& Reagent.Const((ov,nv)) !? (); Retry
     }
   }
-
   val deq: Reagent[Unit, Option[A]] = head upd {
     case (Node(_, Ref(n@Node(x, _))), ()) => (n, Some(x))
     case (emp, ()) => (emp, None)
@@ -389,57 +413,99 @@ object Examples {
 
 
 
-// object Bench extends App {
-//   import java.util.Date
+object Bench extends App {
+  import java.util.Date
 
-//   val d = new Date()
-//   val trials = 10
-//   val iters = 100000
+  val d = new Date()
+  val trials = 100
+  val iters = 100000
 
-//   def getTime = (new Date()).getTime
-//   def withTime(msg: String)(thunk: => Unit) {
-//     for (i <- 1 to 3) thunk // warm up
-//     print(msg)
-//     var sum: Long = 0
-//     for (i <- 1 to trials) {
-//       System.gc()
-//       val t = getTime
-//       thunk
-//       val t2 = getTime
-//       print(".")
-//       sum += (t2 - t)
-//     } 
-//     print("\n  ")
-//     print((trials * iters) / (1000 * sum))
-//     println(" iters/us")
-//   }
+// System.currentTimeMillis
 
-//   withTime("ArrayQueue") {
-//     val s = new scala.collection.mutable.Queue[java.util.Date]()
-//     for (i <- 1 to iters) {
-//       s.enqueue(d)
-//       //s.pop()
-//     }
-//   }
+  def getTime = (new Date()).getTime
+  def withTime(msg: String)(thunk: => Unit) {
+    for (i <- 1 to 3) thunk // warm up
+    print(msg)
+    var sum: Long = 0
+    for (i <- 1 to trials) {
+      System.gc()
+      val t = getTime
+      thunk
+      val t2 = getTime
+      print(".")
+      sum += (t2 - t)
+    } 
+    print("\n  ")
+    print((trials * iters) / (1 * sum))  // 1000 * sum for us
+    println(" iters/ms")
+  }
 
-//   withTime("java.util.Queue") {
-//     val s = new java.util.LinkedList[java.util.Date]()
-//     for (i <- 1 to iters) {
-//       s.offer(d)
-//     }
-//   }
+  def doStacks {
+    println("Stacks")
 
-//   withTime("Direct") {
-//     val s = new Queue[java.util.Date]()
-//     for (i <- 1 to iters) {
-//       s.enqueue(d)
-//     }
-//   }
+    withTime("ArrayStack") {
+      val s = new scala.collection.mutable.ArrayStack[java.util.Date]()
+      for (i <- 1 to iters) {
+	s.push(d)
+      }
+    }
 
-//   withTime("Reagent-based") {
-//     val s = new MSQueue[java.util.Date]()
-//     for (i <- 1 to iters) {
-//       s.enq ! d
-//     }
-//   }
-// }
+    withTime("java.util.Stack") {
+      val s = new java.util.Stack[java.util.Date]()
+      for (i <- 1 to iters) {
+	s.push(d)
+      }
+    }
+
+    withTime("Direct") {
+      val s = new Stack[java.util.Date]()
+      for (i <- 1 to iters) {
+	s.push(d)
+      }
+    }
+
+    withTime("Reagent-based") {
+      val s = new TreiberStack[java.util.Date]()
+      for (i <- 1 to iters) {
+	s.push(d)
+      }
+    }
+  }
+
+  def doQueues {
+    println("Queues")
+
+    // withTime("ArrayQueue") {
+    //   val s = new scala.collection.mutable.Queue[java.util.Date]()
+    //   for (i <- 1 to iters) {
+    // 	s.enqueue(d)
+    //   }
+    // }
+
+    // withTime("java.util.Queue") {
+    //   val s = new java.util.LinkedList[java.util.Date]()
+    //   for (i <- 1 to iters) {
+    // 	s.offer(d)
+    //   }
+    // }
+
+    // withTime("Direct") {				// 7,142/ms
+    //   val s = new HandQueue[java.util.Date]()
+    //   for (i <- 1 to iters) {
+    // 	s.enqueue(d)
+    //   }
+    // }
+
+    withTime("Reagent-based") {				// 4,334/ms
+      val s = new MSQueue[java.util.Date]()
+      for (i <- 1 to iters) {
+	s.enq ! d
+	//s.TestFn(d)
+	//s.TestDef(d)
+	//s.enqueue(d)
+      }
+    }
+  }
+
+  doQueues
+}

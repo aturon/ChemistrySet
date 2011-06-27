@@ -20,6 +20,58 @@ Further examples of reagents:
  - other classic join calculus examples
  - classic CML examples
 
+## 6/25/2011
+
+Could roll up the use of `Loop` in MSQueue into a version of `upd`.
+But that's probably ugly.  Anyway, need to collect more examples
+before creating new abstractions.
+
+Would be nice to say: never blocks on a reagent yielded by a thunk.
+There are a few problems with that: yielding a message send could not
+be allowed, for example.  Might still be possible to set out type for
+nonblocking reagents.  Raises interesting possibilities: a choice
+between nonblocking and blocking reagents should not, in practice
+block; should it's type be nonblocking?
+
+One thing to watch out for: if "nonblocking" is taken in the
+implementation as "do not install waiters", will be problematic if
+message sending can, in any way, be considered nonblocking (e.g. as an
+element of a choice as just suggested).
+
+The other thing to recall: lifting nonblocking -> blocking is
+problematic if (1) data flows from nonblocking -> blocking and (2)
+blocking uses a partial map to filter this data.
+
+It would be nice to have a good story here, even if a bit complicated.
+A type system that ensured (1) correct-by-construction blocking logic
+and (2) guaranteed nonblocking progress in some cases would be very
+nice indeed.
+
+From Fraser and Harris:
+
+    Finally, notice that algorithms built over MCAS will not meet the
+    goal of read-parallelism from Section 1.1. This is because MCAS
+    must still perform CAS operations on addresses for which identical
+    old and new values are supplied: These CAS operations force the
+    address’s cache line to be held in exclusive mode on the processor
+    executing the MCAS.
+    
+This doesn't *per se* apply to reagents: reads that truly don't need
+to be atomic wrt any writes can be treated by thunking.
+
+This strategy is related to the "early release" mechanism suggested by
+Herlihy.
+
+## 6/21/2011
+
+Some STMs try to make pure reads essentially free as they occur.
+However, must validate read at least by the commit point.  Moreover,
+all writes must happen atomically.
+
+For reagent version of MSQueue, for example, we can traverse list
+tail, CASing the tail pointer, without any of it being logged, but
+with the whole thing composable.
+
 ## 6/13/2011
 
 Don't worry about allocation: very conservatively, given exponential
