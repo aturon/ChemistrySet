@@ -20,6 +20,10 @@ Further examples of reagents:
  - other classic join calculus examples
  - classic CML examples
 
+## 6/27/2011
+
+
+
 ## 6/25/2011
 
 Could roll up the use of `Loop` in MSQueue into a version of `upd`.
@@ -49,12 +53,12 @@ nice indeed.
 
 From Fraser and Harris:
 
-    Finally, notice that algorithms built over MCAS will not meet the
-    goal of read-parallelism from Section 1.1. This is because MCAS
-    must still perform CAS operations on addresses for which identical
-    old and new values are supplied: These CAS operations force the
-    address’s cache line to be held in exclusive mode on the processor
-    executing the MCAS.
+> Finally, notice that algorithms built over MCAS will not meet the
+> goal of read-parallelism from Section 1.1. This is because MCAS must
+> still perform CAS operations on addresses for which identical old
+> and new values are supplied: These CAS operations force the
+> address’s cache line to be held in exclusive mode on the processor
+> executing the MCAS.
     
 This doesn't *per se* apply to reagents: reads that truly don't need
 to be atomic wrt any writes can be treated by thunking.
