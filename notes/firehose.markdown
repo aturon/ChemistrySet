@@ -22,7 +22,42 @@ Further examples of reagents:
 
 ## 6/27/2011
 
+Reagent constructions:
 
+    ref.read
+    ref.cas
+    chan.send
+    &>
+    <+>		(external choice)
+    <?>		(internal choice)
+    lift(function)
+    lift(partial function)
+    thunk
+    retry
+    
+Nonblocking constructions:
+
+    ref.read
+    ref.cas
+    lift(function)
+
+Blocking constructions:
+
+    chan.send
+    lift(partial function)
+    
+    
+Note that `lift(NeverDefined) ! x` *should* deadlock a thread.  While
+a type system could potentially rule this out, it's probably not worth
+it, and the semantics is quite natural; so call this a "blocking
+construction".
+
+Only allow catalyzing blocking constructions?
+
+Important question: does "nonblocking" mean that *no* blocking code
+need ever be provided (which might rule out the simple blocking
+Treiber example)?  This goes back to the idea of forcing blocking to
+go through channels.
 
 ## 6/25/2011
 
