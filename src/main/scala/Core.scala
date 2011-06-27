@@ -37,7 +37,9 @@ private case object Waiting  extends WaiterStatus
 private case object Finished extends WaiterStatus
 
 sealed private case class Waiter[A,B](
-  r: Reagent[A, B], arg: A, status: Ref[WaiterStatus], thread: system.Thread, var answer: B
+  r: Reagent[A, B], arg: A, var answer: B,
+  status: Ref[WaiterStatus], 
+  thread: system.Thread
 )
 
 private abstract class Failed
@@ -50,13 +52,13 @@ sealed abstract class Reagent[-A,+B] {
   // "blockFn" in the CML implementation
   protected def logWait(w: Waiter[A,B]): Unit
 
-  @inline final def !(a: A): B = tryReact(a, null) match {
-    case (_ : FailedAttempt) => {	// enter slow path
+  @inline final def !(a: A): B = {
+    def slowPath: B = {
       val status = new Ref[WaiterStatus](Waiting)
       val recheck: Reagent[Unit, B] = 
 	Const(Waiting, Finished) &> status.cas &> Const(a) &> this
       val waiter = Waiter(this, a, status, Thread.currentThread())
-      @tailrec def recheckThenBlock = status.read ! () match {
+      @tailrec def recheckThenBlock = status.get() match {
 	case Finished => waiter.answer
 	case _ => recheck.tryReact((), null) match {
 	  case ShouldRetry => recheckThenBlock // should backoff
@@ -67,8 +69,12 @@ sealed abstract class Reagent[-A,+B] {
       logWait(waiter)
       recheckThenBlock
     }
-    case result => result.asInstanceOf[B] // fastpath: got result
-					  // without enqueuing waiter
+
+    // first try "fast path": react without creating/enqueuing a waiter
+    tryReact(a, null) match {
+      case (_ : FailedAttempt) => slowPath
+      case result => result.asInstanceOf[B] 
+    }
   }
 
   @inline final def !?(a: A): Option[B] = {
