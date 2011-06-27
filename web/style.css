@@ -1,0 +1,48 @@
+/* 9cb132 */
+/* 8eb205 - text */
+/* a4cc00 - liquid */
+/* html, div, body */
+
+body, html {
+//    background-color: #F1FABE;
+    background-color: white;
+    margin: 0;
+    padding: 0;
+}
+
+.middle {
+    width: 700px;
+    margin: 0ex auto;
+    /* border-style: dashed; */
+    /* border-top-width: 0; */
+    /* border-bottom-width: 4px; */
+    /* border-left-width: 4px; */
+    /* border-right-width: 4px; */
+}
+
+#logo {
+    padding: 8px 0;
+    text-align: center;
+}
+
+#description {
+    text-align: center;
+    font-size: 24pt;
+    color: white;
+    background-color: #666666;
+    background: -webkit-gradient(linear, left top, left bottom, from(#777), to(#555));
+    background: -moz-linear-gradient(top,  #777,  #555);
+    padding: 10px 0;
+    font-family: 'Josefin Sans';
+}
+
+#body {
+    padding: 20px 0;
+    font-size: 14pt;
+    font-family: 'Quattrocento';
+    text-align: justify;
+    color: #6C1B65; 
+//    color: #5E0056;
+//    color: #900084;
+// C85ABE
+}
