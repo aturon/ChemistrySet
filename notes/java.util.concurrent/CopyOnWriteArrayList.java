@@ -1,29 +1,4 @@
 /*
- * Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
- * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
- *
- * This code is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License version 2 only, as
- * published by the Free Software Foundation.  Oracle designates this
- * particular file as subject to the "Classpath" exception as provided
- * by Oracle in the LICENSE file that accompanied this code.
- *
- * This code is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
- * version 2 for more details (a copy is included in the LICENSE file that
- * accompanied this code).
- *
- * You should have received a copy of the GNU General Public License version
- * 2 along with this work; if not, write to the Free Software Foundation,
- * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
- *
- * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
- * or visit www.oracle.com if you need additional information or have any
- * questions.
- */
-
-/*
  * Written by Doug Lea with assistance from members of JCP JSR-166
  * Expert Group.  Adapted and released, under explicit permission,
  * from JDK ArrayList.java which carries the following copyright:
@@ -31,12 +6,17 @@
  * Copyright 1997 by Sun Microsystems, Inc.,
  * 901 San Antonio Road, Palo Alto, California, 94303, U.S.A.
  * All rights reserved.
+ *
+ * This software is the confidential and proprietary information
+ * of Sun Microsystems, Inc. ("Confidential Information").  You
+ * shall not disclose such Confidential Information and shall use
+ * it only in accordance with the terms of the license agreement
+ * you entered into with Sun.
  */
 
 package java.util.concurrent;
 import java.util.*;
 import java.util.concurrent.locks.*;
-import sun.misc.Unsafe;
 
 /**
  * A thread-safe variant of {@link java.util.ArrayList} in which all mutative
@@ -281,9 +261,11 @@ public class CopyOnWriteArrayList<E>
      */
     public Object clone() {
         try {
-            CopyOnWriteArrayList c = (CopyOnWriteArrayList)(super.clone());
-            c.resetLock();
-            return c;
+            @SuppressWarnings("unchecked")
+            CopyOnWriteArrayList<E> clone =
+                (CopyOnWriteArrayList<E>) super.clone();
+            clone.resetLock();
+            return clone;
         } catch (CloneNotSupportedException e) {
             // this shouldn't happen, since we are Cloneable
             throw new InternalError();
@@ -332,8 +314,7 @@ public class CopyOnWriteArrayList<E>
      * The following code can be used to dump the list into a newly
      * allocated array of <tt>String</tt>:
      *
-     * <pre>
-     *     String[] y = x.toArray(new String[0]);</pre>
+     *  <pre> {@code String[] y = x.toArray(new String[0]);}</pre>
      *
      * Note that <tt>toArray(new Object[0])</tt> is identical in function to
      * <tt>toArray()</tt>.
@@ -631,9 +612,11 @@ public class CopyOnWriteArrayList<E>
      * @param c collection containing elements to be removed from this list
      * @return <tt>true</tt> if this list changed as a result of the call
      * @throws ClassCastException if the class of an element of this list
-     *         is incompatible with the specified collection (optional)
+     *         is incompatible with the specified collection
+     *         (<a href="../Collection.html#optional-restrictions">optional</a>)
      * @throws NullPointerException if this list contains a null element and the
-     *         specified collection does not permit null elements (optional),
+     *         specified collection does not permit null elements
+     *         (<a href="../Collection.html#optional-restrictions">optional</a>),
      *         or if the specified collection is null
      * @see #remove(Object)
      */
@@ -671,9 +654,11 @@ public class CopyOnWriteArrayList<E>
      * @param c collection containing elements to be retained in this list
      * @return <tt>true</tt> if this list changed as a result of the call
      * @throws ClassCastException if the class of an element of this list
-     *         is incompatible with the specified collection (optional)
+     *         is incompatible with the specified collection
+     *         (<a href="../Collection.html#optional-restrictions">optional</a>)
      * @throws NullPointerException if this list contains a null element and the
-     *         specified collection does not permit null elements (optional),
+     *         specified collection does not permit null elements
+     *         (<a href="../Collection.html#optional-restrictions">optional</a>),
      *         or if the specified collection is null
      * @see #remove(Object)
      */
@@ -1261,17 +1246,14 @@ public class CopyOnWriteArrayList<E>
 
 
     private static class COWSubListIterator<E> implements ListIterator<E> {
-        private final ListIterator<E> i;
-        private final int index;
+        private final ListIterator<E> it;
         private final int offset;
         private final int size;
 
-        COWSubListIterator(List<E> l, int index, int offset,
-                           int size) {
-            this.index = index;
+        COWSubListIterator(List<E> l, int index, int offset, int size) {
             this.offset = offset;
             this.size = size;
-            i = l.listIterator(index+offset);
+            it = l.listIterator(index+offset);
         }
 
         public boolean hasNext() {
@@ -1280,7 +1262,7 @@ public class CopyOnWriteArrayList<E>
 
         public E next() {
             if (hasNext())
-                return i.next();
+                return it.next();
             else
                 throw new NoSuchElementException();
         }
@@ -1291,17 +1273,17 @@ public class CopyOnWriteArrayList<E>
 
         public E previous() {
             if (hasPrevious())
-                return i.previous();
+                return it.previous();
             else
                 throw new NoSuchElementException();
         }
 
         public int nextIndex() {
-            return i.nextIndex() - offset;
+            return it.nextIndex() - offset;
         }
 
         public int previousIndex() {
-            return i.previousIndex() - offset;
+            return it.previousIndex() - offset;
         }
 
         public void remove() {
@@ -1326,7 +1308,7 @@ public class CopyOnWriteArrayList<E>
     static {
         try {
             UNSAFE = sun.misc.Unsafe.getUnsafe();
-            Class k = CopyOnWriteArrayList.class;
+            Class<?> k = CopyOnWriteArrayList.class;
             lockOffset = UNSAFE.objectFieldOffset
                 (k.getDeclaredField("lock"));
         } catch (Exception e) {

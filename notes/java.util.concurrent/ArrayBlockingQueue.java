@@ -1,36 +1,7 @@
 /*
- * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
- *
- * This code is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License version 2 only, as
- * published by the Free Software Foundation.  Oracle designates this
- * particular file as subject to the "Classpath" exception as provided
- * by Oracle in the LICENSE file that accompanied this code.
- *
- * This code is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
- * version 2 for more details (a copy is included in the LICENSE file that
- * accompanied this code).
- *
- * You should have received a copy of the GNU General Public License version
- * 2 along with this work; if not, write to the Free Software Foundation,
- * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
- *
- * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
- * or visit www.oracle.com if you need additional information or have any
- * questions.
- */
-
-/*
- * This file is available under and governed by the GNU General Public
- * License version 2 only, as published by the Free Software Foundation.
- * However, the following notice accompanied the original version of this
- * file:
- *
  * Written by Doug Lea with assistance from members of JCP JSR-166
  * Expert Group and released to the public domain, as explained at
- * http://creativecommons.org/licenses/publicdomain
+ * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
 package java.util.concurrent;
@@ -132,7 +103,7 @@ public class ArrayBlockingQueue<E> extends AbstractQueue<E>
      * Returns item at index i.
      */
     final E itemAt(int i) {
-        return this.<E>cast(items[i]);
+        return ArrayBlockingQueue.<E>cast(items[i]);
     }
 
     /**
@@ -162,7 +133,7 @@ public class ArrayBlockingQueue<E> extends AbstractQueue<E>
      */
     private E extract() {
         final Object[] items = this.items;
-        E x = this.<E>cast(items[takeIndex]);
+        E x = ArrayBlockingQueue.<E>cast(items[takeIndex]);
         items[takeIndex] = null;
         takeIndex = inc(takeIndex);
         --count;
@@ -551,8 +522,7 @@ public class ArrayBlockingQueue<E> extends AbstractQueue<E>
      * The following code can be used to dump the queue into a newly
      * allocated array of {@code String}:
      *
-     * <pre>
-     *     String[] y = x.toArray(new String[0]);</pre>
+     *  <pre> {@code String[] y = x.toArray(new String[0]);}</pre>
      *
      * Note that {@code toArray(new Object[0])} is identical in function to
      * {@code toArray()}.
@@ -636,32 +606,7 @@ public class ArrayBlockingQueue<E> extends AbstractQueue<E>
      * @throws IllegalArgumentException      {@inheritDoc}
      */
     public int drainTo(Collection<? super E> c) {
-        checkNotNull(c);
-        if (c == this)
-            throw new IllegalArgumentException();
-        final Object[] items = this.items;
-        final ReentrantLock lock = this.lock;
-        lock.lock();
-        try {
-            int i = takeIndex;
-            int n = 0;
-            int max = count;
-            while (n < max) {
-                c.add(this.<E>cast(items[i]));
-                items[i] = null;
-                i = inc(i);
-                ++n;
-            }
-            if (n > 0) {
-                count = 0;
-                putIndex = 0;
-                takeIndex = 0;
-                notFull.signalAll();
-            }
-            return n;
-        } finally {
-            lock.unlock();
-        }
+        return drainTo(c, Integer.MAX_VALUE);
     }
 
     /**
@@ -680,21 +625,25 @@ public class ArrayBlockingQueue<E> extends AbstractQueue<E>
         final ReentrantLock lock = this.lock;
         lock.lock();
         try {
-            int i = takeIndex;
-            int n = 0;
-            int max = (maxElements < count) ? maxElements : count;
-            while (n < max) {
-                c.add(this.<E>cast(items[i]));
-                items[i] = null;
-                i = inc(i);
-                ++n;
+            int n = Math.min(maxElements, count);
+            int take = takeIndex;
+            int i = 0;
+            try {
+                while (i < n) {
+                    c.add(ArrayBlockingQueue.<E>cast(items[take]));
+                    items[take] = null;
+                    take = inc(take);
+                    ++i;
+                }
+                return n;
+            } finally {
+                // Restore invariants even if c.add() threw
+                if (i > 0) {
+                    count -= i;
+                    takeIndex = take;
+                    notFull.signalAll();
+                }
             }
-            if (n > 0) {
-                count -= n;
-                takeIndex = i;
-                notFull.signalAll();
-            }
-            return n;
         } finally {
             lock.unlock();
         }

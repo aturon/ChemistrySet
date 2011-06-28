@@ -1,36 +1,7 @@
 /*
- * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
- *
- * This code is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License version 2 only, as
- * published by the Free Software Foundation.  Oracle designates this
- * particular file as subject to the "Classpath" exception as provided
- * by Oracle in the LICENSE file that accompanied this code.
- *
- * This code is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
- * version 2 for more details (a copy is included in the LICENSE file that
- * accompanied this code).
- *
- * You should have received a copy of the GNU General Public License version
- * 2 along with this work; if not, write to the Free Software Foundation,
- * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
- *
- * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
- * or visit www.oracle.com if you need additional information or have any
- * questions.
- */
-
-/*
- * This file is available under and governed by the GNU General Public
- * License version 2 only, as published by the Free Software Foundation.
- * However, the following notice accompanied the original version of this
- * file:
- *
  * Written by Doug Lea with assistance from members of JCP JSR-166
  * Expert Group and released to the public domain, as explained at
- * http://creativecommons.org/licenses/publicdomain
+ * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
 package java.util.concurrent;
@@ -168,7 +139,7 @@ public class PriorityBlockingQueue<E> extends AbstractQueue<E>
      * to maintain compatibility with previous versions
      * of this class. Non-null only during serialization/deserialization.
      */
-    private PriorityQueue q;
+    private PriorityQueue<E> q;
 
     /**
      * Creates a {@code PriorityBlockingQueue} with the default
@@ -308,13 +279,12 @@ public class PriorityBlockingQueue<E> extends AbstractQueue<E>
      * Mechanics for poll().  Call only while holding lock.
      */
     private E extract() {
-        E result;
         int n = size - 1;
         if (n < 0)
-            result = null;
+            return null;
         else {
             Object[] array = queue;
-            result = (E) array[0];
+            E result = (E) array[0];
             E x = (E) array[n];
             array[n] = null;
             Comparator<? super E> cmp = comparator;
@@ -323,8 +293,8 @@ public class PriorityBlockingQueue<E> extends AbstractQueue<E>
             else
                 siftDownUsingComparator(0, x, array, n, cmp);
             size = n;
+            return result;
         }
-        return result;
     }
 
     /**
@@ -519,13 +489,11 @@ public class PriorityBlockingQueue<E> extends AbstractQueue<E>
     public E poll() {
         final ReentrantLock lock = this.lock;
         lock.lock();
-        E result;
         try {
-            result = extract();
+            return extract();
         } finally {
             lock.unlock();
         }
-        return result;
     }
 
     public E take() throws InterruptedException {
@@ -558,13 +526,11 @@ public class PriorityBlockingQueue<E> extends AbstractQueue<E>
     public E peek() {
         final ReentrantLock lock = this.lock;
         lock.lock();
-        E result;
         try {
-            result = size > 0 ? (E) queue[0] : null;
+            return (size == 0) ? null : (E) queue[0];
         } finally {
             lock.unlock();
         }
-        return result;
     }
 
     /**
@@ -738,7 +704,7 @@ public class PriorityBlockingQueue<E> extends AbstractQueue<E>
             StringBuilder sb = new StringBuilder();
             sb.append('[');
             for (int i = 0; i < n; ++i) {
-                E e = (E)queue[i];
+                Object e = queue[i];
                 sb.append(e == this ? "(this Collection)" : e);
                 if (i != n - 1)
                     sb.append(',').append(' ');
@@ -756,23 +722,7 @@ public class PriorityBlockingQueue<E> extends AbstractQueue<E>
      * @throws IllegalArgumentException      {@inheritDoc}
      */
     public int drainTo(Collection<? super E> c) {
-        if (c == null)
-            throw new NullPointerException();
-        if (c == this)
-            throw new IllegalArgumentException();
-        final ReentrantLock lock = this.lock;
-        lock.lock();
-        try {
-            int n = 0;
-            E e;
-            while ( (e = extract()) != null) {
-                c.add(e);
-                ++n;
-            }
-            return n;
-        } finally {
-            lock.unlock();
-        }
+        return drainTo(c, Integer.MAX_VALUE);
     }
 
     /**
@@ -791,11 +741,10 @@ public class PriorityBlockingQueue<E> extends AbstractQueue<E>
         final ReentrantLock lock = this.lock;
         lock.lock();
         try {
-            int n = 0;
-            E e;
-            while (n < maxElements && (e = extract()) != null) {
-                c.add(e);
-                ++n;
+            int n = Math.min(size, maxElements);
+            for (int i = 0; i < n; i++) {
+                c.add((E) queue[0]); // In this order, in case add() throws.
+                extract();
             }
             return n;
         } finally {
@@ -843,8 +792,7 @@ public class PriorityBlockingQueue<E> extends AbstractQueue<E>
      * The following code can be used to dump the queue into a newly
      * allocated array of {@code String}:
      *
-     * <pre>
-     *     String[] y = x.toArray(new String[0]);</pre>
+     *  <pre> {@code String[] y = x.toArray(new String[0]);}</pre>
      *
      * Note that {@code toArray(new Object[0])} is identical in function to
      * {@code toArray()}.
@@ -968,7 +916,7 @@ public class PriorityBlockingQueue<E> extends AbstractQueue<E>
     static {
         try {
             UNSAFE = sun.misc.Unsafe.getUnsafe();
-            Class k = PriorityBlockingQueue.class;
+            Class<?> k = PriorityBlockingQueue.class;
             allocationSpinLockOffset = UNSAFE.objectFieldOffset
                 (k.getDeclaredField("allocationSpinLock"));
         } catch (Exception e) {

@@ -1,42 +1,12 @@
 /*
- * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
- *
- * This code is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License version 2 only, as
- * published by the Free Software Foundation.  Oracle designates this
- * particular file as subject to the "Classpath" exception as provided
- * by Oracle in the LICENSE file that accompanied this code.
- *
- * This code is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
- * version 2 for more details (a copy is included in the LICENSE file that
- * accompanied this code).
- *
- * You should have received a copy of the GNU General Public License version
- * 2 along with this work; if not, write to the Free Software Foundation,
- * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
- *
- * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
- * or visit www.oracle.com if you need additional information or have any
- * questions.
- */
-
-/*
- * This file is available under and governed by the GNU General Public
- * License version 2 only, as published by the Free Software Foundation.
- * However, the following notice accompanied the original version of this
- * file:
- *
  * Written by Doug Lea, Bill Scherer, and Michael Scott with
  * assistance from members of JCP JSR-166 Expert Group and released to
  * the public domain, as explained at
- * http://creativecommons.org/licenses/publicdomain
+ * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
 package java.util.concurrent;
 import java.util.concurrent.locks.*;
-import java.util.concurrent.atomic.*;
 import java.util.*;
 
 /**
@@ -286,7 +256,7 @@ public class SynchronousQueue<E> extends AbstractQueue<E>
             static {
                 try {
                     UNSAFE = sun.misc.Unsafe.getUnsafe();
-                    Class k = SNode.class;
+                    Class<?> k = SNode.class;
                     matchOffset = UNSAFE.objectFieldOffset
                         (k.getDeclaredField("match"));
                     nextOffset = UNSAFE.objectFieldOffset
@@ -432,7 +402,6 @@ public class SynchronousQueue<E> extends AbstractQueue<E>
              */
             long lastTime = timed ? System.nanoTime() : 0;
             Thread w = Thread.currentThread();
-            SNode h = head;
             int spins = (shouldSpin(s) ?
                          (timed ? maxTimedSpins : maxUntimedSpins) : 0);
             for (;;) {
@@ -513,7 +482,7 @@ public class SynchronousQueue<E> extends AbstractQueue<E>
         static {
             try {
                 UNSAFE = sun.misc.Unsafe.getUnsafe();
-                Class k = TransferStack.class;
+                Class<?> k = TransferStack.class;
                 headOffset = UNSAFE.objectFieldOffset
                     (k.getDeclaredField("head"));
             } catch (Exception e) {
@@ -583,7 +552,7 @@ public class SynchronousQueue<E> extends AbstractQueue<E>
             static {
                 try {
                     UNSAFE = sun.misc.Unsafe.getUnsafe();
-                    Class k = QNode.class;
+                    Class<?> k = QNode.class;
                     itemOffset = UNSAFE.objectFieldOffset
                         (k.getDeclaredField("item"));
                     nextOffset = UNSAFE.objectFieldOffset
@@ -827,7 +796,7 @@ public class SynchronousQueue<E> extends AbstractQueue<E>
         static {
             try {
                 UNSAFE = sun.misc.Unsafe.getUnsafe();
-                Class k = TransferQueue.class;
+                Class<?> k = TransferQueue.class;
                 headOffset = UNSAFE.objectFieldOffset
                     (k.getDeclaredField("head"));
                 tailOffset = UNSAFE.objectFieldOffset
@@ -1065,8 +1034,19 @@ public class SynchronousQueue<E> extends AbstractQueue<E>
      *
      * @return an empty iterator
      */
+    @SuppressWarnings("unchecked")
     public Iterator<E> iterator() {
-        return Collections.emptyIterator();
+        return (Iterator<E>) EmptyIterator.EMPTY_ITERATOR;
+    }
+
+    // Replicated from a previous version of Collections
+    private static class EmptyIterator<E> implements Iterator<E> {
+        static final EmptyIterator<Object> EMPTY_ITERATOR
+            = new EmptyIterator<Object>();
+
+        public boolean hasNext() { return false; }
+        public E next() { throw new NoSuchElementException(); }
+        public void remove() { throw new IllegalStateException(); }
     }
 
     /**
@@ -1103,8 +1083,7 @@ public class SynchronousQueue<E> extends AbstractQueue<E>
         if (c == this)
             throw new IllegalArgumentException();
         int n = 0;
-        E e;
-        while ( (e = poll()) != null) {
+        for (E e; (e = poll()) != null;) {
             c.add(e);
             ++n;
         }
@@ -1123,8 +1102,7 @@ public class SynchronousQueue<E> extends AbstractQueue<E>
         if (c == this)
             throw new IllegalArgumentException();
         int n = 0;
-        E e;
-        while (n < maxElements && (e = poll()) != null) {
+        for (E e; n < maxElements && (e = poll()) != null;) {
             c.add(e);
             ++n;
         }

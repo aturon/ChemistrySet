@@ -1,53 +1,20 @@
 /*
- * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
- *
- * This code is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License version 2 only, as
- * published by the Free Software Foundation.  Oracle designates this
- * particular file as subject to the "Classpath" exception as provided
- * by Oracle in the LICENSE file that accompanied this code.
- *
- * This code is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
- * version 2 for more details (a copy is included in the LICENSE file that
- * accompanied this code).
- *
- * You should have received a copy of the GNU General Public License version
- * 2 along with this work; if not, write to the Free Software Foundation,
- * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
- *
- * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
- * or visit www.oracle.com if you need additional information or have any
- * questions.
- */
-
-/*
- * This file is available under and governed by the GNU General Public
- * License version 2 only, as published by the Free Software Foundation.
- * However, the following notice accompanied the original version of this
- * file:
- *
  * Written by Doug Lea with assistance from members of JCP JSR-166
  * Expert Group and released to the public domain, as explained at
- * http://creativecommons.org/licenses/publicdomain
+ * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
 package java.util.concurrent;
 
 import java.io.Serializable;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.List;
 import java.util.RandomAccess;
-import java.util.Map;
 import java.lang.ref.WeakReference;
 import java.lang.ref.ReferenceQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executor;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.RunnableFuture;
@@ -194,12 +161,14 @@ public abstract class ForkJoinTask<V> implements Future<V>, Serializable {
      * See the internal documentation of class ForkJoinPool for a
      * general implementation overview.  ForkJoinTasks are mainly
      * responsible for maintaining their "status" field amidst relays
-     * to methods in ForkJoinWorkerThread and ForkJoinPool. The
-     * methods of this class are more-or-less layered into (1) basic
-     * status maintenance (2) execution and awaiting completion (3)
-     * user-level methods that additionally report results. This is
-     * sometimes hard to see because this file orders exported methods
-     * in a way that flows well in javadocs.
+     * to methods in ForkJoinWorkerThread and ForkJoinPool.
+     *
+     * The methods of this class are more-or-less layered into
+     * (1) basic status maintenance
+     * (2) execution and awaiting completion
+     * (3) user-level methods that additionally report results.
+     * This is sometimes hard to see because this file orders exported
+     * methods in a way that flows well in javadocs.
      */
 
     /*
@@ -520,7 +489,7 @@ public abstract class ForkJoinTask<V> implements Future<V>, Serializable {
         if (e == null || (ex = e.ex) == null)
             return null;
         if (e.thrower != Thread.currentThread().getId()) {
-            Class ec = ex.getClass();
+            Class<? extends Throwable> ec = ex.getClass();
             try {
                 Constructor<?> noArgCtor = null;
                 Constructor<?>[] cs = ec.getConstructors();// public ctors only

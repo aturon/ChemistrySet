@@ -1,36 +1,7 @@
 /*
- * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
- *
- * This code is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License version 2 only, as
- * published by the Free Software Foundation.  Oracle designates this
- * particular file as subject to the "Classpath" exception as provided
- * by Oracle in the LICENSE file that accompanied this code.
- *
- * This code is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
- * version 2 for more details (a copy is included in the LICENSE file that
- * accompanied this code).
- *
- * You should have received a copy of the GNU General Public License version
- * 2 along with this work; if not, write to the Free Software Foundation,
- * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
- *
- * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
- * or visit www.oracle.com if you need additional information or have any
- * questions.
- */
-
-/*
- * This file is available under and governed by the GNU General Public
- * License version 2 only, as published by the Free Software Foundation.
- * However, the following notice accompanied the original version of this
- * file:
- *
  * Written by Doug Lea with assistance from members of JCP JSR-166
  * Expert Group and released to the public domain, as explained at
- * http://creativecommons.org/licenses/publicdomain
+ * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
 package java.util.concurrent;
@@ -52,7 +23,8 @@ import java.util.concurrent.locks.*;
  *
  * <p><b>Sample usage:</b> Here is an example of
  *  using a barrier in a parallel decomposition design:
- * <pre>
+ *
+ *  <pre> {@code
  * class Solver {
  *   final int N;
  *   final float[][] data;
@@ -90,8 +62,8 @@ import java.util.concurrent.locks.*;
  *
  *     waitUntilDone();
  *   }
- * }
- * </pre>
+ * }}</pre>
+ *
  * Here, each worker thread processes a row of the matrix then waits at the
  * barrier until all rows have been processed. When all rows are processed
  * the supplied {@link Runnable} barrier action is executed and merges the
@@ -105,9 +77,10 @@ import java.util.concurrent.locks.*;
  * {@link #await} returns the arrival index of that thread at the barrier.
  * You can then choose which thread should execute the barrier action, for
  * example:
- * <pre>  if (barrier.await() == 0) {
- *     // log the completion of this iteration
- *   }</pre>
+ *  <pre> {@code
+ * if (barrier.await() == 0) {
+ *   // log the completion of this iteration
+ * }}</pre>
  *
  * <p>The <tt>CyclicBarrier</tt> uses an all-or-none breakage model
  * for failed synchronization attempts: If a thread leaves a barrier
@@ -204,21 +177,21 @@ public class CyclicBarrier {
                 throw new InterruptedException();
             }
 
-           int index = --count;
-           if (index == 0) {  // tripped
-               boolean ranAction = false;
-               try {
-                   final Runnable command = barrierCommand;
-                   if (command != null)
-                       command.run();
-                   ranAction = true;
-                   nextGeneration();
-                   return 0;
-               } finally {
-                   if (!ranAction)
-                       breakBarrier();
-               }
-           }
+            int index = --count;
+            if (index == 0) {  // tripped
+                boolean ranAction = false;
+                try {
+                    final Runnable command = barrierCommand;
+                    if (command != null)
+                        command.run();
+                    ranAction = true;
+                    nextGeneration();
+                    return 0;
+                } finally {
+                    if (!ranAction)
+                        breakBarrier();
+                }
+            }
 
             // loop until tripped, broken, interrupted, or timed out
             for (;;) {

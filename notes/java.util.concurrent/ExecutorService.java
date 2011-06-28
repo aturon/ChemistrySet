@@ -1,43 +1,12 @@
 /*
- * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
- *
- * This code is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License version 2 only, as
- * published by the Free Software Foundation.  Oracle designates this
- * particular file as subject to the "Classpath" exception as provided
- * by Oracle in the LICENSE file that accompanied this code.
- *
- * This code is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
- * version 2 for more details (a copy is included in the LICENSE file that
- * accompanied this code).
- *
- * You should have received a copy of the GNU General Public License version
- * 2 along with this work; if not, write to the Free Software Foundation,
- * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
- *
- * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
- * or visit www.oracle.com if you need additional information or have any
- * questions.
- */
-
-/*
- * This file is available under and governed by the GNU General Public
- * License version 2 only, as published by the Free Software Foundation.
- * However, the following notice accompanied the original version of this
- * file:
- *
  * Written by Doug Lea with assistance from members of JCP JSR-166
  * Expert Group and released to the public domain, as explained at
- * http://creativecommons.org/licenses/publicdomain
+ * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
 package java.util.concurrent;
 import java.util.List;
 import java.util.Collection;
-import java.security.PrivilegedAction;
-import java.security.PrivilegedExceptionAction;
 
 /**
  * An {@link Executor} that provides methods to manage termination and
@@ -73,7 +42,7 @@ import java.security.PrivilegedExceptionAction;
  * pool service incoming requests. It uses the preconfigured {@link
  * Executors#newFixedThreadPool} factory method:
  *
- * <pre>
+ *  <pre> {@code
  * class NetworkService implements Runnable {
  *   private final ServerSocket serverSocket;
  *   private final ExecutorService pool;
@@ -101,14 +70,13 @@ import java.security.PrivilegedExceptionAction;
  *   public void run() {
  *     // read and service request on socket
  *   }
- * }
- * </pre>
+ * }}</pre>
  *
  * The following method shuts down an <tt>ExecutorService</tt> in two phases,
  * first by calling <tt>shutdown</tt> to reject incoming tasks, and then
  * calling <tt>shutdownNow</tt>, if necessary, to cancel any lingering tasks:
  *
- * <pre>
+ *  <pre> {@code
  * void shutdownAndAwaitTermination(ExecutorService pool) {
  *   pool.shutdown(); // Disable new tasks from being submitted
  *   try {
@@ -125,8 +93,7 @@ import java.security.PrivilegedExceptionAction;
  *     // Preserve interrupt status
  *     Thread.currentThread().interrupt();
  *   }
- * }
- * </pre>
+ * }}</pre>
  *
  * <p>Memory consistency effects: Actions in a thread prior to the
  * submission of a {@code Runnable} or {@code Callable} task to an

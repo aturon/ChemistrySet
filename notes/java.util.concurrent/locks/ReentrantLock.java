@@ -1,42 +1,12 @@
 /*
- * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
- *
- * This code is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License version 2 only, as
- * published by the Free Software Foundation.  Oracle designates this
- * particular file as subject to the "Classpath" exception as provided
- * by Oracle in the LICENSE file that accompanied this code.
- *
- * This code is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
- * version 2 for more details (a copy is included in the LICENSE file that
- * accompanied this code).
- *
- * You should have received a copy of the GNU General Public License version
- * 2 along with this work; if not, write to the Free Software Foundation,
- * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
- *
- * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
- * or visit www.oracle.com if you need additional information or have any
- * questions.
- */
-
-/*
- * This file is available under and governed by the GNU General Public
- * License version 2 only, as published by the Free Software Foundation.
- * However, the following notice accompanied the original version of this
- * file:
- *
  * Written by Doug Lea with assistance from members of JCP JSR-166
  * Expert Group and released to the public domain, as explained at
- * http://creativecommons.org/licenses/publicdomain
+ * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
 package java.util.concurrent.locks;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.*;
 
 /**
  * A reentrant mutual exclusion {@link Lock} with the same basic
@@ -73,7 +43,7 @@ import java.util.concurrent.atomic.*;
  * follow a call to {@code lock} with a {@code try} block, most
  * typically in a before/after construction such as:
  *
- * <pre>
+ *  <pre> {@code
  * class X {
  *   private final ReentrantLock lock = new ReentrantLock();
  *   // ...
@@ -86,8 +56,7 @@ import java.util.concurrent.atomic.*;
  *       lock.unlock()
  *     }
  *   }
- * }
- * </pre>
+ * }}</pre>
  *
  * <p>In addition to implementing the {@link Lock} interface, this
  * class defines methods {@code isLocked} and
@@ -383,8 +352,11 @@ public class ReentrantLock implements Lock, java.io.Serializable {
      * method. If you want a timed {@code tryLock} that does permit barging on
      * a fair lock then combine the timed and un-timed forms together:
      *
-     * <pre>if (lock.tryLock() || lock.tryLock(timeout, unit) ) { ... }
-     * </pre>
+     *  <pre> {@code
+     * if (lock.tryLock() ||
+     *     lock.tryLock(timeout, unit)) {
+     *   ...
+     * }}</pre>
      *
      * <p>If the current thread
      * already holds this lock then the hold count is incremented by one and
@@ -514,7 +486,7 @@ public class ReentrantLock implements Lock, java.io.Serializable {
      * not be entered with the lock already held then we can assert that
      * fact:
      *
-     * <pre>
+     *  <pre> {@code
      * class X {
      *   ReentrantLock lock = new ReentrantLock();
      *   // ...
@@ -527,8 +499,7 @@ public class ReentrantLock implements Lock, java.io.Serializable {
      *       lock.unlock();
      *     }
      *   }
-     * }
-     * </pre>
+     * }}</pre>
      *
      * @return the number of holds on this lock by the current thread,
      *         or zero if this lock is not held by the current thread
@@ -545,7 +516,7 @@ public class ReentrantLock implements Lock, java.io.Serializable {
      * testing. For example, a method that should only be called while
      * a lock is held can assert that this is the case:
      *
-     * <pre>
+     *  <pre> {@code
      * class X {
      *   ReentrantLock lock = new ReentrantLock();
      *   // ...
@@ -554,13 +525,12 @@ public class ReentrantLock implements Lock, java.io.Serializable {
      *       assert lock.isHeldByCurrentThread();
      *       // ... method body
      *   }
-     * }
-     * </pre>
+     * }}</pre>
      *
      * <p>It can also be used to ensure that a reentrant lock is used
      * in a non-reentrant manner, for example:
      *
-     * <pre>
+     *  <pre> {@code
      * class X {
      *   ReentrantLock lock = new ReentrantLock();
      *   // ...
@@ -574,8 +544,7 @@ public class ReentrantLock implements Lock, java.io.Serializable {
      *           lock.unlock();
      *       }
      *   }
-     * }
-     * </pre>
+     * }}</pre>
      *
      * @return {@code true} if current thread holds this lock and
      *         {@code false} otherwise

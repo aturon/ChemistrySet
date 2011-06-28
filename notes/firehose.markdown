@@ -19,6 +19,23 @@ Further examples of reagents:
  - synchronization examples from Scalable Joins
  - other classic join calculus examples
  - classic CML examples
+## 6/28/2011
+
+For sets, could make sense to have a blocking `add` operation: waits
+until item is not currently in the set.
+
+"How to use arrays of `BlockingCollection`s in a pipeline":
+<http://msdn.microsoft.com/en-us/library/dd460715.aspx>
+
+`BlockingCollection` can be used in *bounded* mode, wherein `add` can
+block.
+
+Monadic code over *nonblocking* reagents might be viable.
+
+Blocking stack:
+
+    bstack.push = rPop +> nbstack.push
+    bstack.pop  = 
 
 ## 6/27/2011
 

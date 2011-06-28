@@ -1,40 +1,10 @@
 /*
- * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
- *
- * This code is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License version 2 only, as
- * published by the Free Software Foundation.  Oracle designates this
- * particular file as subject to the "Classpath" exception as provided
- * by Oracle in the LICENSE file that accompanied this code.
- *
- * This code is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
- * version 2 for more details (a copy is included in the LICENSE file that
- * accompanied this code).
- *
- * You should have received a copy of the GNU General Public License version
- * 2 along with this work; if not, write to the Free Software Foundation,
- * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
- *
- * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
- * or visit www.oracle.com if you need additional information or have any
- * questions.
- */
-
-/*
- * This file is available under and governed by the GNU General Public
- * License version 2 only, as published by the Free Software Foundation.
- * However, the following notice accompanied the original version of this
- * file:
- *
  * Written by Doug Lea with assistance from members of JCP JSR-166
  * Expert Group and released to the public domain, as explained at
- * http://creativecommons.org/licenses/publicdomain
+ * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
 package java.util.concurrent.locks;
-import java.util.concurrent.*;
 import sun.misc.Unsafe;
 
 
@@ -78,7 +48,10 @@ import sun.misc.Unsafe;
  * higher-level synchronization utilities, and are not in themselves
  * useful for most concurrency control applications.  The {@code park}
  * method is designed for use only in constructions of the form:
- * <pre>while (!canProceed()) { ... LockSupport.park(this); }</pre>
+ *
+ *  <pre> {@code
+ * while (!canProceed()) { ... LockSupport.park(this); }}</pre>
+ *
  * where neither {@code canProceed} nor any other actions prior to the
  * call to {@code park} entail locking or blocking.  Because only one
  * permit is associated with each thread, any intermediary uses of
@@ -86,7 +59,7 @@ import sun.misc.Unsafe;
  *
  * <p><b>Sample Usage.</b> Here is a sketch of a first-in-first-out
  * non-reentrant lock class:
- * <pre>{@code
+ *  <pre> {@code
  * class FIFOMutex {
  *   private final AtomicBoolean locked = new AtomicBoolean(false);
  *   private final Queue<Thread> waiters
@@ -275,10 +248,14 @@ public class LockSupport {
      * snapshot -- the thread may have since unblocked or blocked on a
      * different blocker object.
      *
+     * @param t the thread
      * @return the blocker
+     * @throws NullPointerException if argument is null
      * @since 1.6
      */
     public static Object getBlocker(Thread t) {
+        if (t == null)
+            throw new NullPointerException();
         return unsafe.getObjectVolatile(t, parkBlockerOffset);
     }
 

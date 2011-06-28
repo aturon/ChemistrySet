@@ -1,36 +1,7 @@
 /*
- * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
- *
- * This code is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License version 2 only, as
- * published by the Free Software Foundation.  Oracle designates this
- * particular file as subject to the "Classpath" exception as provided
- * by Oracle in the LICENSE file that accompanied this code.
- *
- * This code is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
- * version 2 for more details (a copy is included in the LICENSE file that
- * accompanied this code).
- *
- * You should have received a copy of the GNU General Public License version
- * 2 along with this work; if not, write to the Free Software Foundation,
- * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
- *
- * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
- * or visit www.oracle.com if you need additional information or have any
- * questions.
- */
-
-/*
- * This file is available under and governed by the GNU General Public
- * License version 2 only, as published by the Free Software Foundation.
- * However, the following notice accompanied the original version of this
- * file:
- *
  * Written by Doug Lea with assistance from members of JCP JSR-166
  * Expert Group and released to the public domain, as explained at
- * http://creativecommons.org/licenses/publicdomain
+ * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
 /**
@@ -40,9 +11,7 @@
  * array elements to those that also provide an atomic conditional update
  * operation of the form:
  *
- * <pre>
- *   boolean compareAndSet(expectedValue, updateValue);
- * </pre>
+ *  <pre> {@code boolean compareAndSet(expectedValue, updateValue);}</pre>
  *
  * <p>This method (which varies in argument types across different
  * classes) atomically sets a variable to the {@code updateValue} if it
@@ -69,15 +38,14 @@
  * {@code AtomicInteger} provide atomic increment methods.  One
  * application is to generate sequence numbers, as in:
  *
- * <pre>
+ *  <pre> {@code
  * class Sequencer {
  *   private final AtomicLong sequenceNumber
  *     = new AtomicLong(0);
  *   public long next() {
  *     return sequenceNumber.getAndIncrement();
  *   }
- * }
- * </pre>
+ * }}</pre>
  *
  * <p>The memory effects for accesses and updates of atomics generally
  * follow the rules for volatiles, as stated in

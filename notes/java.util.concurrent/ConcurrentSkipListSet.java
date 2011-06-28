@@ -1,41 +1,11 @@
 /*
- * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
- *
- * This code is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License version 2 only, as
- * published by the Free Software Foundation.  Oracle designates this
- * particular file as subject to the "Classpath" exception as provided
- * by Oracle in the LICENSE file that accompanied this code.
- *
- * This code is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
- * version 2 for more details (a copy is included in the LICENSE file that
- * accompanied this code).
- *
- * You should have received a copy of the GNU General Public License version
- * 2 along with this work; if not, write to the Free Software Foundation,
- * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
- *
- * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
- * or visit www.oracle.com if you need additional information or have any
- * questions.
- */
-
-/*
- * This file is available under and governed by the GNU General Public
- * License version 2 only, as published by the Free Software Foundation.
- * However, the following notice accompanied the original version of this
- * file:
- *
  * Written by Doug Lea with assistance from members of JCP JSR-166
  * Expert Group and released to the public domain, as explained at
- * http://creativecommons.org/licenses/publicdomain
+ * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
 package java.util.concurrent;
 import java.util.*;
-import sun.misc.Unsafe;
 
 /**
  * A scalable concurrent {@link NavigableSet} implementation based on
@@ -58,12 +28,14 @@ import sun.misc.Unsafe;
  * <p>Beware that, unlike in most collections, the <tt>size</tt>
  * method is <em>not</em> a constant-time operation. Because of the
  * asynchronous nature of these sets, determining the current number
- * of elements requires a traversal of the elements. Additionally, the
- * bulk operations <tt>addAll</tt>, <tt>removeAll</tt>,
- * <tt>retainAll</tt>, and <tt>containsAll</tt> are <em>not</em>
- * guaranteed to be performed atomically. For example, an iterator
- * operating concurrently with an <tt>addAll</tt> operation might view
- * only some of the added elements.
+ * of elements requires a traversal of the elements, and so may report
+ * inaccurate results if this collection is modified during traversal.
+ * Additionally, the bulk operations <tt>addAll</tt>,
+ * <tt>removeAll</tt>, <tt>retainAll</tt>, <tt>containsAll</tt>,
+ * <tt>equals</tt>, and <tt>toArray</tt> are <em>not</em> guaranteed
+ * to be performed atomically. For example, an iterator operating
+ * concurrently with an <tt>addAll</tt> operation might view only some
+ * of the added elements.
  *
  * <p>This class and its iterators implement all of the
  * <em>optional</em> methods of the {@link Set} and {@link Iterator}
@@ -156,15 +128,15 @@ public class ConcurrentSkipListSet<E>
      * @return a shallow copy of this set
      */
     public ConcurrentSkipListSet<E> clone() {
-        ConcurrentSkipListSet<E> clone = null;
         try {
-            clone = (ConcurrentSkipListSet<E>) super.clone();
-            clone.setMap(new ConcurrentSkipListMap(m));
+            @SuppressWarnings("unchecked")
+            ConcurrentSkipListSet<E> clone =
+                (ConcurrentSkipListSet<E>) super.clone();
+            clone.setMap(new ConcurrentSkipListMap<E,Object>(m));
+            return clone;
         } catch (CloneNotSupportedException e) {
             throw new InternalError();
         }
-
-        return clone;
     }
 
     /* ---------------- Set operations -------------- */
@@ -320,8 +292,8 @@ public class ConcurrentSkipListSet<E>
     public boolean removeAll(Collection<?> c) {
         // Override AbstractSet version to avoid unnecessary call to size()
         boolean modified = false;
-        for (Iterator<?> i = c.iterator(); i.hasNext(); )
-            if (remove(i.next()))
+        for (Object e : c)
+            if (remove(e))
                 modified = true;
         return modified;
     }
@@ -466,7 +438,7 @@ public class ConcurrentSkipListSet<E>
      * @return a reverse order view of this set
      */
     public NavigableSet<E> descendingSet() {
-        return new ConcurrentSkipListSet(m.descendingMap());
+        return new ConcurrentSkipListSet<E>(m.descendingMap());
     }
 
     // Support for resetting map in clone
@@ -479,7 +451,7 @@ public class ConcurrentSkipListSet<E>
     static {
         try {
             UNSAFE = sun.misc.Unsafe.getUnsafe();
-            Class k = ConcurrentSkipListSet.class;
+            Class<?> k = ConcurrentSkipListSet.class;
             mapOffset = UNSAFE.objectFieldOffset
                 (k.getDeclaredField("m"));
         } catch (Exception e) {

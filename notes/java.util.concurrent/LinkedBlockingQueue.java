@@ -1,36 +1,7 @@
 /*
- * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
- *
- * This code is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License version 2 only, as
- * published by the Free Software Foundation.  Oracle designates this
- * particular file as subject to the "Classpath" exception as provided
- * by Oracle in the LICENSE file that accompanied this code.
- *
- * This code is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
- * version 2 for more details (a copy is included in the LICENSE file that
- * accompanied this code).
- *
- * You should have received a copy of the GNU General Public License version
- * 2 along with this work; if not, write to the Free Software Foundation,
- * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
- *
- * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
- * or visit www.oracle.com if you need additional information or have any
- * questions.
- */
-
-/*
- * This file is available under and governed by the GNU General Public
- * License version 2 only, as published by the Free Software Foundation.
- * However, the following notice accompanied the original version of this
- * file:
- *
  * Written by Doug Lea with assistance from members of JCP JSR-166
  * Expert Group and released to the public domain, as explained at
- * http://creativecommons.org/licenses/publicdomain
+ * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
 package java.util.concurrent;
@@ -135,7 +106,7 @@ public class LinkedBlockingQueue<E> extends AbstractQueue<E>
     private final int capacity;
 
     /** Current number of elements */
-    private final AtomicInteger count = new AtomicInteger(0);
+    private final AtomicInteger count = new AtomicInteger();
 
     /**
      * Head of linked list.
@@ -332,7 +303,7 @@ public class LinkedBlockingQueue<E> extends AbstractQueue<E>
         // Note: convention in all put/take/etc is to preset local var
         // holding count negative to indicate failure unless set.
         int c = -1;
-        Node<E> node = new Node(e);
+        Node<E> node = new Node<E>(e);
         final ReentrantLock putLock = this.putLock;
         final AtomicInteger count = this.count;
         putLock.lockInterruptibly();
@@ -412,7 +383,7 @@ public class LinkedBlockingQueue<E> extends AbstractQueue<E>
         if (count.get() == capacity)
             return false;
         int c = -1;
-        Node<E> node = new Node(e);
+        Node<E> node = new Node<E>(e);
         final ReentrantLock putLock = this.putLock;
         putLock.lock();
         try {
@@ -630,8 +601,7 @@ public class LinkedBlockingQueue<E> extends AbstractQueue<E>
      * The following code can be used to dump the queue into a newly
      * allocated array of {@code String}:
      *
-     * <pre>
-     *     String[] y = x.toArray(new String[0]);</pre>
+     *  <pre> {@code String[] y = x.toArray(new String[0]);}</pre>
      *
      * Note that {@code toArray(new Object[0])} is identical in function to
      * {@code toArray()}.
@@ -728,6 +698,8 @@ public class LinkedBlockingQueue<E> extends AbstractQueue<E>
             throw new NullPointerException();
         if (c == this)
             throw new IllegalArgumentException();
+        if (maxElements <= 0)
+            return 0;
         boolean signalNotFull = false;
         final ReentrantLock takeLock = this.takeLock;
         takeLock.lock();
@@ -775,7 +747,7 @@ public class LinkedBlockingQueue<E> extends AbstractQueue<E>
      * @return an iterator over the elements in this queue in proper sequence
      */
     public Iterator<E> iterator() {
-      return new Itr();
+        return new Itr();
     }
 
     private class Itr implements Iterator<E> {
