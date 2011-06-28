@@ -59,6 +59,28 @@ need ever be provided (which might rule out the simple blocking
 Treiber example)?  This goes back to the idea of forcing blocking to
 go through channels.
 
+---
+
+The published dual data structures -- I think just stacks and queues
+-- both have a special characteristic.  The blocking operation blocks
+exactly when the data structure is "empty".  This means the required
+consensus is very easy to encode: essentially swing the entire data
+structure between empty and nonempty states.  Need to examine whether
+the stack data structure uses stack ordering for waiting pops -- since
+that would be pure coincidence, and in principle a dual data structure
+can use any reasonable container for requests.
+
+A challenge for the Chemistry Set: can we incorporate
+sufficiently-expressive blocking constructs as to allow, for example,
+a very simple treatment of sets-via-linked-lists where you can block
+trying to remove a particular element, even though the set is
+otherwise nonempty?  This is probably tied up with design questions
+about blocking on `Ref` cells versus channels only.
+
+Initial idea: add a true biased choice.  It would not be race-free,
+but would guarantee that *at the linearization point* of the
+right-sided choice, the left-sided choice was disabled.
+
 ## 6/25/2011
 
 Could roll up the use of `Loop` in MSQueue into a version of `upd`.
