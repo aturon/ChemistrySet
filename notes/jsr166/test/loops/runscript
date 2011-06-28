@@ -1,0 +1,248 @@
+#!/bin/sh
+
+# This runs most of the test programs with default settings except for
+# the supplied TRIALS, which controls the max number of threads
+# and/or test iterations in most programs.
+
+# Written by Doug Lea with assistance from members of JCP JSR-166
+# Expert Group and released to the public domain, as explained at
+# http://creativecommons.org/publicdomain/zero/1.0/
+
+# Set env variable RUNJAVA to java executable. Otherwise uses "java"
+RUN="java"
+if [ -n "$RUNJAVA" ]; then
+  RUN=$RUNJAVA
+fi
+
+TRIALS=8
+if [ $# != "0" ]; then
+  TRIALS=$1
+fi
+
+echo "Java is " $RUN
+echo "Trials per test: "  $TRIALS
+
+echo CASLoops 4 #$TRIALS
+$RUN CASLoops 4 #$TRIALS
+echo SimpleReentrantLockLoops
+$RUN SimpleReentrantLockLoops $TRIALS
+echo SimpleMutexLoops
+$RUN SimpleMutexLoops $TRIALS
+echo SimpleSemaphoreLoops
+$RUN SimpleSemaphoreLoops $TRIALS
+echo SimpleLockLoops
+$RUN SimpleLockLoops $TRIALS
+echo SimpleWriteLockLoops
+$RUN SimpleWriteLockLoops $TRIALS
+echo SimpleTimedLockLoops
+$RUN SimpleTimedLockLoops $TRIALS
+echo SimpleSpinLockLoops
+$RUN SimpleSpinLockLoops 8  # $TRIALS
+echo TimeoutLockLoops
+$RUN TimeoutLockLoops $TRIALS
+echo CheckedLockLoops
+$RUN CheckedLockLoops $TRIALS
+echo UncheckedLockLoops
+$RUN UncheckedLockLoops $TRIALS
+echo CancelledLockLoops
+$RUN CancelledLockLoops $TRIALS
+echo LockOncePerThreadLoops
+$RUN LockOncePerThreadLoops 5 #$TRIALS
+echo ProducerConsumerLoops
+$RUN ProducerConsumerLoops $TRIALS
+echo OfferPollLoops
+$RUN OfferPollLoops $TRIALS
+echo MultipleProducersSingleConsumerLoops
+$RUN MultipleProducersSingleConsumerLoops $TRIALS
+echo SingleProducerMultipleConsumerLoops
+$RUN SingleProducerMultipleConsumerLoops $TRIALS
+echo CancelledProducerConsumerLoops
+$RUN CancelledProducerConsumerLoops $TRIALS
+echo TimeoutProducerConsumerLoops
+$RUN TimeoutProducerConsumerLoops $TRIALS
+echo ExecutorCompletionServiceLoops
+$RUN ExecutorCompletionServiceLoops $TRIALS
+echo CachedThreadPoolLoops
+$RUN CachedThreadPoolLoops $TRIALS
+echo ConcurrentQueueLoops ConcurrentLinkedQueue
+$RUN ConcurrentQueueLoops java.util.concurrent.ConcurrentLinkedQueue $TRIALS
+echo ConcurrentQueueLoops SynchronizedLinkedListQueue
+$RUN ConcurrentQueueLoops SynchronizedLinkedListQueue $TRIALS
+echo ConcurrentQueueLoops java.util.concurrent.LinkedTransferQueue
+$RUN ConcurrentQueueLoops java.util.concurrent.LinkedTransferQueue $TRIALS
+echo ConcurrentQueueLoops ConcurrentLinkedDeque
+$RUN ConcurrentQueueLoops java.util.concurrent.ConcurrentLinkedDeque $TRIALS
+echo ConcurrentDequeLoops LinkedBlockingDeque
+$RUN ConcurrentDequeLoops java.util.concurrent.LinkedBlockingDeque $TRIALS
+echo ConcurrentDequeLoops ConcurrentLinkedDeque
+$RUN ConcurrentDequeLoops java.util.concurrent.ConcurrentLinkedDeque $TRIALS
+$RUN OfferDrainToLoops
+echo DequeBash ArrayDeque
+$RUN DequeBash java.util.ArrayDeque $TRIALS
+echo DequeBash LinkedList
+$RUN DequeBash java.util.LinkedList $TRIALS
+echo DequeBash LinkedBlockingDeque
+$RUN DequeBash java.util.concurrent.LinkedBlockingDeque $TRIALS
+echo DequeBash ConcurrentLinkedDeque
+$RUN DequeBash java.util.concurrent.ConcurrentLinkedDeque $TRIALS
+echo ExchangeLoops
+$RUN ExchangeLoops $TRIALS
+echo TimeoutExchangerLoops
+$RUN TimeoutExchangerLoops $TRIALS
+echo TSPExchangerTest
+$RUN TSPExchangerTest $TRIALS
+echo CancelledFutureLoops
+$RUN CancelledFutureLoops $TRIALS
+echo MapCheck ConcurrentHashMap
+$RUN MapCheck java.util.concurrent.ConcurrentHashMap $TRIALS
+echo IntMapCheck ConcurrenHhashMap
+$RUN IntMapCheck java.util.concurrent.ConcurrentHashMap $TRIALS
+echo IntMapCheck ConcurrentSkipListMap
+$RUN IntMapCheck java.util.concurrent.ConcurrentSkipListMap $TRIALS
+echo NavigableMapCheck TreeMap
+$RUN NavigableMapCheck java.util.TreeMap $TRIALS
+echo NavigableMapCheck ConcurrentSkipListMap
+$RUN NavigableMapCheck java.util.concurrent.ConcurrentSkipListMap $TRIALS
+echo NavigableSetCheck TreeSet
+$RUN NavigableSetCheck java.util.TreeSet $TRIALS
+echo MapMicroBenchmark ConcurrentHashMap
+$RUN MapMicroBenchmark java.util.concurrent.ConcurrentHashMap
+echo SetBash ConcurrentSkipListSet
+$RUN SetBash java.util.concurrent.ConcurrentSkipListSet $TRIALS 100
+echo SetBash ConcurrentHashSet
+$RUN SetBash ConcurrentHashSet $TRIALS 100
+echo NavigableSetCheck ConcurrentSkipListSet
+$RUN NavigableSetCheck java.util.concurrent.ConcurrentSkipListSet $TRIALS
+echo MapLoops ConcurrentHashMap
+$RUN MapLoops java.util.concurrent.ConcurrentHashMap $TRIALS
+echo MapLoops ConcurrentSkipListMap
+$RUN MapLoops java.util.concurrent.ConcurrentSkipListMap $TRIALS
+echo MapLoops RWTreeMap
+$RUN MapLoops RWMap $TRIALS
+echo StringMapLoops ConcurrentHashMap
+$RUN StringMapLoops java.util.concurrent.ConcurrentHashMap $TRIALS
+echo StringMapLoops ConcurrentSkipListMap
+$RUN StringMapLoops java.util.concurrent.ConcurrentSkipListMap $TRIALS
+echo StringMapLoops RWTreeMap
+$RUN StringMapLoops RWMap $TRIALS
+echo MapWordLoops ConcurrentHashMap
+$RUN MapWordLoops java.util.concurrent.ConcurrentHashMap $TRIALS
+echo MapWordLoops java.util.TreeMap
+$RUN MapWordLoops java.util.TreeMap $TRIALS
+echo MapWordLoops RWTreeMap
+$RUN MapWordLoops RWMap $TRIALS
+echo MapWordLoops ConcurrentSkipListMap
+$RUN MapWordLoops java.util.concurrent.ConcurrentSkipListMap $TRIALS
+echo CollectionLoops RWCollection
+$RUN CollectionLoops RWCollection $TRIALS
+echo CollectionLoops SCollection
+$RUN CollectionLoops SCollection $TRIALS
+echo CollectionLoops SynchronizedCollection
+$RUN CollectionLoops SynchronizedCollection $TRIALS
+echo CollectionWordLoops ConcurrentSkipListSet
+$RUN CollectionWordLoops java.util.concurrent.ConcurrentSkipListSet
+echo CollectionWordLoops ConcurrentLinkedQueue
+$RUN CollectionWordLoops java.util.concurrent.ConcurrentLinkedQueue
+echo CollectionWordLoops CopyOnWriteArrayList
+$RUN CollectionWordLoops java.util.concurrent.CopyOnWriteArrayList
+echo CollectionWordLoops ArrayDeque
+$RUN CollectionWordLoops java.util.ArrayDeque
+echo ListBash CopyOnWriteArrayList
+$RUN ListBash java.util.concurrent.CopyOnWriteArrayList 100 100
+echo ListBash LinkedList
+$RUN ListBash java.util.LinkedList 100 100
+echo TimeUnitLoops
+$RUN TimeUnitLoops
+echo ReadHoldingWriteLock
+$RUN ReadHoldingWriteLock
+echo Finals
+$RUN Finals
+echo FinalLongTest
+$RUN FinalLongTest
+echo RLJBar
+$RUN RLJBar
+echo RLJBar -b
+$RUN RLJBar -b
+echo RLIBar
+$RUN RLIBar -np $TRIALS
+echo RLIBar -batch 10
+$RUN RLIBar -batch 10 -np $TRIALS
+echo UnboundedQueueFillEmptyLoops
+$RUN UnboundedQueueFillEmptyLoops java.util.ArrayDeque
+$RUN UnboundedQueueFillEmptyLoops java.util.PriorityQueue
+$RUN UnboundedQueueFillEmptyLoops java.util.concurrent.PriorityBlockingQueue
+$RUN UnboundedQueueFillEmptyLoops java.util.LinkedList
+$RUN UnboundedQueueFillEmptyLoops java.util.concurrent.ConcurrentLinkedQueue
+$RUN UnboundedQueueFillEmptyLoops java.util.concurrent.ConcurrentLinkedDeque
+$RUN UnboundedQueueFillEmptyLoops java.util.concurrent.LinkedBlockingQueue
+$RUN UnboundedQueueFillEmptyLoops java.util.concurrent.LinkedBlockingDeque
+$RUN UnboundedQueueFillEmptyLoops java.util.concurrent.LinkedTransferQueue
+echo IteratorLoops
+$RUN IteratorLoops java.util.ArrayList
+$RUN IteratorLoops java.util.Vector
+$RUN IteratorLoops java.util.concurrent.CopyOnWriteArrayList
+$RUN IteratorLoops java.util.LinkedList
+$RUN IteratorLoops java.util.concurrent.ConcurrentLinkedQueue
+$RUN IteratorLoops java.util.concurrent.LinkedBlockingQueue
+$RUN IteratorLoops java.util.ArrayDeque
+$RUN IteratorLoops java.util.concurrent.LinkedBlockingDeque
+$RUN IteratorLoops java.util.PriorityQueue
+$RUN IteratorLoops java.util.concurrent.PriorityBlockingQueue
+$RUN IteratorLoops java.util.TreeSet
+$RUN IteratorLoops java.util.concurrent.ConcurrentSkipListSet
+$RUN IteratorLoops java.util.HashSet
+$RUN IteratorLoops ConcurrentHashSet
+$RUN IteratorLoops java.util.concurrent.LinkedTransferQueue
+$RUN IteratorLoops java.util.concurrent.ConcurrentLinkedDeque
+echo Integrate
+$RUN Integrate
+echo IntegrateGamma
+$RUN IntegrateGamma
+echo Fib
+$RUN Fib
+echo FibTask
+$RUN FibTask
+echo LeftSpineFib
+$RUN LeftSpineFib
+echo DynamicFib
+$RUN DynamicFib
+echo DynamicLeftSpineFib
+$RUN DynamicLeftSpineFib
+echo DynamicAsyncFib
+$RUN DynamicAsyncFib
+echo ScalarLongSort
+$RUN ScalarLongSort
+echo BoxedLongSort
+$RUN BoxedLongSort
+echo NQueensCS
+$RUN NQueensCS
+echo AsyncNQueensCS
+$RUN AsyncNQueensCS
+echo FJSums
+$RUN FJSums
+echo MatrixMultiply
+$RUN MatrixMultiply
+echo LU
+$RUN LU
+echo Microscope
+$RUN Microscope
+echo TorusSpanningTree
+$RUN TorusSpanningTree
+echo FJJacobi
+$RUN FJJacobi
+echo FJPhaserJacobi
+$RUN FJPhaserJacobi
+echo ThreadPhaserJacobi
+$RUN ThreadPhaserJacobi
+echo Heat
+$RUN Heat
+echo TieredPhaserLoops
+$RUN TieredPhaserLoops
+echo PhaserLoops
+$RUN PhaserLoops
+echo CyclicBarrierLoops
+$RUN CyclicBarrierLoops
+echo FJPhaserLoops
+$RUN FJPhaserLoops
+echo SpinningTieredPhaserLoops
+$RUN SpinningTieredPhaserLoops
