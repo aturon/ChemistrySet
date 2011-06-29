@@ -19,7 +19,54 @@ Further examples of reagents:
  - synchronization examples from Scalable Joins
  - other classic join calculus examples
  - classic CML examples
- 
+
+## 6/29/2011
+
+Guarded choice effectively entails the same implementation challenges
+as free guards.  E.g.
+
+    messagePassingReagent &>
+        choice(
+	  p => someReagent
+	  else => otherReagent)
+
+at linearization of `otherReagent`, no output of
+`messagePassingReagent` *satisfying `p`* can be available.
+
+Problem: does biased choice really work correctly with a *thunked*
+reagent?  E.g., a reagent for telling whether an element is contained
+in a linked-list-set.  Perhaps this is OK: need to make *very* clear
+that a computed reagent must contain enough memory manipulation to
+work correctly with compositions.  In fact, essentially the same
+concerns occur with standard joins on thunked reagents.
+
+Note: if lifted partial functions are not allowed, `Never` is no
+longer expressible (though `Always` is: as `Const` or `Lift`).
+
+Reagent constructions:
+
+    ref.read
+    ref.cas
+    chan.send
+    &>
+    <+>	(external choice)
+    +>	(biased external choice)	
+    lift(function)
+    lift(partial function)
+    thunk
+    retry
+    never (?)
+    
+This code
+
+    bq.enq = rDeq +> nbq.enq
+    bq.deq = nbq.deq &> 
+        {case Some(x) => x} <+>
+	Const(()) &> sDeq
+	
+is problematic: the choice to block on `sDeq` depends on the outcome
+of a previous reagent, `nbq.deq`, which is subject to change.
+    
 ## 6/28/2011
 
 For sets, could make sense to have a blocking `add` operation: waits
