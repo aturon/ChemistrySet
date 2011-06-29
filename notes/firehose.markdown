@@ -66,6 +66,13 @@ This code
 	
 is problematic: the choice to block on `sDeq` depends on the outcome
 of a previous reagent, `nbq.deq`, which is subject to change.
+
+Also, the combination of biased choice, messages, and guards could
+create substantial difficultly: the linearization point for overcoming
+the bias could require examining data of arbitrary complexity.  This
+is not a problem in general for reagents, because the standard
+blocking code will first enqueue an appropriate message, and then
+double-check (just once).  This is, in effect, a visible read!
     
 ## 6/28/2011
 
