@@ -12,7 +12,7 @@ the library.  The code is in substantial flux so is not
 well-documented at the moment.
 
 A disjointed log of design decisions and other thoughts can be found
-in `notes/firehouse.markdown`.
+in `notes/firehose.markdown`.
 
 A more coherent layout and implementation is coming soon, after the
 core implementation has settled.
