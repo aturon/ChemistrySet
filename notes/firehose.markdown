@@ -19,6 +19,7 @@ Further examples of reagents:
  - synchronization examples from Scalable Joins
  - other classic join calculus examples
  - classic CML examples
+ 
 ## 6/28/2011
 
 For sets, could make sense to have a blocking `add` operation: waits
@@ -35,7 +36,38 @@ Monadic code over *nonblocking* reagents might be viable.
 Blocking stack:
 
     bstack.push = rPop +> nbstack.push
-    bstack.pop  = 
+    bstack.pop  = sPop <+> (nbstack.pop &> {case Some(x) => x})
+    
+Nonblocking, elimination stack:
+
+    bstack.push = rPop <+> nbstack.push
+    bstack.pop  = (sPop &> Some(-)) <+> nbstack.pop
+    
+Blocking queue, attempt 1:
+
+    bq.enq = rDeq +> nbq.enq
+    bq.deq = nbq.deq &> 
+        {case Some(x) => x} <+>
+	Const(()) &> sDeq
+	
+This is not as efficient as the dual data structure version.  Is that
+version expressible?
+
+Another question to keep in mind: what do you get with the original
+idea of blockable `Ref` operations?  Most likely that's also not quite
+as efficient as the dual data structure.
+
+Good to remember: an uncontended CAS is (soon to be) inexpensive.
+
+The design decision to *not* associate a waiter queue with every `Ref`
+cell is motivated by the fact that, in anything more complex than a
+queue or stack, this is generally insufficient (but users could easily
+be misled into thinking otherwise).  We need adequate tools to deal
+with cases like sets/bags.
+
+Trying to avoid (via types) any situation where (1) without external
+influence, a reagent is not enabled and (2) the reagent has no means
+of visibly blocking until it becomes enabled.
 
 ## 6/27/2011
 
