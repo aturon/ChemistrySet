@@ -27,8 +27,8 @@ as free guards.  E.g.
 
     messagePassingReagent &>
         choice(
-	  p => someReagent
-	  else => otherReagent)
+    	  p => someReagent
+    	  else => otherReagent)
 
 at linearization of `otherReagent`, no output of
 `messagePassingReagent` *satisfying `p`* can be available.
