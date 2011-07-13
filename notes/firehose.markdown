@@ -20,6 +20,36 @@ Further examples of reagents:
  - other classic join calculus examples
  - classic CML examples
 
+## 7/13/2011
+
+Imagine:
+
+    x <- r.read
+    r.write(x+1)
+    y <- chan.recv
+    r.write(x)
+    return y
+    
+in parallel with
+
+    x <- r.read
+    chan.send(x)
+    
+Can the first reagent return `x+1`?
+
+In the paper *Transaction Communicators*, this situation is
+essentially forbidden:
+
+> a transaction that sees the effects of another transaction on a
+> non-communicator object must be ordered strictly after the other
+> transaction. Thus, mutually dependent transactions that make
+> conflicting accesses on non-communicator objects cannot be
+> committed.
+
+In *Communicating Memory Transactions*, a similar requirements seems
+to be used: later transactions in a cluster must be "right movers" wrt
+earlier transactions, in order for the cluster to be committed.
+
 ## 6/29/2011
 
 Guarded choice effectively entails the same implementation challenges
