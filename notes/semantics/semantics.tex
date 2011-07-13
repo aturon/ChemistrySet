@@ -1,0 +1,83 @@
+\documentclass[10pt]{article}
+
+\usepackage[top=1.25in,bottom=1.25in,left=1.5in,right=1.5in]{geometry}
+\usepackage{mathpazo}
+\usepackage{mathpartir}
+
+\newcommand{\ra}{\rightarrow}
+\newcommand{\gives}{\vdash}
+\newcommand{\proves}{\vdash}
+\newcommand{\GA}{\ |\ }
+\newcommand{\kw}[1]{\textsf{#1}}
+\newcommand{\ty}[1]{\textrm{#1}\ }
+\newcommand{\IO}{\mathbb{IO}\ }
+\newcommand{\R}{\mathbb{R}\ }
+\newcommand{\M}{\textit{M}\ }
+\newcommand{\bind}{\mbox{\ \scriptsize$>\!\!>\!=$\ }}
+
+\title{Reagent semantics}
+\author{Aaron Turon}
+
+\begin{document}
+
+\maketitle
+
+\begin{eqnarray*}
+e &::=& 
+      \lambda x. e \GA e(e) \GA (e_1, \dots, e_n) \\
+  &|& \kw{ref} \GA \kw{chan} \GA \kw{read} \GA \kw{cas} \GA \kw{send} 
+  \GA \kw{never} \GA \kw{retry} \GA e + e \GA e \bind e \GA \kw{return} \\
+  &|& \kw{react} \GA \kw{dissolve} \GA \kw{spawn} \\
+\tau &::=& 
+      \tau \ra \tau \GA (\tau_1, \dots, \tau_n) 
+  \GA \ty{ref}\tau \GA \ty{ep}(\tau, \tau') \GA \M\tau \\
+\M &::=& \R \GA \IO
+\end{eqnarray*}
+
+\[
+\infer
+  {\Gamma, x:\tau \gives e: \tau'}
+  {\lambda x.e : \tau \ra \tau'}
+\qquad
+\infer
+  {\Gamma \gives e_1 : \tau \ra \tau' \\
+   \Gamma \gives e_2 : \tau}
+  {\Gamma \gives e_1(e_2) : \tau'}
+\qquad
+\infer
+  {\Gamma \gives e_i : \tau_i}
+  {\Gamma \gives (e_1, \dots, e_n) : (\tau_1, \dots, \tau_n)}
+\]
+\[
+\begin{array}{@{\Gamma \gives\ }l@{\ :\ }l}
+  \kw{ref}      & \tau \ra \IO (\ty{ref}\tau) \\
+  \kw{chan}     & \IO(\ty{ep}(\tau, \tau'),\ \ty{ep}(\tau', \tau)) \\
+  \kw{read}     & \ty{ref}\tau \ra \R\tau \\
+  \kw{cas}      & (\ty{ref}\tau,\ \tau,\ \tau) \ra \IO() \\
+  \kw{send}     & \ty{ep}(\tau,\tau') \ra \tau \ra \R\tau' \\
+  \kw{never}    & \R\tau \\
+  \kw{retry}    & \R\tau \\
+  \kw{react}    & \R\tau \ra \IO\tau \\
+  \kw{dissolve} & \R() \ra \IO() \\
+  \kw{spawn}    & \IO() \ra \IO()
+\end{array}
+\qquad
+\begin{array}{c}
+\infer
+  {\Gamma \gives e_i : \R\tau}
+  {\Gamma \gives e_1 + e_2 : \R\tau}
+\\
+\\
+\infer
+  {\Gamma \gives e : \M\tau \\
+   \Gamma \gives e' : \tau \ra \M\tau'}
+  {\Gamma \gives e \bind e' : \M\tau'}
+\\
+\\
+\infer
+  { }
+  {\Gamma \gives \kw{return} : \tau \ra \M\tau}
+\end{array}
+\]
+
+\end{document}

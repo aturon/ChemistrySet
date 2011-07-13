@@ -4,3 +4,6 @@ reports/
 lib_managed/
 src_managed/
 project/boot/
+*.aux
+*.log
+*.pdf
