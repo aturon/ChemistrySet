@@ -18,6 +18,7 @@
 \newcommand{\Mb}{\textit{M}}
 \newcommand{\bind}{\mbox{\ \scriptsize$>\!\!>\!=$\ }}
 \newcommand{\letrec}[2]{\kw{letrec}\ #1\ \kw{in}\ #2}
+\newcommand{\LET}[3]{\kw{let}_{#1}\ #2\ \kw{in}\ #3}
 
 \title{Reagent semantics}
 \author{Aaron Turon}
@@ -27,74 +28,78 @@
 \maketitle
 
 \[
-\begin{array}{l}
 \begin{array}{rcl}
-e &::=& 
-      \lambda x. e \GA e(e) \GA (e_1, \dots, e_n) \GA \letrec{x=e}{e} \\
+v &::=& x \GA \lambda x. e \GA (v_1, \dots, v_n) \GA \pi_i \\
   &|& \kw{ref} \GA \kw{chan} \GA \kw{read} \GA \kw{cas} \GA \kw{send} 
-  \GA \kw{never} \GA \kw{retry} \GA e + e  \\
-  &|& e \bind e \GA \kw{return} \GA \kw{react} \GA \kw{dissolve} \GA \kw{spawn} \\
+  \GA \kw{block} \GA \kw{retry} \GA v + v  \\
+  &|& \kw{return}_\Mb(v) \GA \kw{react} \GA \kw{dissolve} \GA \kw{spawn} \\
+e &::=& 
+      v \GA \LET{\Mb}{x = v\ v_1\ \cdots\ v_n}{e} \\
 \tau &::=& 
       \tau \ra \tau \GA (\tau_1, \dots, \tau_n) 
   \GA \ty{ref}\tau \GA \ty{ep}(\tau, \tau') \GA \M\tau \\
 \Mb &::=& \Rb \GA \IOb
 \end{array}
-\\
-\\
+\]
+\[
+\infer
+  {}
+  {\Gamma, x:\tau : x :\tau}
+\qquad
+\infer
+  {\Gamma, x:\tau \gives e: \tau'}
+  {\lambda x.e : \tau \ra \tau'}
+\]
+\[
+\infer
+  {\Gamma \gives v_i : \tau_i}
+  {\Gamma \gives (v_1, \dots, v_n) : (\tau_1, \dots, \tau_n)}
+\qquad
+\infer
+  {}
+  {\Gamma \gives \pi_i : (\tau_1, \dots, \tau_n) \ra \tau_i}
+\]
+\[
 \begin{array}{@{\Gamma \gives\ }l@{\ :\ }l}
-  \kw{ref}      & \tau \ra \IO (\ty{ref}\tau) \\
-  \kw{read}     & \ty{ref}\tau \ra \R\tau \\
-  \kw{cas}      & \ty{ref}\tau \ra \tau \ra \tau \ra \R() \\
-\multicolumn{2}{l}{}\\
   \kw{chan}     & \IO(\ty{ep}(\tau, \tau'),\ \ty{ep}(\tau', \tau)) \\
   \kw{send}     & \ty{ep}(\tau,\tau') \ra \tau \ra \R\tau' \\
 \multicolumn{2}{l}{}\\
-  \kw{never}    & \R\tau \\
+  \kw{ref}      & \tau \ra \IO (\ty{ref}\tau) \\
+  \kw{read}     & \ty{ref}\tau \ra \R\tau \\
+  \kw{cas}      & \ty{ref}\tau \ra \tau \ra \tau \ra \R() 
+\end{array}
+\qquad
+\begin{array}{@{\Gamma \gives\ }l@{\ :\ }l}
+  \kw{block}    & \R\tau \\
   \kw{retry}    & \R\tau \\
 \multicolumn{2}{l}{}\\
   \kw{react}    & \R\tau \ra \IO\tau \\
   \kw{dissolve} & \R() \ra \IO() \\
   \kw{spawn}    & \IO() \ra \IO()
 \end{array}
-\end{array}
-\begin{array}{c}
+\]
+\[
 \infer
-  {\Gamma, x:\tau \gives e: \tau'}
-  {\lambda x.e : \tau \ra \tau'}
-\\
-\\
+  {\Gamma \gives v_i : \R\tau}
+  {\Gamma \gives v_1 + v_2 : \R\tau}
+\qquad
 \infer
-  {\Gamma \gives e_1 : \tau \ra \tau' \\
-   \Gamma \gives e_2 : \tau}
-  {\Gamma \gives e_1(e_2) : \tau'}
-\\
-\\
+  {\Gamma \gives v : \M\tau}
+  {\Gamma \gives \kw{return}_\Mb(v) : \M\tau}
+\]
+\[
 \infer
-  {\Gamma \gives e_i : \tau_i}
-  {\Gamma \gives (e_1, \dots, e_n) : (\tau_1, \dots, \tau_n)}
-\\
-\\
+  {\Gamma \gives v : \tau_1 \ra \cdots \ra \tau_n \ra \IO\tau \\
+   \Gamma \gives v_i : \tau_i \\
+   \Gamma, x: \tau \gives e : \IO\tau'}
+  {\Gamma \gives \LET{\IO}{x=v\ v_1\ \cdots\ v_n}{e} : \IO\tau'}
+\]
+\[
 \infer
-  {\Gamma, x : \tau \gives e : \tau \\
-   \Gamma, x : \tau \gives e' : \tau'}
-  {\Gamma \gives \letrec{x = e}{e'} : \tau'} 
-\\
-\\
-\infer
-  {\Gamma \gives e_i : \R\tau}
-  {\Gamma \gives e_1 + e_2 : \R\tau}
-\\
-\\
-\infer
-  {\Gamma \gives e : \M\tau \\
-   \Gamma \gives e' : \tau \ra \M\tau'}
-  {\Gamma \gives e \bind e' : \M\tau'}
-\\
-\\
-\infer
-  { }
-  {\Gamma \gives \kw{return} : \tau \ra \M\tau}
-\end{array}
+  {\Gamma \gives v : \tau_1 \ra \cdots \ra \tau_n \ra \R\tau \\
+   \Gamma \gives v_i : \tau_i \\
+   \Gamma, x: \tau \gives e : \IO(\R\tau')}
+  {\Gamma \gives \LET{\R}{x=v\ v_1\ \cdots\ v_n}{e} : \R\tau'}
 \]
 
 \end{document}
