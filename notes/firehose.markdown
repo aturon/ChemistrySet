@@ -20,6 +20,44 @@ Further examples of reagents:
  - other classic join calculus examples
  - classic CML examples
 
+## 7/14/2011
+
+For semantic presentation, go with consistent STM for simplicity; its
+an orthogonal implementation choice anyway.
+
+Monadic dependency also makes catalysts harder to understand: the
+channels waited on can depend on current Ref cell contents, etc.
+
+Confusing point: the channel blocking enrollment of a reagent may
+depend on the state of reference cells, which may be altered by the
+reagent that is attempting to send a message along that channel.
+E.g.,
+
+    c <- r.read
+    c.send(d)
+    
+    x <- ~c.send(())
+    r.write(x)
+    
+Monadic dependency will no doubt "hide" potential blocking (since, in
+fact, it is unpredictable without the monadically-supplied data).  Put
+differently, ignoring choice, a reagent can block on only one channel
+at a time.
+
+Note: joining two reagents via a channel communication is *not* akin
+to sequencing one within the other.  To ensure isolation on shared
+state, must keep the reagents separately and track conflicts.
+
+This last point has interesting ramifications for catalysts -- in
+particular, from join calculus examples like Barrier.  However, if
+necessary a separate combinator could be introduced that, essentially,
+relinquishes the possibility of data dependency and thereby allows
+simultaneous blocking.  This is how join patterns would be
+interpreted.
+
+It might be possible to interpret such an operator as the way that
+"parallel" (communicating) reagents interact.
+
 ## 7/13/2011
 
 Imagine:

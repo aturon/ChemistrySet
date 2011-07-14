@@ -27,22 +27,23 @@
 
 \maketitle
 
+\section{Grammar and type rules}
+
 \[
 \begin{array}{rcl}
-v &::=& 
-      x \GA \lambda x. e \GA (v_1, \dots, v_n) \GA \pi_i \GA \kw{return}_\Mb(v) \\
-c &::=& 
-      v(v) \GA 
-      \kw{ref}(v) \GA \kw{read}(v) \GA \kw{cas}(v,v,v) \GA 
-      \kw{chan} \GA \kw{send}(v,v) \GA 
-      \kw{block} \GA \kw{retry} \GA v + v  \\
-  &|& \kw{react}(v) \GA \kw{dissolve}(v) \GA \kw{spawn}(v) \\     
 e &::=& 
-      v \GA \LET{\Mb}{x}{c}{e} \\
+      x \GA \lambda x. e \GA e(e) \GA (e_1, \dots, e_n) \GA \pi_i(e) \GA 
+      \kw{return}_\Mb(e) \GA e \bind e \\
+  &|& \kw{ref}(e) \GA \kw{read}(e) \GA \kw{cas}(e,e,e) \GA 
+      \kw{chan} \GA \kw{send}(e,e) \GA 
+      \kw{block} \GA \kw{retry} \GA e + e  \\
+  &|& \kw{react}(e) \GA \kw{dissolve}(e) \GA \kw{spawn}(e) \\
+%% e &::=& 
+%%       v \GA \LET{\Mb}{x}{c}{e} \\
 \tau &::=& 
       \tau \ra \tau \GA (\tau_1, \dots, \tau_n) 
-  \GA \ty{ref}\tau \GA \ty{ep}(\tau, \tau') \GA \M\tau \\
-\Mb &::=& \Rb \GA \IOb
+  \GA \ty{ref}\tau \GA \ty{ep}(\tau, \tau') \GA \M\tau 
+%\Mb &::=& \Rb \GA \IOb
 \end{array}
 \]
 \[
@@ -55,8 +56,14 @@ e &::=&
   {\lambda x.e : \tau \ra \tau'}
 \qquad
 \infer
-  {\Gamma \gives v_i : \tau_i}
-  {\Gamma \gives (v_1, \dots, v_n) : (\tau_1, \dots, \tau_n)}
+  {\Gamma \gives e_1 : \tau_2 \ra \tau \\
+   \Gamma \gives e_2 : \tau_2}
+  {\Gamma \gives e_1(e_2) : \tau}
+\]
+\[
+\infer
+  {\Gamma \gives e_i : \tau_i}
+  {\Gamma \gives (e_1, \dots, e_n) : (\tau_1, \dots, \tau_n)}
 \qquad
 \infer
   {}
@@ -64,28 +71,33 @@ e &::=&
 \]
 \[
 \infer
-  {\Gamma \gives v : \M\tau}
-  {\Gamma \gives \kw{return}_\Mb(v) : \M\tau}
+  {\Gamma \gives e : \tau}
+  {\Gamma \gives \kw{return}_\Mb(e) : \M\tau}
 \qquad
 \infer
-  {\Gamma \gives v_1 : \tau_2 \ra \tau \\
-   \Gamma \gives v_2 : \tau_2}
-  {\Gamma \gives v_1(v_2) : \tau}
+  {\Gamma \gives e : \IO\tau \\\\
+   \Gamma \gives e_k: \tau \ra \IO\tau'}
+  {\Gamma \gives e \bind e_k : \IO\tau'}
+\qquad
+\infer
+  {\Gamma \gives e : \R\tau \\\\
+   \Gamma \gives e_k: \tau \ra \IO(\R\tau')}
+  {\Gamma \gives e \bind e_k : \R\tau'}
 \]
 \[
 \infer
-  {\Gamma \gives v : \tau}
-  {\Gamma \gives \kw{ref}(v) : \IO(\ty{ref}\tau)}
+  {\Gamma \gives e : \tau}
+  {\Gamma \gives \kw{ref}(e) : \IO(\ty{ref}\tau)}
 \qquad
 \infer
-  {\Gamma \gives v : \ty{ref}\tau}
-  {\Gamma \gives \kw{read}(v) : \R\tau}
+  {\Gamma \gives e : \ty{ref}\tau}
+  {\Gamma \gives \kw{read}(e) : \R\tau}
 \qquad
 \infer
-  {\Gamma \gives v : \ty{ref}\tau \\
-   \Gamma \gives v_{\rm old} : \tau \\
-   \Gamma \gives v_{\rm new} : \tau}
-  {\Gamma \gives \kw{cas}(v, v_{\rm old}, v_{\rm new}) : \R ()}
+  {\Gamma \gives e : \ty{ref}\tau \\
+   \Gamma \gives e_{\rm old} : \tau \\
+   \Gamma \gives e_{\rm new} : \tau}
+  {\Gamma \gives \kw{cas}(e, e_{\rm old}, e_{\rm new}) : \R ()}
 \]
 \[
 \infer
@@ -93,9 +105,9 @@ e &::=&
   {\Gamma \gives \kw{chan} : \IO(\ty{ep}(\tau, \tau'),\ \ty{ep}(\tau', \tau))}
 \qquad
 \infer
-  {\Gamma \gives v: \ty{ep}(\tau, \tau') \\
-   \Gamma \gives v_{\rm msg}: \tau}
-  {\Gamma \gives \kw{send}(v, v_{\rm msg}) : \R\tau'}
+  {\Gamma \gives e: \ty{ep}(\tau, \tau') \\
+   \Gamma \gives e_{\rm msg}: \tau}
+  {\Gamma \gives \kw{send}(e, e_{\rm msg}) : \R\tau'}
 \]
 \[
 \infer
@@ -107,37 +119,53 @@ e &::=&
   {\Gamma \gives \kw{retry} : \R\tau}
 \qquad
 \infer
-  {\Gamma \gives v_i : \R\tau}
-  {\Gamma \gives v_1 + v_2 : \R\tau}
+  {\Gamma \gives e_i : \R\tau}
+  {\Gamma \gives e_1 + e_2 : \R\tau}
 \]
 \[
 \infer
-  {\Gamma \gives v: \R\tau}
-  {\Gamma \gives \kw{react}(v): \IO\tau}
+  {\Gamma \gives e: \R\tau}
+  {\Gamma \gives \kw{react}(e): \IO\tau}
 \qquad
 \infer
-  {\Gamma \gives v: \R()}
-  {\Gamma \gives \kw{dissolve}(v): \IO()}
+  {\Gamma \gives e: \R()}
+  {\Gamma \gives \kw{dissolve}(e): \IO()}
 \qquad
 \infer
-  {\Gamma \gives v: \IO()}
-  {\Gamma \gives \kw{spawn}(v): \IO()}
-\]
-\[
-\infer
-  {\Gamma \gives c : \tau_c \\\\
-   \Gamma, x: \tau \gives e : \tau}
-  {\Gamma \gives \LET{}{x}{c}{e} : \tau}
-\qquad
-\infer
-  {\Gamma \gives c : \R\tau_c \\\\
-   \Gamma, x: \tau \gives e : \IO(\R\tau)}
-  {\Gamma \gives \LET{\R}{x}{c}{e} : \IO\tau}
-\qquad
-\infer
-  {\Gamma \gives c : \IO\tau_c \\\\
-   \Gamma, x: \tau \gives e : \IO\tau}
-  {\Gamma \gives \LET{\IO}{x}{c}{e} : \IO\tau}
+  {\Gamma \gives e: \IO()}
+  {\Gamma \gives \kw{spawn}(e): \IO()}
 \]
 
+\section{Evaluation contexts}
+
+\newcommand{\EC}{\mathcal{E}}
+\newcommand{\PC}{\mathcal{P}}
+
+%% \begin{eqnarray*}
+%%   \EC &::=& [\cdot] \GA 
+%% \end{eqnarray*}
+
+\section{Core reduction rules}
+
+\newcommand{\step}[1]{\stackrel{#1}{\longrightarrow}}
+
+\begin{eqnarray*}
+  \kw{return}_\IO(v) \bind v_k &\step{}& v_k(v) \\
+  \kw{return}_\IO(\kw{return}_\R(v)) \bind v_k &\step{}& v_k(v) \\
+  (\lambda x. e)(v) &\step{}& e\{v/x\}
+\end{eqnarray*}
+
+%% \begin{eqnarray*}
+  
+%% \end{eqnarray*}
+
 \end{document}
+
+Some nice ideas:
+
+- Use fractional permissions model to capture isolation.
+
+- Use process algebraic LTS to model communication.
+
+- A successful reaction is a group of reagents taht tau-step*s to
+`return`s
