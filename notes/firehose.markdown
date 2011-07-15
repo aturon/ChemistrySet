@@ -19,27 +19,6 @@ Further examples of reagents:
  - synchronization examples from Scalable Joins
  - other classic join calculus examples
  - classic CML examples
- 
-## 7/7/2011
-
-Localized channels for blocking (e.g. per node for linked-list-set)
-are, if anything, probably cheaper than implicit Ref blocking, since
-the latter allocs a blocking queue for *every* Ref cell.
-
-May need to start laying out semantics to clarify blocking issues.
-
-Does channel-only blocking alleviate monad problems?  Probably not.
-
-Linked-list-set has problems for Loop/Thunk construct: needs access to
-the input value to find the right nodes to edit.  True for any data
-structure where the location of change depends on input.  Raises the
-same problems as monadic bind: 
-
-    Const(()) &> chan.send &> set.add
-    
-where the set is supposed to block when trying to add an
-already-contained item.  A reasonable semantics is that we "search"
-the channel for any message such that `set.add` can work.
 
 ## 7/14/2011
 
@@ -162,6 +141,27 @@ the bias could require examining data of arbitrary complexity.  This
 is not a problem in general for reagents, because the standard
 blocking code will first enqueue an appropriate message, and then
 double-check (just once).  This is, in effect, a visible read!
+
+## 7/7/2011
+
+Localized channels for blocking (e.g. per node for linked-list-set)
+are, if anything, probably cheaper than implicit Ref blocking, since
+the latter allocs a blocking queue for *every* Ref cell.
+
+May need to start laying out semantics to clarify blocking issues.
+
+Does channel-only blocking alleviate monad problems?  Probably not.
+
+Linked-list-set has problems for Loop/Thunk construct: needs access to
+the input value to find the right nodes to edit.  True for any data
+structure where the location of change depends on input.  Raises the
+same problems as monadic bind: 
+
+    Const(()) &> chan.send &> set.add
+    
+where the set is supposed to block when trying to add an
+already-contained item.  A reasonable semantics is that we "search"
+the channel for any message such that `set.add` can work.
     
 ## 6/28/2011
 
