@@ -311,7 +311,11 @@ sealed class Set[A] {
   
   private val list: Ref[PNode] = Ref(Head())
 
-  private @inline final def find(key: Int): (PNode, Node) = {
+  private abstract class FindResult
+  private case class Found(pred: PNode, node: INode)   extends FindResult
+  private case class NotFound(pred: PNode, succ: Node) extends FindResult
+
+  private @inline final def find(key: Int): FindResult = {
     @tailrec def walk(c: PNode): (PNode, Node) = c match {
       case PNode(Ref(Tail)) => (c, Tail)
       case PNode(r@Ref(n@INode(Ref(m), _, Ref(true)))) => {
@@ -319,28 +323,34 @@ sealed class Set[A] {
 	walk(c)
       }
       case PNode(Ref(n@INode(_, data, Ref(false)))) =>	
-	if (key <= data.hashCode()) (c, n) else walk(n)
+	if (key == data.hashCode())     Found(c, n) 
+	else if (key < data.hashCode()) NotFound(c, n)
+	else walk(n)
     }
     walk(list.read ! ())
   }
 
-  def add(item: A): Reagent[A, Boolean] = Loop {
-    val (pred, succ) = find(item.hashCode())
-    if (succ.hashCode == item.hashCode) Const(false)
-    else (pred.next.cas <& Const(succ, INode(Ref(succ), item)) <;>
-	  pred.deleted.cas <& Const(false, false) <;>
-	  Const(true))
+  def add: Reagent[A, Boolean] = Loop {
+    find(item.hashCode()) match {
+      case Found(_, _) => Const(false)	// blocking would be *here*
+      case NotFound(pred, succ) => 
+	(pred.next.cas <& Const(succ, INode(Ref(succ), item)) <;>
+	 pred.deleted.cas <& Const(false, false) <;>
+	 Const(true))
+    }
   }
 
-  def remove(item: A): Reagent[A, Boolean] = Loop {
-    val (pred, succ) = find(item.hashCode())
-    succ match {
-      Tail => Const(false)
-      INode(, d, _) 
+  def remove: Reagent[A, Boolean] = Loop {
+    find(item.hashCode()) match {
+      case NotFound(_, _) => Const(false)  // blocking would be *here*
+      case Found(pred, node) => 
+	(node.deleted.cas <& (false, true) <;>
+	 Const(true) commitThen
+	 pred.next.cas <& Const(node, node.next.get))
     }
-    if (succ.hashCode != item.hashCode) Const(false)
-    else pred.next.cas <& Const(succ, INode(Ref(succ), item))
   }
+
+  def contains: Reagent[A, Boolean]
 }
 
 /* 
