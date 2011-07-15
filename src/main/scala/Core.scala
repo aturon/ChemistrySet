@@ -56,7 +56,7 @@ sealed abstract class Reagent[-A,+B] {
 
   final def !(a: A): B = {
     def slowPath: B = {
-      val status = new Ref[WaiterStatus](Waiting)
+      val status = Ref[WaiterStatus](Waiting)
       val recheck: Reagent[Unit, B] = 
 	Const(Waiting, Finished) &> status.cas &> (Const(a) &> this)
       val waiter = Waiter(this, a, null, status, Thread.currentThread())
@@ -147,7 +147,7 @@ object Reagent {
   sealed case class Thunk[A,B](f: () => Reagent[A,B]) extends Reagent[A,B] {
     @inline final def tryReact(data: A, trans: Transaction): Any = 
       f().tryReact(data, trans)
-    @inline final def logWait(w: AbsWaiter) {} // "nonblocking" treatment of thunks
+    @inline final def logWait(w: AbsWaiter) {} // "nonblocking" treatment
   }
 
   sealed case class Const[A,B](a: A) extends Reagent[B,A] {
@@ -255,11 +255,12 @@ class Ref[A](init: A) extends AtomicReference[A](init) {
   // )
 }
 object Ref {
+  @inline final def apply[A](init: A): Ref[A] = Ref(init)
   @inline final def unapply[A](r: Ref[A]): Option[A] = Some(r.get()) 
 }
 
 sealed class TreiberStack[A] {
-  private val head = new Ref[List[A]](List())
+  private val head = Ref[List[A]](List())
   val pushRA: Reagent[A, Unit] = head upd { 
     (xs, x:A) => (x::xs, ())
   }
@@ -273,9 +274,9 @@ sealed class TreiberStack[A] {
 }
 
 sealed class MSQueue[A >: Null] {
-  private case class Node(data: A, next: Ref[Node] = new Ref(null))
-  private val head = new Ref(Node(null))
-  private val tail = new Ref(head.read!())
+  private case class Node(data: A, next: Ref[Node] = Ref(null))
+  private val head = Ref(Node(null))
+  private val tail = Ref(head.read!())
   final val enq: Reagent[A, Unit] = Loop {
     tail.read ! () match {
       case Node(_, ref@Ref(null)) =>
@@ -290,26 +291,67 @@ sealed class MSQueue[A >: Null] {
   }
 }
 
-/*
+// invariant: if a node n was ever reachable from head, and a node m
+// is reachable from n, then all keys >= m are reachable from n.
 sealed class Set[A] {
-  private abstract class Node
-  private abstract class PNode(next: Ref[Node])
-  private case class Head() extends PNode(new Ref(Tail))
-  private case class INode(data: A, mark: Ref[Boolean] = new Ref(false)) 
-	       extends PNode(new Ref(null))
+  private abstract class Node 
+  private abstract class PNode extends Node {
+    def next: Ref[Node]
+  } 
+  private object PNode {
+    def unapply(pn: PNode): Option[Ref[Node]] = Some(pn.next)
+  }
+  private case class Head(next: Ref[Node] = Ref(Tail)) extends PNode 
+  private case class INode(
+    next: Ref[Node], 
+    data: A, 
+    deleted: Ref[Boolean] = Ref(false)
+  ) extends PNode 
   private case object Tail extends Node
   
-  private val list = Head()
+  private val list: Ref[PNode] = Ref(Head())
 
-  private def find(key: Int): PNode = {
-    @tailrec def walk(c: Node) = c match {
-      case PNode(r@Ref(n@INode(nref, data, Ref(false)))) =>
-//	if (data.hashCode()
-      case (p: PNode) => p
+  private abstract class FindResult
+  private case class Found(pred: PNode, node: INode)   extends FindResult
+  private case class NotFound(pred: PNode, succ: Node) extends FindResult
+
+  private @inline final def find(key: Int): FindResult = {
+    @tailrec def walk(c: PNode): (PNode, Node) = c match {
+      case PNode(Ref(Tail)) => (c, Tail)
+      case PNode(r@Ref(n@INode(Ref(m), _, Ref(true)))) => {
+	r.cas <& Reagent.Const((n, m)) ! ()
+	walk(c)
+      }
+      case PNode(Ref(n@INode(_, data, Ref(false)))) =>	
+	if (key == data.hashCode())     Found(c, n) 
+	else if (key < data.hashCode()) NotFound(c, n)
+	else walk(n)
+    }
+    walk(list.read ! ())
+  }
+
+  def add: Reagent[A, Boolean] = Loop {
+    find(item.hashCode()) match {
+      case Found(_, _) => Const(false)	// blocking would be *here*
+      case NotFound(pred, succ) => 
+	(pred.next.cas <& Const(succ, INode(Ref(succ), item)) <;>
+	 pred.deleted.cas <& Const(false, false) <;>
+	 Const(true))
     }
   }
+
+  def remove: Reagent[A, Boolean] = Loop {
+    find(item.hashCode()) match {
+      case NotFound(_, _) => Const(false)  // blocking would be *here*
+      case Found(pred, node) => 
+	(node.deleted.cas <& (false, true) <;>
+	 Const(true) commitThen
+	 pred.next.cas <& Const(node, node.next.get))
+    }
+  }
+
+  def contains: Reagent[A, Boolean]
 }
-*/
 
 /* 
 
@@ -317,7 +359,7 @@ object Examples {
   def cons[A](p:(List[A],A)) = p._2::p._1
 
   class TreiberStack[A] {
-    private val head = new Ref[List[A]](List())
+    private val head = Ref[List[A]](List())
     val push = head updI {
       case (xs,x) => x::xs
     }
@@ -327,7 +369,7 @@ object Examples {
     }
   }
   class TreiberStack2[A] {
-    private val head = new Ref[List[A]](List())
+    private val head = Ref[List[A]](List())
     val push = guard (x => 
       val n = List(x)
       loop { head upd (xs => n.tail = xs; n) })
@@ -374,14 +416,14 @@ object Examples {
   }
   class DCASQueue [A >: Null] {
     class Node(val a: A) {
-      val next = new Ref[Node](null)
+      val next = Ref[Node](null)
     }
     object Node {
       def unapply(n: Node): Option[(A, Ref[Node])] = Some((n.a, n.next))
     }
     private val (head, tail) = {
       val sentinel = new Node(null)
-      (new Ref(sentinel), new Ref(sentinel))
+      (Ref(sentinel), Ref(sentinel))
     }
     val enq = guard (x: A) => for {
       oldTail @ Node(_, tailNext) <- tail.read
@@ -395,14 +437,14 @@ object Examples {
   }
   class MSQueue[A >: Null] {
     class Node(val a: A) {
-      val next = new Ref[Node](null)
+      val next = Ref[Node](null)
     }
     object Node {
       def unapply(n: Node): Option[(A, Ref[Node])] = Some((n.a, n.next))
     }
     private val (head, tail) = {
       val sentinel = new Node(null)
-      (new Ref(sentinel), new Ref(sentinel))
+      (Ref(sentinel), Ref(sentinel))
     }
     val enq = guard (x: A) => tail.read match {
       case n@Node(_, Ref(nt@Node(_, _))) => (tail.cas(n, nt) <+> always) >> enq(x)
@@ -415,14 +457,14 @@ object Examples {
   }
   class MSQueue2[A >: Null] {
     class Node(val a: A) {
-      val next = new Ref[Node](null)
+      val next = Ref[Node](null)
     }
     object Node {
       def unapply(n: Node): Option[(A, Ref[Node])] = Some((n.a, n.next))
     }
     private val (head, tail) = {
       val sentinel = new Node(null)
-      (new Ref(sentinel), new Ref(sentinel))
+      (Ref(sentinel), Ref(sentinel))
     }
     val enq = guard (x => 
       val node = new Node(x)
