@@ -20,6 +20,11 @@ Further examples of reagents:
  - other classic join calculus examples
  - classic CML examples
 
+## 7/16/2011
+
+In the model, leaving out IO wrapping in bind will definitely simplify
+atomicity.  It may also simplify blocking.
+
 ## 7/15/2011
 
 Consider an exchange join pattern:
