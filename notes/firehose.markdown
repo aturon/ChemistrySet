@@ -20,6 +20,27 @@ Further examples of reagents:
  - other classic join calculus examples
  - classic CML examples
 
+## 7/15/2011
+
+Consider an exchange join pattern:
+
+    send1 >> send2
+    
+enrolled as a catalyst.  Due to the monadic structure, the catalyst is
+only enrolled on the `send1` endpoint.
+
+Now add reagent `~send1` to the solution.  Since there is not yet a
+message on `~send2`, this reagent must block.  *Somehow*, a waiter
+must be enrolled on the `~send2` channel.  However, the `~send1`
+reagent must also be enrolled on the `~send1` channel, to account for
+additional `send1` messages.
+
+In fact, it doesn't seem to matter that `send1 >> send2` was enrolled
+as a catalyst: any partial reaction that winds up blocking at a new
+location must be enrolled, to avoid lost wakeups.
+
+Complicated, but extremely expressive...
+
 ## 7/14/2011
 
 For semantic presentation, go with consistent STM for simplicity; its
