@@ -19,6 +19,13 @@ Further examples of reagents:
  - synchronization examples from Scalable Joins
  - other classic join calculus examples
  - classic CML examples
+ 
+## 7/17/2011
+
+Additional examples to explore:
+
+- n-way rendezvous.  Does this require "parallel join"?
+- phasers (requires extensions to joins) 
 
 ## 7/16/2011
 
