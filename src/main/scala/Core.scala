@@ -13,24 +13,7 @@ sealed private abstract class LogEntry
 private case class CASLog[A](r: AtomicReference[A], ov: A, nv: A) 
 	     extends LogEntry
 
-sealed private class Transaction {
-//   private case class CASLog(ov: Any, nv: Any)
-//   private val redoLog = HashMap.empty[AtomicReference[Any], CASLog]
-
-//   def read[A](r: Ref[A]): A = redoLog.getOrElseUpdate(r.data, {
-//     val cur = r.data.get()
-//     CASLog(cur, cur)
-//   }).nv.asInstanceOf[A]
-
-//   def cas[A](r: Ref[A], ov: A, nv: A) = Util.undef
-
-//   def attempt: Boolean = Util.undef
-
-  var shouldBlock = false
-//  var log = ArrayBuffer[LogEntry]()
-  //val log = ArrayStack[Unit](())
-  var log: List[LogEntry] = List()
-}
+sealed private class Transaction {}
 
 private abstract class WaiterStatus
 private case object Catalyst extends WaiterStatus
@@ -38,8 +21,8 @@ private case object Waiting  extends WaiterStatus
 private case object Finished extends WaiterStatus
 
 sealed private abstract class AbsWaiter
-sealed private case class Waiter[A,B](
-  r: Reagent[A, B], arg: A, var answer: AnyRef,
+sealed private case class Waiter[A](
+  r: Reagent[A], var answer: AnyRef,
   status: Ref[WaiterStatus], 
   thread: Thread
 ) extends AbsWaiter
@@ -48,24 +31,26 @@ private abstract class Failed
 private case object ShouldBlock extends Failed
 private case object ShouldRetry extends Failed
 
-sealed abstract class Reagent[-A,+B] {
+sealed abstract class Reagent[+A] {
   // "doFn" in the CML implementation
-  protected def tryReact(data: A, trans: Transaction): Any 
+  private[chemistry] def tryReact(trans: Transaction): Any 
   // "blockFn" in the CML implementation
-  protected def logWait(w: AbsWaiter): Unit
+  private[chemistry] def logWait(w: AbsWaiter): Unit
 
-  final def !(a: A): B = {
-    def slowPath: B = {
+  final def ! : A = {
+    def slowPath: A = {
       val status = Ref[WaiterStatus](Waiting)
-      val recheck: Reagent[Unit, B] = 
-	Const(Waiting, Finished) &> status.cas &> (Const(a) &> this)
-      val waiter = Waiter(this, a, null, status, Thread.currentThread())
-      @tailrec def recheckThenBlock: B = status.get() match {
-	case Finished => waiter.answer.asInstanceOf[B]
-	case _ => recheck.tryReact((), null) match {
+      val recheck: Reagent[A] = for {
+	_ <- status.cas(Waiting, Finished)
+	r <- this
+      } yield r
+      val waiter = Waiter(this, null, status, Thread.currentThread())
+      @tailrec def recheckThenBlock: A = status.get() match {
+	case Finished => waiter.answer.asInstanceOf[A]
+	case _ => recheck.tryReact(null) match {
 	  case ShouldRetry => recheckThenBlock // should backoff
 	  case ShouldBlock => LockSupport.park(waiter); recheckThenBlock
-	  case result => result.asInstanceOf[B] 
+	  case result => result.asInstanceOf[A] 
 	}
       }
       logWait(waiter)
@@ -73,118 +58,56 @@ sealed abstract class Reagent[-A,+B] {
     }
 
     // first try "fast path": react without creating/enqueuing a waiter
-    tryReact(a, null) match {
+    tryReact(null) match {
       case (_ : Failed) => slowPath
-      case result => result.asInstanceOf[B] 
+      case result => result.asInstanceOf[A] 
     }
   }
 
-  @inline final def !?(a: A): Option[B] = {
-    tryReact(a, null) match {
+  @inline final def !? : Option[A] = {
+    tryReact(null) match {
       case ShouldRetry => None	// should we actually retry here?  if
 				// we do, more informative: a failed
 				// attempt entails a linearization
 				// where no match was possible.  but
 				// could loop!
       case ShouldBlock => None
-      case result => Some(result.asInstanceOf[B])
+      case result => Some(result.asInstanceOf[A])
     }
   }
-  // @inline final def !?(x: A): Option[B] = 
-  //   ((this &> Lift(Some(_): Option[B])) <+> Const(None)) ! x
 
-  @inline final def &>[C](next: Reagent[B,C]): Reagent[A,C] = 
-    Reagent.Compose(this, next)
+  @inline final def flatMap[B](k: A => Reagent[B]): Reagent[B] = RBind(this, k)
+  @inline final def map[B](f: A => B): Reagent[B] = RBind(this, (x: A) => RUnit(f(x)))
+
   // @inline final def <+>[C <: A, D >: B](
   //   that: Reagent[C,D]): Reagent[C,D] = 
   //   new Reagent(this.choices ++ that.choices)
-  @inline final def onLeft[C]: Reagent[(A,C), (B,C)] = 
-    Reagent.OnLeft[A,B,C](this)
-  @inline final def onRight[C]: Reagent[(C,A), (C,B)] = 
-    Reagent.OnRight[A,B,C](this)
 
-  @inline final def <&[C](that: Reagent[C,A]): Reagent[C,B] = 
-    that &> this
 }
-object Reagent {
-  implicit def function2Reagent[A,B](f: Function[A,B]): Reagent[A,B] =
-    Lift(f)
-  implicit def partialFunction2Reagent[A,B](f: PartialFunction[A,B]): Reagent[A,B]
-    = Lift(f)
 
-  private def bind[A](a: Any, f: A => Any): Any = {
-    a match {
+private sealed case class RBind[A,B](c: Reagent[A], k: A => Reagent[B]) extends Reagent[B] {
+  @inline final def tryReact(trans: Transaction): Any = 
+    c.tryReact(trans) match {
       case ShouldBlock => ShouldBlock
       case ShouldRetry => ShouldRetry
-      case _ => f(a.asInstanceOf[A])
+      case res => k(res.asInstanceOf[A]).tryReact(trans)
     }
-  }
 
-  sealed case class OnLeft[A,B,C](a: Reagent[A,B]) extends Reagent[(A,C),(B,C)] {
-    @inline final def tryReact(data: (A,C), trans: Transaction): Any = 
-      bind(a.tryReact(data._1, trans), ((_:B), data._2))
-    @inline final def logWait(w: AbsWaiter) = a.logWait(w)
-  }
-
-  sealed case class OnRight[A,B,C](a: Reagent[A,B]) extends Reagent[(C,A),(C,B)] {
-    @inline final def tryReact(data: (C,A), trans: Transaction): Any = 
-      bind(a.tryReact(data._2, trans), (data._1, (_:B)))
-    @inline final def logWait(w: AbsWaiter) = a.logWait(w)
-  }
-
-  sealed case class ApplyPfn[A,B](f: PartialFunction[A,B]) extends Reagent[A,B] {
-    @inline final def tryReact(data: A, trans: Transaction): Any = 
-      if (f.isDefinedAt(data)) f(data) 
-      else ShouldBlock
-    @inline final def logWait(w: AbsWaiter) {}
-  }
-
-  sealed case class Apply[A,B](f: Function[A,B]) extends Reagent[A,B] {
-    @inline final def tryReact(data: A, trans: Transaction): B = f(data)
-    @inline final def logWait(w: AbsWaiter) {}
-  }
-
-  sealed case class Thunk[A,B](f: () => Reagent[A,B]) extends Reagent[A,B] {
-    @inline final def tryReact(data: A, trans: Transaction): Any = 
-      f().tryReact(data, trans)
-    @inline final def logWait(w: AbsWaiter) {} // "nonblocking" treatment
-  }
-
-  sealed case class Const[A,B](a: A) extends Reagent[B,A] {
-    @inline final def tryReact(data: B, trans: Transaction): A = a
-    @inline final def logWait(w: AbsWaiter) {}
-  }
-
-  case object Retry extends Reagent[Any,Nothing] {
-    @inline final def tryReact(data: Any, trans: Transaction): Any = ShouldRetry
-    @inline final def logWait(w: AbsWaiter) {}
-  }
-
-  sealed case class Compose[A,B,C](a: Reagent[A,B], b: Reagent[B,C]) 
-	       extends Reagent[A,C] {
-    @inline def tryReact(data: A, trans: Transaction): Any = 
-      bind(a.tryReact(data, trans), b.tryReact(_: B, trans))
-    @inline final def logWait(w: AbsWaiter) {
-      a.logWait(w)
-      b.logWait(w)
-    }
+  @inline final def logWait(w: AbsWaiter) {
+//      a.logWait(w)
+//      b.logWait(w)
   }
 }
 
-object Lift {
-  def apply[A,B](f: PartialFunction[A,B]): Reagent[A,B] = Reagent.ApplyPfn(f)
-  def apply[A,B](f: Function[A,B]): Reagent[A,B] = Reagent.Apply(f)
+private sealed case class RUnit[A](pure: A) extends Reagent[A] {
+  @inline final def tryReact(trans: Transaction): Any = pure
+  @inline final def logWait(w: AbsWaiter) {}
 }
 
-object Loop {
-  def apply[A,B](f: => Reagent[A,B]): Reagent[A,B] = Reagent.Thunk(() => f)
+object Retry extends Reagent[Nothing] {
+  @inline final def tryReact(trans: Transaction): Any = ShouldRetry
+  @inline final def logWait(w: AbsWaiter) {}
 }
-
-object Const {
-  def apply[A,B](a: A): Reagent[B,A] = Reagent.Const(a)
-}
-
-import Reagent.Retry
 
 /*
 private class Endpoint[A,B] extends Reagent[A,B] {
@@ -205,34 +128,21 @@ class Ref[A](init: A) extends AtomicReference[A](init) {
 
 //  private val waiters = new MSQueue[]()
 
-  case object read extends Reagent[Unit, A] {
-    @inline final def tryReact(data: Unit, trans: Transaction): A = get()
-    @inline final def logWait(w: AbsWaiter) {
-    }
-  }
-
-  case object cas extends Reagent[(A,A), Unit] {
-    @inline final def tryReact(data: (A,A), trans: Transaction): Unit = 
-      compareAndSet(data._1, data._2)
+  case object read extends Reagent[A] {
+    @inline final def tryReact(trans: Transaction): A = get()
     @inline final def logWait(w: AbsWaiter) {}
   }
 
-  // sealed case class KnownCAS[A,B](r: AtomicReference[A], ov: B => A, nv: B => A) 
-  // 	       extends Reagent[B, Unit] {
-  //   @inline final def tryReact(data: B, trans: Transaction): Unit = 
-  //     r.compareAndSet(ov(data), nv(data))
-  // }
+  case class cas(expect: A, update: A) extends Reagent[Unit] {
+    @inline final def tryReact(trans: Transaction): Unit = 
+      compareAndSet(expect, update)
+    @inline final def logWait(w: AbsWaiter) {}
+  }
 
-  // sealed case class CASFrom[A](r: AtomicReference[A], ov: A) 
-  // 	       extends Reagent[A, Unit] {
-  //   @inline final def tryReact(data: A, trans: Transaction): Unit = 
-  //     r.compareAndSet(ov, data)
-  // }
-
-  sealed case class upd[B,C](f: (A,B) => (A,C)) extends Reagent[B,C] {
-    @inline final def tryReact(data: B, trans: Transaction): C = {
+  sealed case class upd[B](f: A => (A,B)) extends Reagent[B] {
+    @inline final def tryReact(trans: Transaction): B = {
       val ov = get()
-      val (nv, ret) = f(ov, data)
+      val (nv, ret) = f(ov)
       compareAndSet(ov, nv)
       ret
     }
@@ -255,23 +165,26 @@ class Ref[A](init: A) extends AtomicReference[A](init) {
   // )
 }
 object Ref {
-  @inline final def apply[A](init: A): Ref[A] = Ref(init)
+  @inline final def apply[A](init: A): Ref[A] = new Ref(init)
   @inline final def unapply[A](r: Ref[A]): Option[A] = Some(r.get()) 
 }
 
 sealed class TreiberStack[A] {
   private val head = Ref[List[A]](List())
-  val pushRA: Reagent[A, Unit] = head upd { 
-    (xs, x:A) => (x::xs, ())
+
+  def pushRA(x:A): Reagent[Unit] = head upd { 
+    xs => (x::xs, ())
   }
-  val popRA:  Reagent[Unit,Option[A]] = head upd {
-    case (x::xs, ()) => (xs,  Some(x))
-    case (emp,   ()) => (emp, None)
+  def popRA:  Reagent[Option[A]] = head upd {
+    case (x::xs) => (xs,  Some(x))
+    case emp     => (emp, None)
   }
 
-  def push(x: A) { pushRA ! x }
-  def pop(): Option[A] = popRA ! ()
+  def push(x: A) { pushRA(x) ! }
+  def pop(): Option[A] = popRA !
 }
+
+/*
 
 sealed class MSQueue[A >: Null] {
   private case class Node(data: A, next: Ref[Node] = Ref(null))
@@ -352,6 +265,8 @@ sealed class Set[A] {
 
   def contains: Reagent[A, Boolean]
 }
+
+*/
 
 /* 
 
@@ -481,8 +396,6 @@ object Examples {
 
 */
 
-
-
 object Bench extends App {
   import java.util.Date
 
@@ -513,6 +426,7 @@ object Bench extends App {
   def doStacks {
     println("Stacks")
 
+/*
     withTime("ArrayStack") {
       val s = new scala.collection.mutable.ArrayStack[java.util.Date]()
       for (i <- 1 to iters) {
@@ -533,6 +447,7 @@ object Bench extends App {
 	s.push(d)
       }
     }
+*/
 
     withTime("Reagent-based") {
       val s = new TreiberStack[java.util.Date]()
@@ -566,16 +481,19 @@ object Bench extends App {
     //   }
     // }
 
-    withTime("Reagent-based") {				// 4,334/ms
-      val s = new MSQueue[java.util.Date]()
-      for (i <- 1 to iters) {
-	s.enq ! d
-	//s.TestFn(d)
-	//s.TestDef(d)
-	//s.enqueue(d)
-      }
-    }
+    // withTime("Reagent-based") {				// 4,334/ms
+    //   val s = new MSQueue[java.util.Date]()
+    //   for (i <- 1 to iters) {
+    // 	s.enq ! d
+    // 	//s.TestFn(d)
+    // 	//s.TestDef(d)
+    // 	//s.enqueue(d)
+    //   }
+    // }
   }
 
-  doQueues
+  //  doQueues
+  doStacks
 }
+
+

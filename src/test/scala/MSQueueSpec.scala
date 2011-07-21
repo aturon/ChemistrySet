@@ -4,6 +4,7 @@ import com.codahale.simplespec.Spec
 import chemistry._
 
 object MSQueueSpec extends Spec {
+/*
   class `a queue` {    
     def `should dequeue as None when empty` {
       var q = new Queue[Integer]()
@@ -59,4 +60,5 @@ object MSQueueSpec extends Spec {
     //   ok must beTrue
     // }
   }
+  */
 }
