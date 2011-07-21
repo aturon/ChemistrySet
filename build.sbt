@@ -7,6 +7,7 @@ scalacOptions += "-deprecation"
 scalacOptions += "-optimize"
 
 scalaVersion := "2.9.0-1"
+//scalaVersion := "2.8.1"
 
 // resolvers += Resolver.url(
 //   "Sonatype OSS Repo",
@@ -23,8 +24,6 @@ libraryDependencies ++= Seq(
   "com.codahale" % "simplespec_2.9.0-1" % "0.3.4"
 )
 
-//fork in run := true
-
 fork := true
 
 //javaOptions ++= Seq("-XX:MaxInlineSize=100000", "-XX:FreqInlineSize=100000", "-XX:LoopUnrollLimit=100000", "-XX:InlineSmallCode=100000")
@@ -39,3 +38,12 @@ javaOptions += "-XX:+DoEscapeAnalysis"
 javaOptions += "-XX:CompileThreshold=1000"
 
 //javaOptions += "-Xprof"
+
+//fullClasspath in Runtime <+= (baseDirectory) map { 
+//  bd => Attributed.blank(bd / "lib" / "caliper-r316.jar") 
+//}
+
+
+javaOptions in run += "-cp" 
+
+javaOptions in run += "lib/caliper-r316.jar"

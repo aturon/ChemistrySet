@@ -5,7 +5,7 @@ import scala.annotation.tailrec
 
 // Standard lock-free stack, due to Treiber.  Doesn't yet perform
 // exponential backoff.
-class Stack[A >: Null] {
+class HandStack[A >: Null] {
   class Node(val data: A, var next: Node) 
 
   // head always points to top of stack,

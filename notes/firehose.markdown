@@ -20,12 +20,21 @@ Further examples of reagents:
  - other classic join calculus examples
  - classic CML examples
  
+## 7/19/2011
+
+Should give more thought to incorporating (coarse-grained) locking
+into the framework.  Could provide a "scripts to programs" evolution
+(using reagent abstraction).  Also could improve on locking, by
+offering direct composition mechanism that automatically avoids
+deadlock.
+ 
 ## 7/17/2011
 
 Additional examples to explore:
 
 - n-way rendezvous.  Does this require "parallel join"?
 - phasers (requires extensions to joins) 
+- locks, etc with associated *condition variables* (or join-style equivalent)
 
 ## 7/16/2011
 
@@ -55,7 +64,7 @@ Complicated, but extremely expressive...
 
 ## 7/14/2011
 
-For semantic presentation, go with consistent STM for simplicity; its
+For semantic presentation, go with consistent STM for simplicity; it's
 an orthogonal implementation choice anyway.
 
 Monadic dependency also makes catalysts harder to understand: the

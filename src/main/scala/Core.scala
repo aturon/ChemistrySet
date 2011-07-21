@@ -133,11 +133,12 @@ class Ref[A](init: A) extends AtomicReference[A](init) {
     @inline final def logWait(w: AbsWaiter) {}
   }
 
-  case class cas(expect: A, update: A) extends Reagent[Unit] {
+  sealed case class cas(expect: A, update: A) extends Reagent[Unit] {
     @inline final def tryReact(trans: Transaction): Unit = 
       compareAndSet(expect, update)
     @inline final def logWait(w: AbsWaiter) {}
   }
+  def mkcas(ov:A,nv:A) = cas(ov,nv)  // deal with weird compiler bug
 
   sealed case class upd[B](f: A => (A,B)) extends Reagent[B] {
     @inline final def tryReact(trans: Transaction): B = {
@@ -148,61 +149,40 @@ class Ref[A](init: A) extends AtomicReference[A](init) {
     }
     @inline final def logWait(w: AbsWaiter) {}
   }
-
-  //*** NOTE: upd can be defined in terms of read and cas as follows.
-  //*** It's slower, though.
-
-  // def upd[B,C](f: (A,B) => (A,C)): Reagent[B,C] = (
-  //   Lift((x:B) => (x, ()))
-  //   &> read.onRight[B]
-  //   &> Lift((pair: (B,A)) => {
-  //        val (arg, ov) = pair
-  //        val (nv, ret) = f(ov, arg)
-  //        ((ov, nv), ret)
-  //      })
-  //   &> cas.onLeft[C]
-  //   &> Lift((pair: (Unit, C)) => pair._2)
-  // )
 }
 object Ref {
-  @inline final def apply[A](init: A): Ref[A] = new Ref(init)
-  @inline final def unapply[A](r: Ref[A]): Option[A] = Some(r.get()) 
+  final def apply[A](init: A): Ref[A] = new Ref(init)
+  final def unapply[A](r: Ref[A]): Option[A] = Some(r.get()) 
 }
 
 sealed class TreiberStack[A] {
   private val head = Ref[List[A]](List())
 
-  def pushRA(x:A): Reagent[Unit] = head upd { 
+  final def push(x:A): Reagent[Unit] = head upd { 
     xs => (x::xs, ())
   }
-  def popRA:  Reagent[Option[A]] = head upd {
+  final val pop: Reagent[Option[A]] = head upd {
     case (x::xs) => (xs,  Some(x))
     case emp     => (emp, None)
   }
-
-  def push(x: A) { pushRA(x) ! }
-  def pop(): Option[A] = popRA !
 }
-
-/*
 
 sealed class MSQueue[A >: Null] {
   private case class Node(data: A, next: Ref[Node] = Ref(null))
   private val head = Ref(Node(null))
-  private val tail = Ref(head.read!())
-  final val enq: Reagent[A, Unit] = Loop {
-    tail.read ! () match {
-      case Node(_, ref@Ref(null)) =>
-	ref.cas <& ((a:A) => (null, Node(a)))
-      case ov@Node(_, Ref(nv)) => 
-    	tail.cas <& Reagent.Const((ov,nv)) !? (); Retry
-    }
+  private val tail = Ref(head.read !)
+
+  final def enq(x:A): Reagent[Unit] = tail.read ! match {
+    case    Node(_, r@Ref(null)) => r.mkcas(null, Node(x))
+    case ov@Node(_, Ref(nv))     => tail.cas(ov,nv) !?; Retry
   }
-  val deq: Reagent[Unit, Option[A]] = head upd {
-    case (Node(_, Ref(n@Node(x, _))), ()) => (n, Some(x))
-    case (emp, ()) => (emp, None)
+  final val deq: Reagent[Option[A]] = head upd {
+    case Node(_, Ref(n@Node(x, _))) => (n, Some(x))
+    case emp => (emp, None)
   }
 }
+
+/*
 
 // invariant: if a node n was ever reachable from head, and a node m
 // is reachable from n, then all keys >= m are reachable from n.
@@ -230,17 +210,16 @@ sealed class Set[A] {
 
   private @inline final def find(key: Int): FindResult = {
     @tailrec def walk(c: PNode): (PNode, Node) = c match {
-      case PNode(Ref(Tail)) => (c, Tail)
-      case PNode(r@Ref(n@INode(Ref(m), _, Ref(true)))) => {
-	r.cas <& Reagent.Const((n, m)) ! ()
-	walk(c)
-      }
+      case PNode(Ref(Tail)) => 
+	(c, Tail)
+      case PNode(r@Ref(n@INode(Ref(m), _, Ref(true)))) => 
+	r.cas(n, m) !?; walk(c)
       case PNode(Ref(n@INode(_, data, Ref(false)))) =>	
 	if (key == data.hashCode())     Found(c, n) 
 	else if (key < data.hashCode()) NotFound(c, n)
 	else walk(n)
     }
-    walk(list.read ! ())
+    walk(list.read !)
   }
 
   def add: Reagent[A, Boolean] = Loop {
@@ -263,9 +242,8 @@ sealed class Set[A] {
     }
   }
 
-  def contains: Reagent[A, Boolean]
+//  def contains: Reagent[A, Boolean]
 }
-
 */
 
 /* 
@@ -400,8 +378,8 @@ object Bench extends App {
   import java.util.Date
 
   val d = new Date()
-  val trials = 100
-  val iters = 100000
+  val trials = 10
+  val iters = 1000000
 
 // System.currentTimeMillis
 
@@ -441,18 +419,19 @@ object Bench extends App {
       }
     }
 
+*/
+
     withTime("Direct") {
-      val s = new Stack[java.util.Date]()
+      val s = new HandStack[java.util.Date]()
       for (i <- 1 to iters) {
 	s.push(d)
       }
     }
-*/
 
-    withTime("Reagent-based") {
+    withTime("Reagent-based") {		// 36101 baseline on Dell
       val s = new TreiberStack[java.util.Date]()
       for (i <- 1 to iters) {
-	s.push(d)
+	s.push(d) !
       }
     }
   }
@@ -474,25 +453,22 @@ object Bench extends App {
     //   }
     // }
 
-    // withTime("Direct") {				// 7,142/ms
-    //   val s = new HandQueue[java.util.Date]()
-    //   for (i <- 1 to iters) {
-    // 	s.enqueue(d)
-    //   }
-    // }
+    withTime("Direct") {				// 7,142/ms
+      val s = new HandQueue[java.util.Date]()
+      for (i <- 1 to iters) {
+    	s.enqueue(d)
+      }
+    }
 
-    // withTime("Reagent-based") {				// 4,334/ms
-    //   val s = new MSQueue[java.util.Date]()
-    //   for (i <- 1 to iters) {
-    // 	s.enq ! d
-    // 	//s.TestFn(d)
-    // 	//s.TestDef(d)
-    // 	//s.enqueue(d)
-    //   }
-    // }
+    withTime("Reagent-based") {				// 4,334/ms
+      val s = new MSQueue[java.util.Date]()
+      for (i <- 1 to iters) {
+    	s.enq(d) ! 
+      }
+    }
   }
 
-  //  doQueues
+  doQueues
   doStacks
 }
 
