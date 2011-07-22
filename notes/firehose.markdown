@@ -20,6 +20,12 @@ Further examples of reagents:
  - other classic join calculus examples
  - classic CML examples
  
+## 7/22/2011
+
+Another example to check: Herlihy&Shavit, the chapter on hashing,
+talks about the difficulty in atomically moving elements between
+buckets.
+ 
 ## 7/19/2011
 
 Should give more thought to incorporating (coarse-grained) locking
