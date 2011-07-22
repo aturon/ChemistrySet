@@ -1,3 +1,5 @@
+// The reagent implementation
+
 package chemistry
 
 import java.util.concurrent.atomic._
@@ -78,9 +80,9 @@ sealed abstract class Reagent[+A] {
   @inline final def flatMap[B](k: A => Reagent[B]): Reagent[B] = 
     RBind(this, k)
   @inline final def map[B](f: A => B): Reagent[B] = 
-    RBind(this, (x: A) => Return(f(x)))
+    RBind(this, (x: A) => ret(f(x)))
   @inline final def >>[B](k: Reagent[B]): Reagent[B] = 
-    RBind(this, (_) => k)
+    RBind(this, (_:A) => k)
 
   // @inline final def <+>[C <: A, D >: B](
   //   that: Reagent[C,D]): Reagent[C,D] = 
@@ -102,17 +104,17 @@ private sealed case class RBind[A,B](c: Reagent[A], k: A => Reagent[B]) extends 
   }
 }
 
-private sealed case class Return[A](pure: A) extends Reagent[A] {
+private sealed case class ret[A](pure: A) extends Reagent[A] {
   @inline final def tryReact(trans: Transaction): Any = pure
   @inline final def logWait(w: AbsWaiter) {}
 }
 
-object Retry extends Reagent[Nothing] {
+object retry extends Reagent[Nothing] {
   @inline final def tryReact(trans: Transaction): Any = ShouldRetry
   @inline final def logWait(w: AbsWaiter) {}
 }
 
-object Loop {
+object loop {
   private case class RLoop[A](c: () => Reagent[A]) extends Reagent[A] {
     @inline final def tryReact(trans: Transaction): Any = 
       c().tryReact(trans)
@@ -166,6 +168,6 @@ object Ref {
   final def apply[A](init: A): Ref[A] = new Ref(init)
   final def unapply[A](r: Ref[A]): Option[A] = Some(r.get()) 
 }
-
-
-
+object upd {
+  final def apply[A,B](r: Ref[A])(f: A => (A,B)): Reagent[B] = r.upd(f)
+}

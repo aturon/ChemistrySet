@@ -1,10 +1,16 @@
+// An implementation of the Harris-Michael linked list via reagents
+
+package chemistry
+
+/*
+
 // invariant: if a node n was ever reachable from head, and a node m
 // is reachable from n, then all keys >= m are reachable from n.
 sealed class Set[A] {
   private abstract class Node 
   private abstract class PNode extends Node {
     def next: Ref[Node]
-    def retryIfDel: Reagent[()]
+    def retryIfDel: Reagent[Unit]
   } 
   private object PNode {
     def unapply(pn: PNode): Option[Ref[Node]] = Some(pn.next)
@@ -12,14 +18,14 @@ sealed class Set[A] {
   private case object Tail extends Node
   private case object Head extends PNode {
     val next: Ref[Node] = Ref(Tail)
-    val retryIfDel: Reagent[()] = Return(())
+    val retryIfDel: Reagent[Unit] = Return(())
   }
   private case class INode(
     next: Ref[Node], 
     data: A, 
     deleted: Ref[Boolean] = Ref(false)
   ) extends PNode {
-    val retryIfDel: Reagent[()] = deleted.cas(false, false)
+    val retryIfDel: Reagent[Unit] = deleted.cas(false, false)
   }
 
   private abstract class FindResult
@@ -62,3 +68,5 @@ sealed class Set[A] {
 
 //  def contains: Reagent[A, Boolean]
 }
+
+*/

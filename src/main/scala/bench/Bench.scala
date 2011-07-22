@@ -1,3 +1,5 @@
+// dirt simple sequential benchmarks
+
 package chemistry
 
 object Bench extends App {
