@@ -1,3 +1,129 @@
+Wide range of (sketchy) examples:
+
+    object Examples {
+      def cons[A](p:(List[A],A)) = p._2::p._1
+
+      class TreiberStack[A] {
+	private val head = Ref[List[A]](List())
+	val push = head updI {
+	  case (xs,x) => x::xs
+	}
+	val pop  = head updO {
+	  case x::xs => (xs, Some(x))
+	  case emp   => (emp,  None)
+	}
+      }
+      class TreiberStack2[A] {
+	private val head = Ref[List[A]](List())
+	val push = guard (x => 
+	  val n = List(x)
+	  loop { head upd (xs => n.tail = xs; n) })
+	val pop  = head updO {
+	  case x::xs => (xs, Some(x))
+	  case emp   => (emp,  None)
+	}
+      }
+      class BlockingStack[A] {
+	private val (sPush, rPush) = SwapChan[A, Unit]
+	private val (sPop,  rPop)  = SwapChan[Unit, A]
+	private val stack = new TreiberStack[A]
+
+	rPush &> stack.push !! ;
+	stack.pop &> { case Some(x) => x } &> rPop !! 
+
+	val push = sPush
+	val pop  = sPop
+      }
+      class BlockingElimStack[A] {
+	private val (elimPush, elimPop) = SwapChan[A, Unit]
+	private val stack = new TreiberStack[A]
+	val push = elimPush <+> stack.push
+	val pop  = elimPop  <+> (stack.pop &> { case Some(x) => x })
+      }
+      class EliminationBackoffStack[A] {
+	val (push, pop) = {
+	  val (sPush, rPush) = SwapChan[A, Unit]
+	  val (sPop,  rPop)  = SwapChan[Unit, A]
+	  val stack = new TreiberStack[A]
+
+	  rPush &> stack.push !! ;
+	  stack.pop &> rPop !! ;
+	  rPush &> Some(_) &> rPop !!
+
+	  (sPush, sPop)
+	}
+      }
+      class EliminationBackoffStack2[A] {
+	private val (elimPush, elimPop) = SwapChan[A, Unit]
+	private val stack = new TreiberStack[A]
+	val push = elimPush <+> stack.push
+	val pop  = (elimPop &> Some(_)) <+> stack.pop
+      }
+      class DCASQueue [A >: Null] {
+	class Node(val a: A) {
+	  val next = Ref[Node](null)
+	}
+	object Node {
+	  def unapply(n: Node): Option[(A, Ref[Node])] = Some((n.a, n.next))
+	}
+	private val (head, tail) = {
+	  val sentinel = new Node(null)
+	  (Ref(sentinel), Ref(sentinel))
+	}
+	val enq = guard (x: A) => for {
+	  oldTail @ Node(_, tailNext) <- tail.read
+	  n = new Node(x)
+	  tailNext.cas(null, n) & tail.cas(oldTail, n)
+	}
+	val deq = head updO {
+	  case Node(_, Ref(n @ Node(x, _))) => (n, Some(x))
+	  case emp => (emp, None)
+	}              
+      }
+      class MSQueue[A >: Null] {
+	class Node(val a: A) {
+	  val next = Ref[Node](null)
+	}
+	object Node {
+	  def unapply(n: Node): Option[(A, Ref[Node])] = Some((n.a, n.next))
+	}
+	private val (head, tail) = {
+	  val sentinel = new Node(null)
+	  (Ref(sentinel), Ref(sentinel))
+	}
+	val enq = guard (x: A) => tail.read match {
+	  case n@Node(_, Ref(nt@Node(_, _))) => (tail.cas(n, nt) <+> always) >> enq(x)
+	  case   Node(_, r)                  => r.cas(null, new Node(x))
+	}
+	val deq = head updO {
+	  case Node(_, Ref(n@Node(x, _))) => (n, Some(x))
+	  case emp                        => (emp, None)
+	}
+      }
+      class MSQueue2[A >: Null] {
+	class Node(val a: A) {
+	  val next = Ref[Node](null)
+	}
+	object Node {
+	  def unapply(n: Node): Option[(A, Ref[Node])] = Some((n.a, n.next))
+	}
+	private val (head, tail) = {
+	  val sentinel = new Node(null)
+	  (Ref(sentinel), Ref(sentinel))
+	}
+	val enq = guard (x => 
+	  val node = new Node(x)
+	  loop { tail.read >>= {
+	    case n@Node(_, Ref(nt@Node(_, _))) => tail.cas(n, nt).attempt; retry
+	    case   Node(_, r)                  => r.cas(null, node)
+	  }})
+	val deq = head updO {
+	  case Node(_, Ref(n@Node(x, _))) => (n, Some(x))
+	  case emp                        => (emp, None)
+	}
+      }
+    }
+
 Async attempt:
 
     reactant { someSync(x) -> SOME _ | always NONE }

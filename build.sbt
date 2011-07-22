@@ -37,13 +37,12 @@ javaOptions += "-XX:+DoEscapeAnalysis"
 
 javaOptions += "-XX:CompileThreshold=1000"
 
-//javaOptions += "-Xprof"
+javaOptions += "-Xprof"
 
 //fullClasspath in Runtime <+= (baseDirectory) map { 
 //  bd => Attributed.blank(bd / "lib" / "caliper-r316.jar") 
 //}
 
 
-javaOptions in run += "-cp" 
-
-javaOptions in run += "lib/caliper-r316.jar"
+//javaOptions in run += "-cp" 
+//javaOptions in run += fullClasspath.absString
