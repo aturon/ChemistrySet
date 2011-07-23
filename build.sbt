@@ -7,11 +7,6 @@ scalacOptions += "-deprecation"
 scalacOptions += "-optimize"
 
 scalaVersion := "2.9.0-1"
-//scalaVersion := "2.8.1"
-
-// resolvers += Resolver.url(
-//   "Sonatype OSS Repo",
-//   url("http://oss.sonatype.org/content/repositories/snapshots"))
 
 resolvers += "Sonatype OSS Repo" at "http://oss.sonatype.org/content/repositories/snapshots"
 
@@ -26,18 +21,23 @@ libraryDependencies ++= Seq(
 
 fork := true
 
-//javaOptions ++= Seq("-XX:MaxInlineSize=100000", "-XX:FreqInlineSize=100000", "-XX:LoopUnrollLimit=100000", "-XX:InlineSmallCode=100000")
-
 javaOptions += "-server"
 
 javaOptions += "-XX:+DoEscapeAnalysis"
 
+//javaOptions += "-Xprof"
+
+
+
+
+
+//javaOptions ++= Seq("-XX:MaxInlineSize=100000", "-XX:FreqInlineSize=100000", "-XX:LoopUnrollLimit=100000", "-XX:InlineSmallCode=100000")
+
+
 //javaOptions += "-XX:+PrintCompilation"
 //javaOptions += "-XX:+PrintInlining"
 
-javaOptions += "-XX:CompileThreshold=1000"
-
-javaOptions += "-Xprof"
+//javaOptions += "-XX:CompileThreshold=1000"
 
 //fullClasspath in Runtime <+= (baseDirectory) map { 
 //  bd => Attributed.blank(bd / "lib" / "caliper-r316.jar") 
