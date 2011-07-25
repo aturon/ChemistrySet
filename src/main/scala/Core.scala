@@ -21,12 +21,14 @@ private case object Catalyst extends WaiterStatus
 private case object Waiting  extends WaiterStatus
 private case object Finished extends WaiterStatus
 
-// sealed private abstract class AbsWaiter
-// sealed private case class Waiter[A](
-//   r: Reagent[A], var answer: AnyRef,
-//   status: Ref[WaiterStatus], 
-//   thread: Thread
-// ) extends AbsWaiter
+sealed private abstract class AbsWaiter
+sealed private case class Waiter[A,B](
+  r: Reagent[A,B], 
+  arg: A,
+  var answer: AnyRef,
+  status: Ref[WaiterStatus], 
+  thread: Thread
+) extends AbsWaiter
 
 private case object Impossible extends Exception
 
