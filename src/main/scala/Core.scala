@@ -28,8 +28,11 @@ sealed private case class Waiter[A](
   thread: Thread
 ) extends AbsWaiter
 
-private case object ShouldBlock extends Exception
-private case object ShouldRetry extends Exception
+private case object Impossible extends Exception
+
+private abstract class BacktrackCommand extends Exception
+private case object ShouldBlock extends BacktrackCommand
+private case object ShouldRetry extends BacktrackCommand
 
 private sealed abstract class ReagentK[-A,+B] {
   private[chemistry] def tryReact(a: A, trans: Transaction): B
@@ -61,26 +64,32 @@ sealed abstract class Reagent[+A] {
       } yield r
       val waiter = Waiter(this, null, status, Thread.currentThread())
 
+      //logWait(waiter)
+
+      // written with while because scalac couldn't handle tail recursion
       while (true) status.get() match {
-	case Finished => waiter.answer.asInstanceOf[A]
+	case Finished => return waiter.answer.asInstanceOf[A]
 	case _ => try {
-	  recheck.tryReact(null, finalk) 
+	  return recheck.tryReact(null, finalk) 
 	} catch {
-	  case ShouldRetry => recheckThenBlock // should backoff
-	  case ShouldBlock => LockSupport.park(waiter); recheckThenBlock
+	  case ShouldRetry => () // should backoff
+	  case ShouldBlock => LockSupport.park(waiter)
 	}
       }
-      //logWait(waiter)
-      recheckThenBlock
+      throw Impossible
     }
 
     // first try "fast path": react without creating/enqueuing a waiter
-    try {
-      tryReact(null, finalk) 
-    } catch {
-      case ShouldBlock => slowPath
-      case ShouldRetry => slowPath
+    // written with while because scalac couldn't handle tail recursion
+    while (true) {
+      try {
+    	return tryReact(null, finalk) 
+      } catch {
+    	case ShouldRetry => () // should backoff
+        case ShouldBlock => return slowPath
+      }
     }
+    throw Impossible
   }
 
   @inline final def !? : Option[A] = {
@@ -101,11 +110,11 @@ sealed abstract class Reagent[+A] {
   }
 
   @inline final def flatMap[B](k: A => Reagent[B]): Reagent[B] = 
-    RBind(this, k)
+    Bind(this, k)
   @inline final def map[B](f: A => B): Reagent[B] = 
-    RBind(this, (x: A) => ret(f(x)))
+    Bind(this, (x: A) => ret(f(x)))
   @inline final def >>[B](k: Reagent[B]): Reagent[B] = 
-    RBind(this, (_:A) => k)
+    Bind(this, (_:A) => k)
 
   // @inline final def <+>[C <: A, D >: B](
   //   that: Reagent[C,D]): Reagent[C,D] = 
@@ -115,7 +124,8 @@ sealed abstract class Reagent[+A] {
 
 //private 
 
-private case class RBind[A,B](c: Reagent[A], k1: A => Reagent[B]) extends Reagent[B] {
+private case class Bind[A,B](c: Reagent[A], k1: A => Reagent[B]) 
+	     extends Reagent[B] {
   @inline final def tryReact[C](trans: Transaction, k2: ReagentK[B,C]): C = 
     c.tryReact(trans, BindK(k1, k2))
 }
@@ -133,11 +143,11 @@ object retry extends Reagent[Nothing] {
 // this really needs a better name
 // could call it "reagent"
 object loop {
-  private case class RLoop[A](c: () => Reagent[A]) extends Reagent[A] {
+  private case class Loop[A](c: () => Reagent[A]) extends Reagent[A] {
     @inline final def tryReact[B](trans: Transaction, k: ReagentK[A,B]): B = 
       c().tryReact(trans, k)
   }
-  @inline final def apply[A](c: => Reagent[A]): Reagent[A] = RLoop(() => c)
+  @inline final def apply[A](c: => Reagent[A]): Reagent[A] = Loop(() => c)
 }
 
 /*
