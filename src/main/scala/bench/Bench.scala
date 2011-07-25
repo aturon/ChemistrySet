@@ -6,8 +6,8 @@ object Bench extends App {
   import java.util.Date
 
   val d = new Date()
-  val trials = 10
-  val iters = 1000000
+  val trials = 200
+  val iters = 100000
 
   val showDirect = true
 
@@ -22,10 +22,14 @@ object Bench extends App {
       val t = getTime
       thunk
       val t2 = getTime
+      // print(t2 - t)
+      // print(" ")
       sum += (t2 - t)
+//      System.gc()
     } 
+//    println("")
     print("  ")
-    print((trials * iters) / (1 * sum))  // 1000 * sum for us
+    print((trials * iters) / (1000 * sum))  // 1000 * sum for us
     print(" -- ")
     println(msg)
 //    println(" iters/ms")
@@ -34,17 +38,17 @@ object Bench extends App {
   def doPush {
     println("Stacks: push only")
 
+    withTime("Reagent-based") {		// 36101 baseline on Dell
+      val s = new TreiberStack[java.util.Date]()
+      for (i <- 1 to iters) {
+	s.push ! d
+      }
+    }
+
     withTime("Direct", showDirect) {
       val s = new HandStack[java.util.Date]()
       for (i <- 1 to iters) {
 	s.push(d)
-      }
-    }
-
-    withTime("Reagent-based") {		// 36101 baseline on Dell
-      val s = new TreiberStack[java.util.Date]()
-      for (i <- 1 to iters) {
-	s.push(d) !
       }
     }
   }
@@ -52,19 +56,23 @@ object Bench extends App {
   def doPushPop {
     println("Stacks: push and pop")
 
+    withTime("Reagent-based") {		// 36101 baseline on Dell
+      val s = new TreiberStack[java.util.Date]()
+      for (i <- 1 to iters) {
+	s.push ! d;
+	s.push ! d;
+	s.pop ! ()
+	s.pop ! ()
+      }
+    }
+
     withTime("Direct", showDirect) {
       val s = new HandStack[java.util.Date]()
       for (i <- 1 to iters) {
 	s.push(d)
+	s.push(d)
 	s.pop
-      }
-    }
-
-    withTime("Reagent-based") {		// 36101 baseline on Dell
-      val s = new TreiberStack[java.util.Date]()
-      for (i <- 1 to iters) {
-	s.push(d) ! ;
-	s.pop !
+	s.pop
       }
     }
   }
@@ -72,6 +80,13 @@ object Bench extends App {
   def doEnq {
     println("Queues: enq only")
 
+    withTime("Reagent-based") {				// 4,334/ms
+      val s = new MSQueue[java.util.Date]()
+      for (i <- 1 to iters) {
+    	s.enq ! d 
+      }
+    }
+
     withTime("Direct", showDirect) {				// 7,142/ms
       val s = new HandQueue[java.util.Date]()
       for (i <- 1 to iters) {
@@ -79,30 +94,24 @@ object Bench extends App {
       }
     }
 
-    withTime("Reagent-based") {				// 4,334/ms
-      val s = new MSQueue[java.util.Date]()
-      for (i <- 1 to iters) {
-    	s.enq(d) ! 
-      }
-    }
   }
 
   def doEnqDeq {
     println("Queues: enq and deq")
+
+    withTime("Reagent-based") {				// 4,334/ms
+      val s = new MSQueue[java.util.Date]()
+      for (i <- 1 to iters) {
+    	s.enq ! d;
+	s.deq ! ()
+      }
+    }
 
     withTime("Direct", showDirect) {				// 7,142/ms
       val s = new HandQueue[java.util.Date]()
       for (i <- 1 to iters) {
     	s.enqueue(d)
     	s.dequeue
-      }
-    }
-
-    withTime("Reagent-based") {				// 4,334/ms
-      val s = new MSQueue[java.util.Date]()
-      for (i <- 1 to iters) {
-    	s.enq(d) ! ;
-	s.deq !
       }
     }
   }

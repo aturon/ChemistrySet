@@ -25,8 +25,11 @@ javaOptions += "-server"
 
 javaOptions += "-XX:+DoEscapeAnalysis"
 
+javaOptions += "-XX:CompileThreshold=10"
+
 //javaOptions += "-Xprof"
 
+//javaOptions += "-XX:+PrintGC"
 
 
 
