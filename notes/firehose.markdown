@@ -7,24 +7,56 @@ Need to read:
 To try coding:
 
  - stack/queue tests with concurrent dequeuing
- - kcas
- 
-Further examples of reagents:
-
  - additional stack/queue operations a la JUC
  - flat combiner version of stack/queue
- - hand-over-hand set
- - lazy set
- - skiplist-based map
- - synchronization examples from Scalable Joins
  - other classic join calculus examples
  - classic CML examples
+ - hand-over-hand set
+ 
+Todo:
+
+ - kcas
+ - lazy set
+ - channels, blocking
+ - synchronization examples from Scalable Joins
+ - choice
+ - guards/never
+ - bags
+ - skiplist
+ - kcss
+ - skiplist-based map
+ - hashtable
+ 
+## 7/23/2011
+
+Need to collect examples of interaction between share-state and
+message-passing reagents.
+
+Need to think *very* carefully about the interaction of unrecorded IO
+operations and STM-like semantics for sequenced reagents.  E.g.,
+imagine composing two stack pushes, or two set insertions.  Could be a
+good argument in favor of composing on disjoint state only.  Still get
+something more expressive than JUC library, but less composable than
+full STM.
+ 
+Interesting note about Transactional Events: the "completeness"
+property effectively forces unordered message delivery -- this likely
+means that the NP-hardness doesn't depend essentially on CML's choice
+construct.
+
+Exponential search is not really "pay as you go": any *sequence* of
+sends can, in general, lead to a search.  Use of a "parallel"
+composition (to avoid dependency) cuts down to linear.  This is part
+of what makes the join encoding efficient.
  
 ## 7/22/2011
 
 Another example to check: Herlihy&Shavit, the chapter on hashing,
 talks about the difficulty in atomically moving elements between
 buckets.
+
+Very hard to see a way to avoid constant closure and operation
+allocation in the monadic API.
  
 ## 7/19/2011
 

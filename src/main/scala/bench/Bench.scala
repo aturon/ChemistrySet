@@ -9,7 +9,7 @@ object Bench extends App {
   val trials = 10
   val iters = 1000000
 
-  val showDirect = false
+  val showDirect = true
 
   def getTime = (new Date()).getTime
   def withTime(msg: String, enabled: Boolean = true)(thunk: => Unit) {

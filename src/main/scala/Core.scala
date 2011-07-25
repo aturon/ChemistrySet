@@ -28,17 +28,31 @@ sealed private case class Waiter[A](
   thread: Thread
 ) extends AbsWaiter
 
-private abstract class Failed
-private case object ShouldBlock extends Failed
-private case object ShouldRetry extends Failed
+private case object ShouldBlock extends Exception
+private case object ShouldRetry extends Exception
+
+private sealed abstract class ReagentK[-A,+B] {
+  private[chemistry] def tryReact(a: A, trans: Transaction): B
+}
+
+private sealed case class BindK[A,B,C](k1: A => Reagent[B], k2: ReagentK[B,C]) 
+		    extends ReagentK[A,C] {
+  def tryReact(a: A, trans: Transaction): C = k1(a).tryReact(trans, k2)
+}
+
+private object FinalK extends ReagentK[Any,Any] {
+  // ID continuation at the moment; eventually will be responsible for kCAS
+  def tryReact(a: Any, trans: Transaction): Any = a
+}
 
 sealed abstract class Reagent[+A] {
-  // "doFn" in the CML implementation
-  private[chemistry] def tryReact(trans: Transaction): Any 
-  // "blockFn" in the CML implementation
-  private[chemistry] def logWait(w: AbsWaiter): Unit
+  private[chemistry] def tryReact[B](trans: Transaction, k: ReagentK[A,B]): B
 
   final def ! : A = {
+    // we want only one global instance of FinalK, but the cost is a
+    // silly typecast
+    val finalk = FinalK.asInstanceOf[ReagentK[A,A]] 
+    
     def slowPath: A = {
       val status = Ref[WaiterStatus](Waiting)
       val recheck: Reagent[A] = for {
@@ -46,34 +60,43 @@ sealed abstract class Reagent[+A] {
 	r <- this
       } yield r
       val waiter = Waiter(this, null, status, Thread.currentThread())
-      @tailrec def recheckThenBlock: A = status.get() match {
+
+      while (true) status.get() match {
 	case Finished => waiter.answer.asInstanceOf[A]
-	case _ => recheck.tryReact(null) match {
+	case _ => try {
+	  recheck.tryReact(null, finalk) 
+	} catch {
 	  case ShouldRetry => recheckThenBlock // should backoff
 	  case ShouldBlock => LockSupport.park(waiter); recheckThenBlock
-	  case result => result.asInstanceOf[A] 
 	}
       }
-      logWait(waiter)
+      //logWait(waiter)
       recheckThenBlock
     }
 
     // first try "fast path": react without creating/enqueuing a waiter
-    tryReact(null) match {
-      case (_ : Failed) => slowPath
-      case result => result.asInstanceOf[A] 
+    try {
+      tryReact(null, finalk) 
+    } catch {
+      case ShouldBlock => slowPath
+      case ShouldRetry => slowPath
     }
   }
 
   @inline final def !? : Option[A] = {
-    tryReact(null) match {
+    // we want only one global instance of FinalK, but the cost is a
+    // silly typecast
+    val finalk = FinalK.asInstanceOf[ReagentK[A,A]] 
+
+    try {
+      Some(tryReact(null, finalk))
+    } catch {
       case ShouldRetry => None	// should we actually retry here?  if
 				// we do, more informative: a failed
 				// attempt entails a linearization
 				// where no match was possible.  but
-				// could loop!
+				// could diverge...
       case ShouldBlock => None
-      case result => Some(result.asInstanceOf[A])
     }
   }
 
@@ -90,35 +113,29 @@ sealed abstract class Reagent[+A] {
 
 }
 
-private sealed case class RBind[A,B](c: Reagent[A], k: A => Reagent[B]) extends Reagent[B] {
-  @inline final def tryReact(trans: Transaction): Any = 
-    c.tryReact(trans) match {
-      case ShouldBlock => ShouldBlock
-      case ShouldRetry => ShouldRetry
-      case res => k(res.asInstanceOf[A]).tryReact(trans)
-    }
+//private 
 
-  @inline final def logWait(w: AbsWaiter) {
-//      a.logWait(w)
-//      b.logWait(w)
-  }
+private case class RBind[A,B](c: Reagent[A], k1: A => Reagent[B]) extends Reagent[B] {
+  @inline final def tryReact[C](trans: Transaction, k2: ReagentK[B,C]): C = 
+    c.tryReact(trans, BindK(k1, k2))
 }
 
-private sealed case class ret[A](pure: A) extends Reagent[A] {
-  @inline final def tryReact(trans: Transaction): Any = pure
-  @inline final def logWait(w: AbsWaiter) {}
+sealed case class ret[A](pure: A) extends Reagent[A] {
+  @inline final def tryReact[B](trans: Transaction, k: ReagentK[A,B]): B = 
+    k.tryReact(pure, trans)
 }
 
 object retry extends Reagent[Nothing] {
-  @inline final def tryReact(trans: Transaction): Any = ShouldRetry
-  @inline final def logWait(w: AbsWaiter) {}
+  @inline final def tryReact[A](trans: Transaction, k: ReagentK[Nothing,A]): A = 
+    throw ShouldRetry
 }
 
+// this really needs a better name
+// could call it "reagent"
 object loop {
   private case class RLoop[A](c: () => Reagent[A]) extends Reagent[A] {
-    @inline final def tryReact(trans: Transaction): Any = 
-      c().tryReact(trans)
-    @inline final def logWait(w: AbsWaiter) {}
+    @inline final def tryReact[B](trans: Transaction, k: ReagentK[A,B]): B = 
+      c().tryReact(trans, k)
   }
   @inline final def apply[A](c: => Reagent[A]): Reagent[A] = RLoop(() => c)
 }
@@ -143,25 +160,25 @@ class Ref[A](init: A) extends AtomicReference[A](init) {
 //  private val waiters = new MSQueue[]()
 
   case object read extends Reagent[A] {
-    @inline final def tryReact(trans: Transaction): A = get()
-    @inline final def logWait(w: AbsWaiter) {}
+    @inline final def tryReact[B](trans: Transaction, k: ReagentK[A,B]): B = 
+      k.tryReact(get(), trans)
   }
 
   sealed case class cas(expect: A, update: A) extends Reagent[Unit] {
-    @inline final def tryReact(trans: Transaction): Unit = 
+    @inline final def tryReact[B](trans: Transaction, k: ReagentK[Unit,B]): B = {
       compareAndSet(expect, update)
-    @inline final def logWait(w: AbsWaiter) {}
+      k.tryReact((), trans)
+    }
   }
   def mkcas(ov:A,nv:A) = cas(ov,nv)  // deal with weird compiler bug
 
   sealed case class upd[B](f: A => (A,B)) extends Reagent[B] {
-    @inline final def tryReact(trans: Transaction): B = {
+    @inline final def tryReact[C](trans: Transaction, k: ReagentK[B,C]): C = {
       val ov = get()
       val (nv, ret) = f(ov)
       compareAndSet(ov, nv)
-      ret
+      k.tryReact(ret, trans)
     }
-    @inline final def logWait(w: AbsWaiter) {}
   }
 }
 object Ref {
