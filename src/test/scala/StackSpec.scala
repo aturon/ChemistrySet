@@ -7,7 +7,7 @@ object StackSpec extends Spec {
   class `a stack` {    
     def `should pop as None when empty` {
       var s = new TreiberStack[Integer]()
-      (s.pop !) must beNone
+      s.pop ! () must beNone
     }
     // def `should popAll as nil when empty` {
     //   var s = new TreiberStack[Integer]()
@@ -15,8 +15,8 @@ object StackSpec extends Spec {
     // }
     def `should pop as Some _ when full` {
       var s = new TreiberStack[Integer]()
-      s.push(1)!;
-      (s.pop !) must beSome
+      s.push ! 1;
+      s.pop ! () must beSome
     }
     // def `should popAll as nonempty when full` {
     //   var s = new TreiberStack[Integer]()
@@ -25,9 +25,9 @@ object StackSpec extends Spec {
     // }
     def `should pop as None after emptying` {
       var s = new TreiberStack[Integer]()
-      s.push(1)!;
-      s.pop!;
-      (s.pop!) must beNone
+      s.push ! 1;
+      s.pop ! ();
+      s.pop ! () must beNone
     }
     // def `should pop as None after popAll` {
     //   var s = new TreiberStack[Integer]()
@@ -38,9 +38,9 @@ object StackSpec extends Spec {
     // }
     def `should pop in reverse order` {
       var s = new TreiberStack[Integer]()
-      s.push(1)!;
-      s.push(2)!;
-      (s.pop!, s.pop!) must beEqualTo(Some(2), Some(1))
+      s.push ! 1;
+      s.push ! 2;
+      (s.pop!(), s.pop!()) must beEqualTo(Some(2), Some(1))
     }
     // def `should popAll in reverse order` {
     //   var s = new TreiberStack[Integer]()
