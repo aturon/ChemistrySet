@@ -25,7 +25,7 @@ class HandQueue[A >: Null] {
     (n, n.next.get) // note: n.next ne null, but n.next.get might
   }    
 
-  def enqueue(x: A) {
+  def enq(x: A) {
     val n = new Node(x)   // n.next.get eq null when enqueued
     while (true) {
       getAndGetNext(tail) match {
@@ -35,7 +35,7 @@ class HandQueue[A >: Null] {
     }
   }
 
-  def dequeue: Option[A] = {
+  def tryDeq: Option[A] = {
     while (true) {
       getAndGetNext(head) match {
 	case (h, null) => return None
@@ -48,9 +48,9 @@ class HandQueue[A >: Null] {
   // is it possible to be smarter here, e.g.
   // by CASing on head and/or tail to grab the
   // whole queue at once?
-  def dequeueAll: List[A] = {
+  def deqAll: List[A] = {
     @tailrec def grabAll(acc: List[A]): List[A] = 
-      dequeue match {
+      tryDeq match {
 	case None => acc
 	case Some(x) => grabAll(x :: acc)
       }

@@ -20,7 +20,7 @@ class HandStack[A >: Null] {
     } 
   }
 
-  def pop(): Option[A] = {
+  def tryPop(): Option[A] = {
     while (true) {
       val h = head.get
       if (h eq null) 
@@ -34,7 +34,7 @@ class HandStack[A >: Null] {
   // definitely possible to do this all at once with a CAS on head
   def popAll(): List[A] = {
     @tailrec def grabAll(acc: List[A]): List[A] = 
-      pop match {
+      tryPop match {
 	case None => acc
 	case Some(x) => grabAll(x :: acc)
       }

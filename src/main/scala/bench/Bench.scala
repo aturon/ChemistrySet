@@ -62,8 +62,8 @@ object Bench extends App {
     for (i <- 1 to iters) {
       s.push(d)
       s.push(d)
-      s.pop
-      s.pop
+      s.tryPop
+      s.tryPop
     }
   } 
   def raPushPop {
@@ -80,7 +80,7 @@ object Bench extends App {
   def diEnq {
     val s = new HandQueue[java.util.Date]()
     for (i <- 1 to iters) {
-      s.enqueue(d)
+      s.enq(d)
     }
   } 
   def raEnq {		
@@ -94,8 +94,8 @@ object Bench extends App {
   def diEnqDeq {
     val s = new HandQueue[java.util.Date]()
     for (i <- 1 to iters) {
-      s.enqueue(d)
-      s.dequeue
+      s.enq(d)
+      s.tryDeq
     }
   } 
   def raEnqDeq {
