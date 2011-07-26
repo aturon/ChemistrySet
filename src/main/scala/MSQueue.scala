@@ -5,7 +5,7 @@ package chemistry
 import scala.annotation.tailrec
 
 sealed class MSQueue[A >: Null] {
-  private case class Node(data: A, next: Ref[Node] = Ref(null))
+  private final case class Node(data: A, next: Ref[Node] = Ref(null))
   private val head = Ref(Node(null))
   private val tail = Ref(head.read!())
 
