@@ -109,6 +109,10 @@ sealed abstract class Reagent[-A, +B] {
     }
   }
 
+  final def dissolve(a: A) {
+    // todo
+  }
+
   @inline final def flatMap[C](k: B => Reagent[Unit,C]): Reagent[A,C] = 
     Bind(this, k)
   @inline final def map[C](f: B => C): Reagent[A,C] = 
