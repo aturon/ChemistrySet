@@ -107,7 +107,6 @@ object Bench extends App {
   }
   compare("Queues: enq and deq", diEnqDeq, raEnqDeq)
   
-  println("")
   print("Weighted average: ")
-  print((100*totReagent)/totDirect)
+  println((100*totReagent)/totDirect)
 }
