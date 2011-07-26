@@ -126,12 +126,12 @@ private case class Bind[A,B,C](c: Reagent[A,B], k1: B => Reagent[Unit,C])
     c.tryReact(a, trans, BindK(k1, k2))
 }
 
-private case class RRet[A](pure: A) extends Reagent[Unit,A] {
-  final def tryReact[B](u: Unit, trans: Transaction, k: ReagentK[A,B]): B = 
-    k.tryReact(pure, trans)
-}
 object ret { 
-  @inline final def apply[A](pure: A): Reagent[Unit,A] = RRet(pure)
+  private case class Ret[A](pure: A) extends Reagent[Unit,A] {
+    final def tryReact[B](u: Unit, trans: Transaction, k: ReagentK[A,B]): B = 
+      k.tryReact(pure, trans)
+  }
+  @inline final def apply[A](pure: A): Reagent[Unit,A] = Ret(pure)
 }
 
 // Not sure whether this should be available as a combinaor
@@ -140,14 +140,19 @@ object ret {
 //     throw ShouldRetry
 // }
 
+object never extends Reagent[Any, Nothing] {
+  final def tryReact[A](a: Any, trans: Transaction, k: ReagentK[Nothing, A]): A =
+    throw ShouldBlock
+}
+
 // this really needs a better name
 // could call it "reagent"
-private case class RLoop[A,B](c: A => Reagent[Unit,B]) extends Reagent[A,B] {
-  final def tryReact[C](a: A, trans: Transaction, k: ReagentK[B,C]): C = 
-    c(a).tryReact((), trans, k)
-}
 object loop {
-  @inline final def apply[A,B](c: A => Reagent[Unit,B]): Reagent[A,B] = RLoop(c)
+  private case class Loop[A,B](c: A => Reagent[Unit,B]) extends Reagent[A,B] {
+    final def tryReact[C](a: A, trans: Transaction, k: ReagentK[B,C]): C = 
+      c(a).tryReact((), trans, k)
+  }
+  @inline final def apply[A,B](c: A => Reagent[Unit,B]): Reagent[A,B] = Loop(c)
 }
 
 private case class Choice[A,B](r1: Reagent[A,B], r2: Reagent[A,B]) 
@@ -163,7 +168,7 @@ private case class Choice[A,B](r1: Reagent[A,B], r2: Reagent[A,B])
 }
 
 private class Endpoint[A,B] extends Reagent[A,B] {
-//  val mq = new MSQueue[Waiter[A,B]]()
+  val mq = new MSQueue[Waiter[A,B]]()
   var dual: Endpoint[B,A] = null
   final def tryReact[C](a: A, trans: Transaction, k: ReagentK[B,C]): C = 
     throw ShouldRetry
