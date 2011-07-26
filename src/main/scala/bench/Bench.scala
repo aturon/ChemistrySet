@@ -102,7 +102,7 @@ object Bench extends App {
     val s = new MSQueue[java.util.Date]()
     for (i <- 1 to iters) {
       s.enq ! d;
-      s.deq ! ()
+      s.tryDeq ! ()
     }
   }
   compare("Queues: enq and deq", diEnqDeq, raEnqDeq)

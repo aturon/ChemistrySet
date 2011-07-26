@@ -56,37 +56,33 @@ sealed abstract class Reagent[-A, +B] {
   def tryReact[C](a: A, trans: Transaction, k: ReagentK[B,C]): C
 
   final def !(a: A): B = {
-    // we want only one global instance of FinalK, but the cost is a
-    // silly typecast
+    // typecast to work around contravariance and save on allocation
     val finalk = FinalK.asInstanceOf[ReagentK[B,B]] 
     
     def slowPath: B = {
       val status = Ref[WaiterStatus](Waiting)
-      // val recheck: Reagent[A] = for {
-      // 	_ <- status.cas(Waiting, Finished)
-      // 	r <- this
-      // } yield r
-      // val waiter = Waiter(this, null, status, Thread.currentThread())
+      val recheck: Reagent[A,B] = for {
+      	r <- this
+      	_ <- status.cas(Waiting, Finished)
+      } yield r
+      val waiter = Waiter(this, a, null, status, Thread.currentThread())
 
       //logWait(waiter)
 
-      // written with while because scalac couldn't handle tail recursion
-      while (true) status.get() match {
-//	case Finished => return waiter.answer.asInstanceOf[A]
+      while (true) status.get() match { // scalac can't do @tailrec here
+	case Finished => return waiter.answer.asInstanceOf[B]
 	case _ => try {
-//	  return recheck.tryReact(a, null, finalk) 
-	  return tryReact(a, null, finalk) 
+	  return recheck.tryReact(a, null, finalk) 
 	} catch {
 	  case ShouldRetry => () // should backoff
-//	  case ShouldBlock => LockSupport.park(waiter)
+	  case ShouldBlock => LockSupport.park(waiter)
 	}
       }
       throw Impossible
     }
 
     // first try "fast path": react without creating/enqueuing a waiter
-    // written with while because scalac couldn't handle tail recursion
-    while (true) {
+    while (true) { // scalac can't do @tailrec here
       try {
     	return tryReact(a, null, finalk) 
       } catch {
@@ -98,8 +94,7 @@ sealed abstract class Reagent[-A, +B] {
   }
 
   @inline final def !?(a:A) : Option[B] = {
-    // we want only one global instance of FinalK, but the cost is a
-    // silly typecast
+    // typecast to work around contravariance and save on allocation
     val finalk = FinalK.asInstanceOf[ReagentK[B,B]] 
 
     try {
@@ -131,12 +126,12 @@ private case class Bind[A,B,C](c: Reagent[A,B], k1: B => Reagent[Unit,C])
     c.tryReact(a, trans, BindK(k1, k2))
 }
 
-private case class Ret[A](pure: A) extends Reagent[Unit,A] {
+private case class RRet[A](pure: A) extends Reagent[Unit,A] {
   final def tryReact[B](u: Unit, trans: Transaction, k: ReagentK[A,B]): B = 
     k.tryReact(pure, trans)
 }
 object ret { 
-  @inline final def apply[A](pure: A): Reagent[Unit,A] = Ret(pure)
+  @inline final def apply[A](pure: A): Reagent[Unit,A] = RRet(pure)
 }
 
 // Not sure whether this should be available as a combinaor
@@ -147,12 +142,12 @@ object ret {
 
 // this really needs a better name
 // could call it "reagent"
-private case class Loop[A,B](c: A => Reagent[Unit,B]) extends Reagent[A,B] {
+private case class RLoop[A,B](c: A => Reagent[Unit,B]) extends Reagent[A,B] {
   final def tryReact[C](a: A, trans: Transaction, k: ReagentK[B,C]): C = 
     c(a).tryReact((), trans, k)
 }
 object loop {
-  @inline final def apply[A,B](c: A => Reagent[Unit,B]): Reagent[A,B] = Loop(c)
+  @inline final def apply[A,B](c: A => Reagent[Unit,B]): Reagent[A,B] = RLoop(c)
 }
 
 private case class Choice[A,B](r1: Reagent[A,B], r2: Reagent[A,B]) 
@@ -168,7 +163,7 @@ private case class Choice[A,B](r1: Reagent[A,B], r2: Reagent[A,B])
 }
 
 private class Endpoint[A,B] extends Reagent[A,B] {
-  val mq = new MSQueue[Waiter[A,B]]()
+//  val mq = new MSQueue[Waiter[A,B]]()
   var dual: Endpoint[B,A] = null
   final def tryReact[C](a: A, trans: Transaction, k: ReagentK[B,C]): C = 
     throw ShouldRetry
@@ -212,9 +207,10 @@ class Ref[A](init: A) extends AtomicReference[A](init) {
       k.tryReact(ret, trans)
     }
   }
-  private sealed class UpdUnit[B](f: A => (A,B)) extends Reagent[Unit, B] {
+  private sealed class UpdUnit[B](f: PartialFunction[A, (A,B)]) extends Reagent[Unit, B] {
     final def tryReact[C](u: Unit, trans: Transaction, k: ReagentK[B,C]): C = {
       val ov = get()
+      if (!f.isDefinedAt(ov)) throw ShouldBlock
       val (nv, ret) = f(ov)
       compareAndSet(ov, nv)
       k.tryReact(ret, trans)
@@ -223,7 +219,9 @@ class Ref[A](init: A) extends AtomicReference[A](init) {
 
   @inline final def upd[B,C](f: (A,B) => (A,C)): Reagent[B, C] = 
     new Upd(f)
-  @inline final def upd[B](f: A => (A,B)): Reagent[Unit, B] = 
+  // @inline final def upd[B](f: A => (A,B)): Reagent[Unit, B] = 
+  //   new UpdUnit(f)
+  @inline final def upd[B](f: PartialFunction[A, (A,B)]): Reagent[Unit, B] = 
     new UpdUnit(f)
 }
 object Ref {
@@ -233,6 +231,6 @@ object Ref {
 object upd {
   @inline final def apply[A,B,C](r: Ref[A])(f: (A,B) => (A,C)): Reagent[B,C] = 
     r.upd(f)
-  @inline final def apply[A,B](r: Ref[A])(f: A => (A,B)): Reagent[Unit,B] = 
+  @inline final def apply[A,B](r: Ref[A])(f: PartialFunction[A, (A,B)]): Reagent[Unit,B] = 
     r.upd(f)
 }

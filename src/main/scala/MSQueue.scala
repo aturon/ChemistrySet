@@ -22,9 +22,12 @@ sealed class MSQueue[A >: Null] {
     }
     search
   }
-  final val deq: Reagent[Unit, Option[A]] = head.upd[Option[A]] {
+  final val tryDeq: Reagent[Unit, Option[A]] = head.upd[Option[A]] {
     case Node(_, Ref(n@Node(x, _))) => (n, Some(x))
     case emp => (emp, None)
+  }
+  final val deq: Reagent[Unit, A] = head.upd[A] {
+    case Node(_, Ref(n@Node(x, _))) => (n, x)
   }
 }
 
