@@ -27,6 +27,16 @@ Todo:
  - skiplist-based map
  - hashtable
  
+## 7/25/2011
+
+Tempting to remove general sending from reagents, opting for a more
+asymmetric, joins style setup.  However, there's an easy motivation
+for including full expressiveness: linking two elimination-backoff
+stacks.
+
+Tied to this: would be very good to show that elimination backoff can
+be generalized to other data structures, using reagents.
+ 
 ## 7/23/2011
 
 Need to collect examples of interaction between share-state and
