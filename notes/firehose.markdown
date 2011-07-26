@@ -18,6 +18,7 @@ Todo:
  - kcas
  - lazy set
  - channels, blocking
+ - elimination backoff stack
  - synchronization examples from Scalable Joins
  - choice
  - guards/never
