@@ -9,8 +9,12 @@ sealed class TreiberStack[A] {
     (xs,x) => (x::xs, ())
   }
 
-  final val pop: Reagent[Unit,Option[A]] = head.upd[Option[A]] {
+  final val tryPop: Reagent[Unit,Option[A]] = head.upd[Option[A]] {
     case (x::xs) => (xs,  Some(x))
     case emp     => (emp, None)
+  }
+
+  final val pop: Reagent[Unit,A] = head.upd[A] {
+    case (x::xs) => (xs, x)
   }
 }

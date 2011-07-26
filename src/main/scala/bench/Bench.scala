@@ -71,8 +71,8 @@ object Bench extends App {
     for (i <- 1 to iters) {
       s.push ! d;
       s.push ! d;
-      s.pop ! ()
-      s.pop ! ()
+      s.tryPop ! ()
+      s.tryPop ! ()
     }
   }
   compare("Stacks: push and pop", diPushPop, raPushPop)
