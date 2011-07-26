@@ -120,10 +120,8 @@ sealed abstract class Reagent[-A, +B] {
     Bind(this, (x: B) => ret(f(x)))
   @inline final def >>[C](k: Reagent[Unit,C]): Reagent[A,C] = 
     Bind(this, (_:B) => k)
-
-  // @inline final def <+>[C <: A, D >: B](
-  //   that: Reagent[C,D]): Reagent[C,D] = 
-  //   new Reagent(this.choices ++ that.choices)
+  @inline final def <+>[C <: A, D >: B](that: Reagent[C,D]): Reagent[C,D] = 
+    Choice(this, that)
 
 }
 
@@ -133,36 +131,60 @@ private case class Bind[A,B,C](c: Reagent[A,B], k1: B => Reagent[Unit,C])
     c.tryReact(a, trans, BindK(k1, k2))
 }
 
-sealed case class ret[A](pure: A) extends Reagent[Unit,A] {
+private case class Ret[A](pure: A) extends Reagent[Unit,A] {
   final def tryReact[B](u: Unit, trans: Transaction, k: ReagentK[A,B]): B = 
     k.tryReact(pure, trans)
 }
-
-object retry extends Reagent[Any,Nothing] {
-  final def tryReact[A](a: Any, trans: Transaction, k: ReagentK[Nothing,A]): A = 
-    throw ShouldRetry
+object ret { 
+  @inline final def apply[A](pure: A): Reagent[Unit,A] = Ret(pure)
 }
+
+// Not sure whether this should be available as a combinaor
+// object retry extends Reagent[Any,Nothing] {
+//   final def tryReact[A](a: Any, trans: Transaction, k: ReagentK[Nothing,A]): A = 
+//     throw ShouldRetry
+// }
 
 // this really needs a better name
 // could call it "reagent"
-sealed case class loop[A,B](c: A => Reagent[Unit,B]) extends Reagent[A,B] {
+private case class Loop[A,B](c: A => Reagent[Unit,B]) extends Reagent[A,B] {
   final def tryReact[C](a: A, trans: Transaction, k: ReagentK[B,C]): C = 
     c(a).tryReact((), trans, k)
 }
+object loop {
+  @inline final def apply[A,B](c: A => Reagent[Unit,B]): Reagent[A,B] = Loop(c)
+}
 
-/*
+private case class Choice[A,B](r1: Reagent[A,B], r2: Reagent[A,B]) 
+	     extends Reagent[A,B] {
+  final def tryReact[C](a: A, trans: Transaction, k: ReagentK[B,C]): C = 
+    try r1.tryReact(a, trans, k) catch {
+      case ShouldRetry => 
+	try r2.tryReact(a, trans, k) catch {
+	  case ShouldBlock => throw ShouldRetry
+	}
+      case ShouldBlock => r2.tryReact(a, trans, k)
+    }
+}
+
 private class Endpoint[A,B] extends Reagent[A,B] {
+  val mq = new MSQueue[Waiter[A,B]]()
   var dual: Endpoint[B,A] = null
+  final def tryReact[C](a: A, trans: Transaction, k: ReagentK[B,C]): C = 
+    throw ShouldRetry
 }
 object SwapChan {
-  def apply[A,B]: (Reagent[A,B], Reagent[B,A]) = {
+  @inline final def apply[A,B](): (Reagent[A,B], Reagent[B,A]) = {
     val c1 = new Endpoint[A,B]
     val c2 = new Endpoint[B,A]
     c1.dual = c2; c2.dual = c1
     (c1, c2)
   }
 }
-*/
+object Chan {
+  @inline final def apply[A](): (Reagent[Unit,A], Reagent[A,Unit]) =
+    SwapChan[Unit,A]()
+}
 
 class Ref[A](init: A) extends AtomicReference[A](init) {
 //  private final var data = new AtomicReference[A](init)
@@ -214,4 +236,3 @@ object upd {
   @inline final def apply[A,B](r: Ref[A])(f: A => (A,B)): Reagent[Unit,B] = 
     r.upd(f)
 }
-
