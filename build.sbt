@@ -4,7 +4,7 @@ version := "0.1"
 
 scalacOptions += "-deprecation"
 
-scalacOptions += "-optimize"
+//scalacOptions += "-optimize"
 
 scalaVersion := "2.9.0-1"
 
