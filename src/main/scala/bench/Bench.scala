@@ -2,62 +2,36 @@
 
 package chemistry
 
-import scala.collection.mutable._
+import java.util.Date
+import java.util.concurrent._
 
-object Bench extends App {
-  import java.util.Date
+private object NotApplicable extends Exception
 
-  val d = new Date()
-  val trials = 10
+private abstract class Benchmark {
   val iters = 1000000
+  def name: String
+  def hand: Unit
+  def reagent: Unit
+  def juc { throw NotApplicable }
+}
 
-  var totDirect: Long = 0
-  var totReagent: Long = 0
-
-  def getTime = (new Date()).getTime
-  def compare(title: String, direct: => Unit, reagent: => Unit) {
-    def exec(thunk: => Unit): Seq[Long] = {
-      for (i <- 1 to 3+ (trials/10)) thunk  // warm up
-      val times: ArrayBuffer[Long] = ArrayBuffer[Long]()
-      for (i <- 1 to trials) {
-	System.gc()
-	val t1 = getTime
-	thunk
-	val t2 = getTime	
-	times += (t2 - t1) 
-      }
-      println(times)
-      times
-    }
-
-    println(title)
-
-    val sumDirect = exec(direct).sum
-    val sumReagent = exec(reagent).sum
-    
-    print("  ")
-    print((100*sumReagent) / sumDirect)  
-    print(" = ")
-    print((trials * iters) / (1 * sumDirect))  // 1000 for us
-    print(" / ")
-    println((trials * iters) / (1 * sumReagent))  
-    println("")
-
-    totReagent += sumReagent
-    totDirect += sumDirect
-  }
-
-  def diPush {
+private object Push extends Benchmark {
+  private val d = new Date()
+  def name = "Push"
+  def hand {
     val s = new HandStack[java.util.Date]()
     for (i <- 1 to iters) s.push(d)
   }
-  def rePush {		
+  def reagent {		
     val s = new TreiberStack[java.util.Date]()
     for (i <- 1 to iters) s.push ! d 
   }
-  compare("Stacks: push only", diPush, rePush)
-    
-  def diPushPop {
+}
+
+private object PushPop extends Benchmark {
+  private val d = new Date()
+  def name = "Push/pop"
+  def hand {
     val s = new HandStack[java.util.Date]()
     for (i <- 1 to iters) {
       s.push(d)
@@ -66,7 +40,7 @@ object Bench extends App {
       s.tryPop
     }
   } 
-  def raPushPop {
+  def reagent {
     val s = new TreiberStack[java.util.Date]()
     for (i <- 1 to iters) {
       s.push ! d;
@@ -75,38 +49,105 @@ object Bench extends App {
       s.tryPop ! ()
     }
   }
-  compare("Stacks: push and pop", diPushPop, raPushPop)
-  
-  def diEnq {
+}
+
+private object Enq extends Benchmark {
+  private val d = new Date()
+  def name = "Enq"
+  def hand {
     val s = new HandQueue[java.util.Date]()
     for (i <- 1 to iters) {
       s.enq(d)
     }
   } 
-  def raEnq {		
+  def reagent {
     val s = new MSQueue[java.util.Date]()
     for (i <- 1 to iters) {
       s.enq ! d 
     }
   }
-  compare("Queues: enq only", diEnq, raEnq)
-  
-  def diEnqDeq {
+  override def juc {
+    val s = new ConcurrentLinkedQueue[java.util.Date]()
+    for (i <- 1 to iters) {
+      s.add(d)
+    }
+  }
+}
+
+private object EnqDeq extends Benchmark {
+  private val d = new Date()
+  def name = "EnqDeq"
+  def hand {
     val s = new HandQueue[java.util.Date]()
     for (i <- 1 to iters) {
       s.enq(d)
       s.tryDeq
     }
   } 
-  def raEnqDeq {
+  def reagent {
     val s = new MSQueue[java.util.Date]()
     for (i <- 1 to iters) {
       s.enq ! d;
       s.tryDeq ! ()
     }
   }
-  compare("Queues: enq and deq", diEnqDeq, raEnqDeq)
-  
-  print("Weighted average: ")
-  println((100*totReagent)/totDirect)
+  override def juc {
+    val s = new ConcurrentLinkedQueue[java.util.Date]()
+    for (i <- 1 to iters) {
+      s.add(d)
+      s.poll()
+    }
+  }
+}
+
+object Bench extends App {
+  val trials = 5
+
+  def bench(b: Benchmark) {
+    def getTime = (new Date()).getTime
+    def run(thunk: => Unit): Option[(Double,Double)] = try {
+      for (i <- 1 to 3+(trials/10)) thunk  // warm up
+      val times = (1 to trials).map { (_) =>
+	System.gc()
+	val t1 = getTime
+	thunk
+	val t2 = getTime	
+	(t2 - t1).toDouble
+      }
+      val mean = times.sum/trials
+      val std = scala.math.sqrt(
+	times.map(x => (x - mean) * (x - mean)).sum/trials)
+      val coeffOfVar = std / scala.math.abs(mean)
+      Some(mean, coeffOfVar)
+    } catch { 
+      case _ => None
+    }
+
+    // run reagent benchmark separately, to pull out mean for normalization
+    val r = run(b.reagent)
+    val rm = r match { 
+      case Some((m, _)) => m
+      case _ => throw new Exception("Impossible")
+    }
+
+    // run the remaining benchmarks
+    val metrics = List(run(b.hand), r, run(b.juc))
+
+    // output
+    print("%10.10s".format(b.name))
+    metrics.map({
+      case Some((m,c)) => " %7.2f %5.2f (%3.0f)".format(m, rm/m, 100 * c)
+      case None => " %19s".format("N/A", "")
+    }).foreach(print(_))
+    println("")
+  }
+
+  println("%10.10s %19s %19s %19s".format(
+    "Benchmark", "--By hand--", "--Reagent--", "--JUC--"
+  ))
+
+  bench(Push)
+  bench(PushPop)
+  bench(Enq)
+  bench(EnqDeq)
 }
