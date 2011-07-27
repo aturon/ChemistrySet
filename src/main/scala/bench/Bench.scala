@@ -16,6 +16,7 @@ private abstract class Benchmark {
 }
 
 private object Push extends Benchmark {
+  override val iters = 2000000
   private val d = new Date()
   def name = "Push"
   def hand {
@@ -105,7 +106,7 @@ object Bench extends App {
 
   def bench(b: Benchmark) {
     def getTime = (new Date()).getTime
-    def run(thunk: => Unit): Option[(Double,Double)] = try {
+    def run(thunk: => Unit): Option[(Double,Double,Double)] = try {
       for (i <- 1 to 3+(trials/10)) thunk  // warm up
       val times = (1 to trials).map { (_) =>
 	System.gc()
@@ -118,7 +119,8 @@ object Bench extends App {
       val std = scala.math.sqrt(
 	times.map(x => (x - mean) * (x - mean)).sum/trials)
       val coeffOfVar = std / scala.math.abs(mean)
-      Some(mean, coeffOfVar)
+      val throughput = b.iters / (mean * 1000) // iters/microsecond
+      Some(mean, coeffOfVar,throughput)
     } catch { 
       case _ => None
     }
@@ -126,7 +128,7 @@ object Bench extends App {
     // run reagent benchmark separately, to pull out mean for normalization
     val r = run(b.reagent)
     val rm = r match { 
-      case Some((m, _)) => m
+      case Some((m,_,_)) => m
       case _ => throw new Exception("Impossible")
     }
 
@@ -136,8 +138,10 @@ object Bench extends App {
     // output
     print("%10.10s".format(b.name))
     metrics.map({
-      case Some((m,c)) => " %7.2f %5.2f (%3.0f)".format(m, rm/m, 100 * c)
-      case None => " %19s".format("N/A", "")
+      case Some((m,c,t)) => 
+	" %7.2f %5.2f (%3.0f)".format(t, rm/m, 100 * c)
+      case None => 
+	" %19s".format("N/A", "")
     }).foreach(print(_))
     println("")
   }
