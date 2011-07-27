@@ -17,16 +17,37 @@ Todo:
 
  - kcas
  - lazy set
- - channels, blocking
- - elimination backoff stack
- - synchronization examples from Scalable Joins
- - choice
- - guards/never
+ ~ channels 
+ - blocking
+ x elimination backoff stack
+ ~ synchronization examples from Scalable Joins
+ x choice
+ x guards/never
  - bags
  - skiplist
  - kcss
  - skiplist-based map
  - hashtable
+ 
+## 7/27/2011
+
+Join calculus does not, per se, require the dissolve primitive.  Need
+to find good justification for it (and for traditional join patterns).
+Best example so far is n-way exchange (need to code that up).
+
+Actually, though, any kind of message-passing "service" -- whether
+joining multiple channels or not -- will benefit from `dissolve`.  The
+only requirement is that the service doesn't internally require mutual
+exclusion.  cf. `loop` construct in Scala actors.
+
+Condition variables are rather hard to fit.  Should be able to compose
+`await` calls on multiple conditions.  Need to be able to efficiently
+implement *both* `signal` and `signalAll`, which ideally means:
+quietly move waiter(s) from condition queue to "lock" waiter queue,
+without actually waking them.
+
+Don't need a separate mechanism for asynchronous channels: already
+have them via queues/stacks/bags/...
  
 ## 7/25/2011
 
