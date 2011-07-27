@@ -41,9 +41,15 @@ private sealed abstract class ReagentK[-A,+B] {
 }
 
 private final case class BindK[A,B,C](k1: A => Reagent[Unit, B], 
-				       k2: ReagentK[B,C]) 
+				      k2: ReagentK[B,C]) 
 		    extends ReagentK[A,C] {
   def tryReact(a: A, trans: Transaction): C = k1(a).tryReact((), trans, k2)
+}
+
+private final case class FilterK[A,B](f: A => Boolean, k: ReagentK[A,B]) 
+		   extends ReagentK[A,B] {
+  def tryReact(a: A, trans: Transaction): B = 
+    if (f(a)) k.tryReact(a, trans) else throw ShouldBlock
 }
 
 private object FinalK extends ReagentK[Any,Any] {
@@ -119,15 +125,29 @@ sealed abstract class Reagent[-A, +B] {
     Bind(this, (x: B) => ret(f(x)))
   @inline final def >>[C](k: Reagent[Unit,C]): Reagent[A,C] = 
     Bind(this, (_:B) => k)
+  @inline final def withFilter(f: B => Boolean): Reagent[A,B] =
+    PostFilter(this, f)
   @inline final def <+>[C <: A, D >: B](that: Reagent[C,D]): Reagent[C,D] = 
     Choice(this, that)
-
 }
 
 private final case class Bind[A,B,C](c: Reagent[A,B], k1: B => Reagent[Unit,C]) 
 	     extends Reagent[A,C] {
   def tryReact[D](a: A, trans: Transaction, k2: ReagentK[C,D]): D = 
     c.tryReact(a, trans, BindK(k1, k2))
+}
+
+// PreFilter is not yet exposed as a combinator
+private final case class PreFilter[A,B](c: Reagent[A,B], f: A => Boolean) 
+		   extends Reagent[A,B] {
+ def tryReact[C](a: A, trans: Transaction, k: ReagentK[B,C]): C = 
+   if (f(a)) c.tryReact(a, trans, k) else throw ShouldBlock
+}
+
+private final case class PostFilter[A,B](c: Reagent[A,B], f: B => Boolean) 
+		   extends Reagent[A,B] {
+  def tryReact[C](a: A, trans: Transaction, k: ReagentK[B,C]): C = 
+    c.tryReact(a, trans, FilterK(f, k))
 }
 
 object ret { 
@@ -216,7 +236,8 @@ final class Ref[A](init: A) extends AtomicReference[A](init) {
       k.tryReact(ret, trans)
     }
   }
-  private final class UpdUnit[B](f: PartialFunction[A, (A,B)]) extends Reagent[Unit, B] {
+  private final class UpdUnit[B](f: PartialFunction[A, (A,B)]) 
+		extends Reagent[Unit, B] {
     def tryReact[C](u: Unit, trans: Transaction, k: ReagentK[B,C]): C = {
       val ov = get()
       if (!f.isDefinedAt(ov)) throw ShouldBlock
@@ -228,8 +249,6 @@ final class Ref[A](init: A) extends AtomicReference[A](init) {
 
   @inline def upd[B,C](f: (A,B) => (A,C)): Reagent[B, C] = 
     new Upd(f)
-  // @inline final def upd[B](f: A => (A,B)): Reagent[Unit, B] = 
-  //   new UpdUnit(f)
   @inline def upd[B](f: PartialFunction[A, (A,B)]): Reagent[Unit, B] = 
     new UpdUnit(f)
 }
@@ -238,8 +257,6 @@ object Ref {
   def unapply[A](r: Ref[A]): Option[A] = Some(r.get()) 
 }
 object upd {
-  @inline def apply[A,B,C](r: Ref[A])(f: (A,B) => (A,C)): Reagent[B,C] = 
-    r.upd(f)
-  @inline def apply[A,B](r: Ref[A])(f: PartialFunction[A, (A,B)]): Reagent[Unit,B] = 
-    r.upd(f)
+  @inline def apply[A,B,C](r: Ref[A])(f: (A,B) => (A,C)) = r.upd(f)
+  @inline def apply[A,B](r: Ref[A])(f: PartialFunction[A, (A,B)]) = r.upd(f)
 }
