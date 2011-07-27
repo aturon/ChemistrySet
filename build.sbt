@@ -8,14 +8,14 @@ scalacOptions += "-deprecation"
 
 scalaVersion := "2.9.0-1"
 
-resolvers += "Sonatype OSS Repo" at "http://oss.sonatype.org/content/repositories/snapshots"
+// resolvers += "Sonatype OSS Repo" at "http://oss.sonatype.org/content/repositories/snapshots"
 
 resolvers += "repo.codahale.com" at "http://repo.codahale.com"
 
 libraryDependencies ++= Seq(
-  "com.google.code.java-allocation-instrumenter" % "java-allocation-instrumenter" % "2.0",
-  "com.google.code.caliper" % "caliper" % "1.0-SNAPSHOT",
-  "com.google.code.gson" % "gson" % "1.7.1",
+//  "com.google.code.java-allocation-instrumenter" % "java-allocation-instrumenter" % "2.0",
+//  "com.google.code.caliper" % "caliper" % "1.0-SNAPSHOT",
+//  "com.google.code.gson" % "gson" % "1.7.1",
   "com.codahale" % "simplespec_2.9.0-1" % "0.3.4"
 )
 
