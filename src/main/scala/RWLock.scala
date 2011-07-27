@@ -2,7 +2,7 @@
 
 package chemistry
 
-class IllegalRelease extends Exception
+//class IllegalRelease extends Exception
 
 final class RWLock {
   private sealed abstract class LockStatus

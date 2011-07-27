@@ -11,6 +11,15 @@ final class Lock {
 
   private val status = Ref[LockStatus](Unlocked)
 
+  final class Condition {  
+    def await {
+    }
+    def signal {
+    }
+    def signalAll {
+    }
+  }
+
   val tryAcq: Reagent[Unit,Boolean] = status.upd[Boolean] {
     case Locked   => (Locked, false)
     case Unlocked => (Locked, true)
