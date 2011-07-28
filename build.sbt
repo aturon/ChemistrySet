@@ -25,19 +25,19 @@ javaOptions += "-server"
 
 javaOptions += "-XX:+DoEscapeAnalysis"
 
-javaOptions += "-XX:CompileThreshold=10"
+javaOptions += "-Xmx1024M"
+
+//javaOptions += "-XX:CompileThreshold=10"
 
 //javaOptions += "-Xprof"
 
 //javaOptions += "-XX:+PrintGC"
-
+//javaOptions += "-XX:+PrintCompilation"
 
 
 
 //javaOptions ++= Seq("-XX:MaxInlineSize=100000", "-XX:FreqInlineSize=100000", "-XX:LoopUnrollLimit=100000", "-XX:InlineSmallCode=100000")
 
-
-//javaOptions += "-XX:+PrintCompilation"
 //javaOptions += "-XX:+PrintInlining"
 
 //javaOptions += "-XX:CompileThreshold=1000"
