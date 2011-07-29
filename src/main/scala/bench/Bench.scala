@@ -20,15 +20,29 @@ private case class Measurement(
 private case class Series(name: String, ms: Seq[Measurement])
 private case class BenchResult(name: String, ss: Seq[Series])
 
+private object config {
+  val maxCores = min(Runtime.getRuntime.availableProcessors, 8)
+  val warmupMillis = 1000
+  val benchMillis = 1000
+}
+
 private abstract class Benchmark {
+  import config._
+  
   private val verbose = true
-  def log(s: String) {
+  private def log(s: String) {
     if (verbose) println(s)
   }
 
-  private val maxCores = 1
-  private val warmupMillis = 2000
-  private val benchMillis = 2000
+  @inline final protected def spawnN(threads: Int)(code: => Unit) {
+    Threads.spawnAndJoin((1 to threads).map(_ => (() => code)))
+  }
+
+  @inline final protected def parRepeat(threads: Int, iters: Int)(code: => Unit) {
+    spawnN(threads) {
+      for (i <- 1 to iters/threads) code
+    }
+  }
 
   protected def hand(cores: Int, iters: Int) { throw NotApplicable } 
   protected def juc(cores: Int, iters: Int) { throw NotApplicable } 
@@ -37,10 +51,7 @@ private abstract class Benchmark {
   private def getTime = System.nanoTime()
 
   private def time(thunk: => Unit): Double = {   
-    for (i <- 1 to 2) {
-//      log(" ... explicit GC")
-      System.gc()
-    }
+    System.gc()
     val t1 = getTime
     thunk
     val t2 = getTime	
@@ -62,57 +73,54 @@ private abstract class Benchmark {
   private def runOne(f: (Int, Int) => Unit)(i: Int): Measurement = {    
     log(" - cores = %d".format(i))
 
-    // warm up
-    log(" - warmup")
-    var iters = 128
-    var warmupIters = 0
-    var warmupTime: Double = 0
+    // warmup and compute estimated throughput
+    val tp = {
+      // warm up
+      log(" - warmup")
+      var iters = 128
+      var warmupIters = 0
+      var warmupTime: Double = 0
 
-    while (warmupTime < warmupMillis) {
-      warmupTime  += time {f(i, iters)}
-      warmupIters += iters
-      iters *= 2
-      log(warmupIters.toString)
+      while (warmupTime < warmupMillis) {
+	warmupTime  += time {f(i, iters)}
+	warmupIters += iters
+//	log(" i %d  wi %d  wt %f".format(iters, warmupIters, warmupTime))
+	iters *= 2	
+      }
+
+      warmupIters / time{f(i,warmupIters)};
     }
 
-    val tp = warmupIters / time{f(i,warmupIters)};
-    log(" - expected throughput: %5.2f".format(tp / 1000))
-    log(" - trial iters: %.0f".format(tp * benchMillis))
-
+    val trialIters = tp * benchMillis
     var trials = 0
     var times: Seq[Double] = List()
 
     def mean = times.sum/trials
     def stddev = sqrt(times.map(x => (x - mean) * (x - mean)).sum/trials)
     def cov = 100 * (stddev / abs(mean))
-    def throughput = iters / (mean * 1000)
+    def throughput = trialIters / (mean * 1000)
 
     def trial(scale: Double) {
       trials += 1
-      val runFor = (tp * benchMillis * scale).toInt
+      val runFor = (trialIters * scale).toInt
       val t = time{f(i, runFor)} / scale
       times = t +: times
 
-      log(" - trial %2d:  s %1.1f  t %6.0f  tp %5.2f  cov %5.2f".format(
-	trials, scale, t, iters / (t * 1000), cov))
+      log(" - trial %2d:  s %1.1f  t %6.0f  tp %5.2f  cov %5.2f %s".format(
+	trials, scale, t, trialIters / (t * 1000), cov,
+        if (cov > 5) "***\u0007" else ""))
     }
+
+    log(" - expected throughput: %5.2f".format(tp / 1000))
+    log(" - trial iters: %.0f".format(trialIters))
 
     trial(1.0)
     trial(0.5)
     trial(1.5)
 
-//    while (cov > 5) {
-      
-
-      // if (trials > 2 && cov > 10) {
-      // 	log(" *** cov too high, restarting ***")
-      // 	log("")
-      // 	return None
-      // }
-//    }
-
+    log(" - measured throughput: %5.2f".format(throughput))
     log("")
-    Measurement(mean,cov,throughput,iters,trials,i)
+    Measurement(mean,cov,throughput,trialIters.toInt,trials,i)
   }
 
   private def runSeries(name: String, f: (Int, Int) => Unit): Option[Series] = 
@@ -121,10 +129,8 @@ private abstract class Benchmark {
       Some(Series(name, (1 to maxCores).map(runOne(f))))
     } catch {
       case NotApplicable => {
-	if (verbose) {
-	  println(" - N/A")
-	  println("")
-	}
+	log(" - N/A")
+	log("")
 	None
       }
     }
@@ -144,21 +150,10 @@ private abstract class Benchmark {
     )
 }
 
-private object Push extends Benchmark {
-  override def hand(cores: Int, iters: Int) {
-    val s = new HandStack[AnyRef]()
-    for (i <- 1 to iters) s.push(SomeData)
-  }
-  def reagent(cores: Int, iters: Int) {		
-    val s = new TreiberStack[AnyRef]()
-    for (i <- 1 to iters) s.push ! SomeData 
-  }
-}
-
 private object PushPop extends Benchmark {
   override def hand(cores: Int, iters: Int) {
     val s = new HandStack[AnyRef]()
-    for (i <- 1 to iters) {
+    parRepeat(cores, iters) {
       s.push(SomeData)
       s.push(SomeData)
       untilSome {s.tryPop}
@@ -167,32 +162,11 @@ private object PushPop extends Benchmark {
   } 
   def reagent(cores: Int, iters: Int) {
     val s = new TreiberStack[AnyRef]()
-    for (i <- 1 to iters) {
+    parRepeat(cores, iters) {
       s.push ! SomeData;
       s.push ! SomeData;
       untilSome {s.tryPop ! ()}
       untilSome {s.tryPop ! ()}
-    }
-  }
-}
-
-private object Enq extends Benchmark {
-  override def hand(cores: Int, iters: Int) {
-    val s = new HandQueue[AnyRef]()
-    for (i <- 1 to iters) {
-      s.enq(SomeData)
-    }
-  } 
-  def reagent(cores: Int, iters: Int) {
-    val s = new MSQueue[AnyRef]()
-    for (i <- 1 to iters) {
-      s.enq ! SomeData 
-    }
-  }
-  override def juc(cores: Int, iters: Int) {
-    val s = new ConcurrentLinkedQueue[AnyRef]()
-    for (i <- 1 to iters) {
-      s.add(SomeData)
     }
   }
 }
@@ -200,21 +174,21 @@ private object Enq extends Benchmark {
 private object EnqDeq extends Benchmark {
   override def hand(cores: Int, iters: Int) {
     val s = new HandQueue[AnyRef]()
-    for (i <- 1 to iters) {
+    parRepeat(cores, iters) {
       s.enq(SomeData)
       untilSome {s.tryDeq}
     }
   } 
   def reagent(cores: Int, iters: Int) {
     val s = new MSQueue[AnyRef]()
-    for (i <- 1 to iters) {
+    parRepeat(cores, iters) {
       s.enq ! SomeData;
       untilSome {s.tryDeq ! ()}
     }
   }
   override def juc(cores: Int, iters: Int) {
     val s = new ConcurrentLinkedQueue[AnyRef]()
-    for (i <- 1 to iters) {
+    parRepeat(cores, iters) {
       s.add(SomeData)
       whileNull {s.poll()}
     }
@@ -222,36 +196,50 @@ private object EnqDeq extends Benchmark {
 }
 
 object Bench extends App {
-/*
-    print("%10.10s".format(b.name))
-    metrics.map({
-      case Some((m,c,t)) => 
-	" %7.2f %5.2f (%3.0f)".format(t, rm/m, 100 * c)
-      case None => 
-	" %19s".format("N/A", "")
-    }).foreach(print(_))
-*/
+  import config._
+  
+  def printSeries(s: Series) {
+    print("%10.10s |".format(s.name))
+    s.ms.foreach {m => 
+      print(" %8.2f |".format(m.throughput))
+    }
+    println("")
+  }
 
-/*
-  def printBench() {
-    println()
+  def printSeriesN(s: Series, compTo: Double) {
+    print("%10.10s |".format(s.name))
+    s.ms.foreach {m => 
+      print(" %8.2f |".format(m.throughput / compTo))
+    }
+    println("")
+  }
+
+  def printRes(br: BenchResult) {
+    // raw throughput results
     println("-" * (12 + maxCores * 11))
 
-    print("%10.10s |".format("Cores"))
+    print("%10.10s |".format(br.name))
     (1 to maxCores).map(i => print(" %8d |".format(i)))
     println("")
     println("-" * (12 + maxCores * 11))
 
-    println(rm)
+    br.ss.foreach(printSeries(_))
 
     println("")
-  }
-*/
 
-  def printRes(br: BenchResult) {
-    
+    // normalized results
+    println("-" * (12 + maxCores * 11))
+
+    print("%9.9sN |".format(br.name))
+    (1 to maxCores).map(i => print(" %8d |".format(i)))
+    println("")
+    println("-" * (12 + maxCores * 11))
+
+    br.ss.foreach(printSeriesN(_, br.ss(0).ms(0).throughput))
+
+    println("")
+    println("")
   }
   
-  Push.runAll
-//  List(Push, PushPop, Enq, EnqDeq).map(_.runAll).foreach(printRes(_))
+  List(PushPop, EnqDeq).map(_.runAll).foreach(printRes(_))
 }
