@@ -73,7 +73,7 @@ sealed abstract class Reagent[-A, +B] {
       val status = Ref[WaiterStatus](Waiting)
       val recheck: Reagent[A,B] = for {
       	r <- this
-      	_ <- status.cas(Waiting, Finished)
+      	//_ <- status.cas(Waiting, Finished)
       } yield r
       val waiter = Waiter(this, a, null, status, Thread.currentThread())
 
@@ -263,8 +263,9 @@ final class Ref[A](init: A) extends AtomicReference[A](init) {
 
   private final class CAS(expect: A, update: A) extends Reagent[Unit, Unit] {
     def tryReact[B](u: Unit, trans: Transaction, k: K[Unit,B]): B ={
-      compareAndSet(expect, update)
-      k.tryReact((), trans)
+      if (compareAndSet(expect, update))
+	k.tryReact((), trans)
+      else throw ShouldRetry
     }
   }
   @inline def cas(ov:A,nv:A): Reagent[Unit,Unit] = new CAS(ov,nv) 
@@ -273,8 +274,9 @@ final class Ref[A](init: A) extends AtomicReference[A](init) {
     def tryReact[D](b: B, trans: Transaction, k: K[C,D]): D = {
       val ov = get()
       val (nv, ret) = f(ov, b)
-      compareAndSet(ov, nv)
-      k.tryReact(ret, trans)
+      if (compareAndSet(ov, nv))
+	k.tryReact(ret, trans)
+      else throw ShouldRetry
     }
   }
   private final class UpdUnit[B](f: PartialFunction[A, (A,B)]) 
@@ -283,8 +285,9 @@ final class Ref[A](init: A) extends AtomicReference[A](init) {
       val ov = get()
       if (!f.isDefinedAt(ov)) throw ShouldBlock
       val (nv, ret) = f(ov)
-      compareAndSet(ov, nv)
-      k.tryReact(ret, trans)
+      if (compareAndSet(ov, nv))
+	k.tryReact(ret, trans)
+      else throw ShouldRetry
     }
   }
 
