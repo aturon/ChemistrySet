@@ -9,12 +9,6 @@ final class MSQueue[A >: Null] {
   private val head = Ref(Node(null))
   private val tail = Ref(head.read!())
 
-  // final def enq(x:A): Reagent[Unit] = loop {
-  //   tail.read ! match {
-  //     case    Node(_, r@Ref(null)) => r.mkcas(null, Node(x))
-  //     case ov@Node(_, Ref(nv))     => tail.cas(ov,nv) !?; retry
-  //   }
-  // }
   val enq: Reagent[A, Unit] = loop { (x:A) =>
     @tailrec def search: Reagent[Unit,Unit] = tail.read ! () match {
       case    Node(_, r@Ref(null)) => r.cas(null, Node(x))
