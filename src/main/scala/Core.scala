@@ -6,10 +6,6 @@ import java.util.concurrent.atomic._
 import java.util.concurrent.locks._
 import scala.annotation.tailrec
 
-private object Util {
-  def undef[A]: A = throw new Exception()
-}
-
 sealed private abstract class LogEntry
 private case class CASLog[A](r: AtomicReference[A], ov: A, nv: A) 
 	     extends LogEntry
@@ -70,10 +66,11 @@ sealed abstract class Reagent[-A, +B] {
     val finalk = K.Final.asInstanceOf[K[B,B]] 
     
     def slowPath: B = {
+      val backoff = new Backoff
       val status = Ref[WaiterStatus](Waiting)
       val recheck: Reagent[A,B] = for {
       	r <- this
-      	//_ <- status.cas(Waiting, Finished)
+      	_ <- status.cas(Waiting, Finished)
       } yield r
       val waiter = Waiter(this, a, null, status, Thread.currentThread())
 
@@ -84,7 +81,7 @@ sealed abstract class Reagent[-A, +B] {
 	case _ => try {
 	  return recheck.tryReact(a, null, finalk) 
 	} catch {
-	  case ShouldRetry => () // should backoff
+	  case ShouldRetry => backoff.once()
 	  case ShouldBlock => LockSupport.park(waiter)
 	}
       }
@@ -96,7 +93,7 @@ sealed abstract class Reagent[-A, +B] {
       try {
     	return tryReact(a, null, finalk) 
       } catch {
-    	case ShouldRetry => () // should backoff
+    	case ShouldRetry => return slowPath
         case ShouldBlock => return slowPath
       }
     }
