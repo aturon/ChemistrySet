@@ -5,15 +5,19 @@ package chemistry
 import scala.annotation.tailrec
 import scala.concurrent._
 import scala.concurrent.ops._
+import scala.math._
+import java.lang.Thread
 
 private object Util {
   def undef[A]: A = throw new Exception()
 
+  @inline def nanoToMilli(nano: Long): Double = nano / 1000000
+
   def time(thunk: => Unit): Double = {   
-    val t1 = System.nanoTime()
+    val t1 = System.nanoTime
     thunk
-    val t2 = System.nanoTime()
-    (t2 - t1).toDouble / 1000000
+    val t2 = System.nanoTime
+    nanoToMilli(t2 - t1)
   }
 
   @tailrec def untilSome[A](thunk: => Option[A]): Unit = 
@@ -28,23 +32,37 @@ private object Util {
       case _    => ()
     }
 
+  def fork(code: => Unit) {
+    val runnable = new Runnable { def run() { code } }
+    (new Thread(runnable)).start()
+  }
+
   // launch a list of threads in parallel, and wait till they all
-  // finish, propagating exceptions.  Also records the longest
-  // difference in thread startup time.
-  def par[A](threads: Int)(code: => A): (Seq[A], Double) = {
-    val svs = (1 to threads).map(_ => new SyncVar[Either[(Long, A),Throwable]])
-    val start = System.nanoTime
-    svs.foreach(sv => spawn {
-      val threadStart = System.nanoTime
-      sv.set(try Left(threadStart - start, code) catch { case e => Right(e) })
+  // finish, propagating exceptions.  Also records timing information.
+  case class TimedResult[A](startTime: Long, endTime: Long, res: A)
+  def timedPar[A](threads: Int)(code: => A): Seq[TimedResult[A]] = {
+    val svs = (1 to threads).map(_ => 
+      new SyncVar[Either[TimedResult[A],Throwable]])
+    svs.foreach(sv => fork {
+      val t1  = System.nanoTime
+      val res = code
+      val t2  = System.nanoTime
+      sv.set(
+	try Left(TimedResult(t1, t2, res)) 
+	catch { case e => Right(e) })
     })
-    val resPairs = svs.map(_.get).map {
-      case Left((t, a)) => (t,a)
+    svs.map(_.get).map {
+      case Left(tr) => tr
       case Right(e) => throw e
     }
-    val startupDelays = resPairs.map(_._1)
-    val results = resPairs.map(_._2)
-    (results, (startupDelays.max - startupDelays.min).toDouble / 1000000)
   }
+
+  def mean(ds: Seq[Double]): Double = ds.sum/ds.length
+  def stddev(ds: Seq[Double]): Double = {
+    val m = mean(ds)
+    sqrt(ds.map(d => (d-m) * (d-m)).sum/ds.length)
+  }
+  def cov(ds: Seq[Double]): Double = 100 * (stddev(ds) / abs(mean(ds)))
+
 }
 

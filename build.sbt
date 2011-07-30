@@ -27,10 +27,13 @@ javaOptions += "-XX:+DoEscapeAnalysis"
 
 javaOptions += "-Xmx1024M"
 
+//javaOptions += "-XX:+UseSerialGC"
+
 //javaOptions += "-XX:CompileThreshold=10"
 
 //javaOptions += "-Xprof"
 
+//javaOptions += "-XX:+PrintGCTimeStamps"
 //javaOptions += "-XX:+PrintGC"
 //javaOptions += "-XX:+PrintCompilation"
 

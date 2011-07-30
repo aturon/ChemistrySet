@@ -2,12 +2,32 @@
 
 package chemistry
 
+import java.util.Date
 import java.util.concurrent._
 import scala.annotation.tailrec
 import scala.math._
 import Util._
 
 private object SomeData // a reference to put in collections
+
+private object config {
+  val maxCores = min(Runtime.getRuntime.availableProcessors, 8)
+  val warmupMillis = 1000
+  val benchMillis = 3000
+  val verbose = true
+
+  val startup = new Date
+/*
+ * val fmt = new SimpleDateFormat("yyyy.MM.dd.HH.mm.ss")
+ * fmt.format(now) = "2011.07.30.16.38.44"
+ */
+}
+
+private object log {
+  def apply(s: String) {
+    if (config.verbose) println(s)
+  }
+}
 
 private case class Measurement(
   meanMillis: Double,
@@ -17,155 +37,154 @@ private case class Measurement(
   trials: Int,
   cores: Int
 ) {
-  def print = 
-    print(" %8.2f |".format(m.throughput))
-  def printN(compTo: Double) = 
-    print(" %8.2f |".format(m.throughput / compTo))
+  def format = " %8.2f |".format(throughput)
+  def formatN(compTo: Double) = 
+    " %8.2f |".format(throughput / compTo)
 }
 
-private case class EntryResult(name: string, ms: Seq[Measurement]) {
-  def print {
-    print("%10.10s |".format(s.name))    
-    ms.foreach(_.print)
-    println("")
-  }
-  def printN(compTo: Double) {
-    print("%10.10s |".format(s.name))
-    ms.foreach(_.printN(compTo))
-    println("")
-  }
+private case class EntryResult(name: String, ms: Seq[Measurement]) {
+  def format =
+    "%10.10s |".format(name) ++
+    ms.map(_.format).mkString ++
+    "  max cov: %5.2f  avg cov: %5.2f\n".format(
+      ms.map(_.coeffOfVar).max,
+      ms.map(_.coeffOfVar).sum / ms.length
+    )
+
+  def formatN(compTo: Double) = 
+    "%10.10s |".format(name) ++
+    ms.map(_.formatN(compTo)).mkString ++
+    "\n"
 }
 
-private case class BenchResult(name: string, es: Seq[EntryResult]) {
+private case class BenchResult(name: String, es: Seq[EntryResult]) {
   import config._
 
-  def print {
-    // raw throughput results
+  private def hrule {
     println("-" * (12 + maxCores * 11))
+  }
+  def display {
+    // raw throughput results
+    hrule
 
     print("%10.10s |".format(name))
     (1 to maxCores).map(i => print(" %8d |".format(i)))
     println("")
-    println("-" * (12 + maxCores * 11))
-
-    es.foreach(_.print)
+    
+    hrule
+    es.map(_.format).foreach(print(_))
 
     // normalized results
-    println("-" * (12 + maxCores * 11))
-
-    es.foreach(_.printN(es(0).ms(0).throughput))
+    hrule
+    es.map(_.formatN(es(0).ms(0).throughput)).foreach(print(_))
+    hrule   
 
     println("")
     println("")
   }
-}
-
-private object config {
-  val maxCores = min(Runtime.getRuntime.availableProcessors, 1)
-  val warmupMillis = 1000
-  val benchMillis = 1000
-  val verbose = true
 }
 
 private abstract class Entry {
-  def name = getClass().getSimpleName().replace("$","")
-  type S
-  def setup: S
-  def apply(s: S, iters: Int)
-}
-
-private abstract class Benchmark {
   import config._
+  import Util._
 
-  def name = getClass().getSimpleName().replace("$","")
-  
-  private def log(s: String) {
-    if (verbose) println(s)
-  }
+  def name: String
+  protected type S
+  protected def setup: S
+  protected def run(s: S, iters: Int)
 
-  private def measure(e: BenchEntry)(i: Int): Measurement = {    
-    def time(iters: Int, scale: Double = 1.0): (Seq[Double], Double) = {
-      setup
+  private def measureOne(i: Int): Measurement = {
+    log(getClass().getSimpleName())
+    log(" - threads: %d".format(i))
+
+    def time(iters: Int): (Double, Double, Seq[Double]) = {      
       System.gc()
-//      val (unscaledTimes, startup) = 
-//	par(i) { Util.time(f((scale * iters/i).toInt)) }
-//      (unscaledTimes.map(_ / scale), startup)
-      (List(Util.time(f(iters))), 0)
+      val s = setup
+      val timings = timedPar(i) { run(s, iters/i) }
+      val totalTime = 
+	nanoToMilli(timings.map(_.endTime).max - timings.map(_.startTime).min)
+      val startWindow = 
+	nanoToMilli(timings.map(_.startTime).max - timings.map(_.startTime).min)
+      val threadTimes = timings.map(t => nanoToMilli(t.endTime - t.startTime))
+      (totalTime, startWindow, threadTimes)
     }
-
-    log(" - cores = %d".format(i))
 
     // warmup and compute estimated throughput
     val tp = {
-      // warm up
       log(" - warmup")
       var iters = 128
       var warmupIters = 0
       var warmupTime: Double = 0
 
       while (warmupTime < warmupMillis) {
-	warmupTime  += time(iters)._1.sum
+	warmupTime  += time(iters)._1
 	warmupIters += iters
 //	log(" i %d  wi %d  wt %f".format(iters, warmupIters, warmupTime))
 	iters *= 2	
       }
 
-      warmupIters / time(warmupIters)._1.sum;
+      warmupIters / time(warmupIters)._1;
     }
 
-    val trialIters: Int = (tp * benchMillis).toInt
+    val trialIters: Int = (tp * (benchMillis + 500 * i)).toInt
     var trials = 0
     var times: Seq[Double] = List()
 
-    def mean = times.sum/trials
-    def stddev = sqrt(times.map(x => (x - mean) * (x - mean)).sum/trials)
-    def cov = 100 * (stddev / abs(mean))
-    def throughput = trialIters / (mean * 1000)
-
-    def trial(scale: Double) {
+    def trial {
       trials += 1      
-      val (ts, startup) = time(trialIters, scale) 
-      times = ts.sum +: times
+      val (totalTime, startWindow, threadTimes) = time(trialIters) 
+      times = totalTime +: times
 
-      log(" - trial %2d: %5.2f  st %4.1f  cov %5.2f  t %6.0f <= %s %s".format(
+      val fmt = "   %1d  %5.2f  %5.2f  %6.0f  %6.0f  %5.2f  %3.0f %s"
+      log(fmt.format(
 	trials, 
-	trialIters / (ts.sum * 1000), 
-	startup, 
-	cov, 
-	ts.sum,
-	ts.map(t => "%5.0f".format(t)).mkString(" "),
-        if (cov > 5 || startup > 50) "***\u0007" else ""))
+	trialIters / (totalTime * 1000), 
+	cov(times), 
+	totalTime,
+	mean(threadTimes),
+	cov(threadTimes),
+	startWindow,
+        if (cov(times) > 5 || startWindow > 5) "***\u0007" else ""))
     }
 
-    log(" - expected throughput: %5.2f".format(tp / 1000))
-    log(" - trial iters: %d".format(trialIters))
+    log(" - iters: %d".format(trialIters))
 
-    trial(1.0)
-    trial(0.5)
-    trial(1.5)
-
-    log(" - measured throughput: %5.2f".format(throughput))
+    log("         tp    cov     tot   t-avg  t-cov   sw")
+    log(" - ex %5.2f".format(tp / 1000))
+    for (_ <- 1 to 5) trial
+    val throughput = trialIters / (mean(times) * 1000)
+    log(" - ob %5.2f".format(throughput))
     log("")
-    Measurement(mean,cov,throughput,trialIters.toInt,trials,i)
+
+    Measurement(
+      mean(times),
+      cov(times),
+      throughput,
+      trialIters.toInt,
+      trials,
+      i)
   }
 
-  def go = (name, entries.map(entry =>
-    (entry.name, (1 to maxCores).map(measure(entry)))))
+  def measureAll = EntryResult(name, (1 to maxCores).map(measureOne))
+}
+
+private abstract class Benchmark {
+  import config._
+
+  def name = getClass().getSimpleName().replace("$","")
+  def entries: Seq[Entry]
+  def go = {
+    log("================================================================")
+    BenchResult(name, entries.map(_.measureAll))
+  }
 }
 
 private object PushPop extends Benchmark {
-  private var hs:  = null
-  private var rs: TreiberStack[AnyRef] = null
-
-  def setup {
-    hs = 
-    rs = new TreiberStack()
-  }
-
-  object hand extends Entry {
+  private object hand extends Entry {
+    def name = "hand"
     type S = HandStack[AnyRef]
     def setup = new HandStack()
-    def apply(s: S, iters: Int) {
+    def run(s: S, iters: Int) {
       for (_ <- 1 to iters) {
 	s.push(SomeData)
 	s.push(SomeData)
@@ -174,52 +193,60 @@ private object PushPop extends Benchmark {
       }
     }
   } 
-  object reagent extends Entry(iters: Int) {
-    val s = rs
-    for (_ <- 1 to iters) {
-      s.push ! SomeData;
-      s.push ! SomeData;
-      untilSome {s.tryPop ! ()}
-      untilSome {s.tryPop ! ()}
+  private object reagent extends Entry {
+    def name = "reagent"
+    type S = TreiberStack[AnyRef]
+    def setup = new TreiberStack()
+    def run(s: S, iters: Int) {
+      for (_ <- 1 to iters) {
+	s.push ! SomeData;
+	s.push ! SomeData;
+	untilSome {s.tryPop ! ()}
+	untilSome {s.tryPop ! ()}
+      }
     }
   }
+  def entries = List(reagent, hand)
 }
 
-private object EnqDeq extends Benchmark {
-  private var hq: HandQueue[AnyRef] = null
-  private var rq: MSQueue[AnyRef] = null
-  private var jq: ConcurrentLinkedQueue[AnyRef] = null
-
-  def setup {
-    hq = new HandQueue[AnyRef]()
-    rq = new MSQueue[AnyRef]()
-    jq = new ConcurrentLinkedQueue[AnyRef]()
-  }
-  
-  // override def hand(iters: Int) {
-  //   val q = hq
-  //   for (_ <- 1 to iters) {
-  //     q.enq(SomeData)
-  //     untilSome {q.tryDeq}
-  //   }
-  // } 
-  def reagent(iters: Int) {
-    val q = rq
-    for (_ <- 1 to iters) {
-      q.enq ! SomeData;
-      untilSome {q.tryDeq ! ()}
+private object EnqDeq extends Benchmark {  
+  private object hand extends Entry {
+    def name = "hand"
+    type S = HandQueue[AnyRef]
+    def setup = new HandQueue()
+    def run(q: S, iters: Int) {
+      for (_ <- 1 to iters) {
+	q.enq(SomeData)
+	untilSome {q.tryDeq}
+      }
+    }
+  } 
+  private object reagent extends Entry {
+    def name = "reagent"
+    type S = MSQueue[AnyRef]
+    def setup = new MSQueue()
+    def run(q: S, iters: Int) {
+      for (_ <- 1 to iters) {
+	q.enq ! SomeData;
+	untilSome {q.tryDeq ! ()}
+      }
     }
   }
-  // override def juc(iters: Int) {
-  //   val q = jq
-  //   for (_ <- 1 to iters) {
-  //     q.add(SomeData)
-  //     whileNull {q.poll()}
-  //   }
-  // }
+  private object juc extends Entry {
+    def name = "juc"
+    type S = ConcurrentLinkedQueue[AnyRef]
+    def setup = new ConcurrentLinkedQueue()
+    def run(q: S, iters: Int) {
+      for (_ <- 1 to iters) {
+	q.add(SomeData)
+	whileNull {q.poll()}
+      }
+    }
+  }
+  def entries = List(reagent, hand, juc)
 }
 
 object Bench extends App {  
-//  List(PushPop, EnqDeq).map(_.runAll).foreach(printRes(_))
-  EnqDeq.go.print
+  List(PushPop, EnqDeq).map(_.go).foreach(_.display)
+//  List(EnqDeq).map(_.go).foreach(_.display)
 }
