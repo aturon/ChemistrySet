@@ -5,15 +5,18 @@ package chemistry
 import scala.util._
 
 final class Backoff {
-  private val rand = new Random()
-  private var count = 0;
+  private var seed  = System.nanoTime
+  private var count = 2;
+
+  private def nextSeed() {
+    seed = seed ^ (seed << 13)
+    seed = seed ^ (seed >>> 7)
+    seed = seed ^ (seed << 17)
+  }
+
   def once() {
-    if (count < 20) {
-      count += 1
-      for (i <- 1 to rand.nextInt(1 << count)) 
-	rand.nextInt() // no-op that JIT won't optimize away
-    } else {
-      Thread.sleep(1)
-    }
+    if (count < 20) count += 1
+    nextSeed
+    Util.noop(seed.toInt % (1 << count))
   }
 }

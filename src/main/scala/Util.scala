@@ -2,6 +2,7 @@
 
 package chemistry
 
+import scala.util._
 import scala.annotation.tailrec
 import scala.concurrent._
 import scala.concurrent.ops._
@@ -63,6 +64,16 @@ private object Util {
     sqrt(ds.map(d => (d-m) * (d-m)).sum/ds.length)
   }
   def cov(ds: Seq[Double]): Double = 100 * (stddev(ds) / abs(mean(ds)))
-
+  
+  // compute6 from j.u.c.
+  @inline def noop(times: Int = 1) {
+    var seed = 1;
+    for (_ <- 1 to times) {
+      seed = seed ^ (seed << 1)
+      seed = seed ^ (seed >>> 3)
+      seed = seed ^ (seed << 10)
+    }
+    seed
+  }
 }
 
