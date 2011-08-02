@@ -1,4 +1,4 @@
-package chemistry
+package chemistry.bench
 
 import java.util.concurrent.atomic._
 import scala.annotation.tailrec
@@ -41,3 +41,4 @@ class HandStack[A >: Null] {
     grabAll(List()).reverse
   }
 }
+ 

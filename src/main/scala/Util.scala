@@ -1,4 +1,4 @@
-// Misc utilities used throughout the Chemistry Set.  Not exported
+// Misc utilities used throughout the Chemistry Set.  Not exported.
 
 package chemistry
 
@@ -38,26 +38,6 @@ private object Util {
     (new Thread(runnable)).start()
   }
 
-  // launch a list of threads in parallel, and wait till they all
-  // finish, propagating exceptions.  Also records timing information.
-  case class TimedResult[A](startTime: Long, endTime: Long, res: A)
-  def timedPar[A](threads: Int)(code: => A): Seq[TimedResult[A]] = {
-    val svs = (1 to threads).map(_ => 
-      new SyncVar[Either[TimedResult[A],Throwable]])
-    svs.foreach(sv => fork {
-      val t1  = System.nanoTime
-      val res = code
-      val t2  = System.nanoTime
-      sv.set(
-	try Left(TimedResult(t1, t2, res)) 
-	catch { case e => Right(e) })
-    })
-    svs.map(_.get).map {
-      case Left(tr) => tr
-      case Right(e) => throw e
-    }
-  }
-
   def mean(ds: Seq[Double]): Double = ds.sum/ds.length
   def stddev(ds: Seq[Double]): Double = {
     val m = mean(ds)
@@ -77,3 +57,21 @@ private object Util {
   }
 }
 
+// an unsynchronized, but thread-varying RNG
+private final class Random {
+  private var seed = Thread.currentThread.getId
+  private def nextSeed() {
+    seed = seed ^ (seed << 13)
+    seed = seed ^ (seed >>> 7)
+    seed = seed ^ (seed << 17)
+  }
+
+  def next(max: Int): Int = {
+    nextSeed
+    seed.toInt % max
+  }
+
+  def fuzz(around: Int, percent: Int = 10): Int = {
+    around + next((around * percent) / 100)
+  }
+}

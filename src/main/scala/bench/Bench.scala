@@ -1,44 +1,73 @@
-// benchmarking framework that attempts to deal with JVM warmup,
+// Benchmarking framework that attempts to deal with JVM warmup,
 // automatically detect an appropriate number of iterations,
 // calculates essential statistical information, and logs/displays
-// results in a readable way
+// results in a readable and plottable way.
 
-package chemistry
+package chemistry.bench
 
+import java.io.FileWriter
+import java.io.PrintWriter
 import java.util.Date
 import scala.annotation.tailrec
+import scala.concurrent._
+import scala.concurrent.ops._
 import scala.math._
-import Util._
+import chemistry.Util._
 
 private object SomeData // a reference to put in collections
 
 private object config {
+  private val fmt = new java.text.SimpleDateFormat("yyyy.MM.dd.HH.mm.ss")
+  val startup = new Date
+  val startupString = fmt.format(startup)
+
   val maxCores = min(Runtime.getRuntime.availableProcessors, 8)
   val warmupMillis = 2000
   val benchMillis = 1000
   val verbose = true
-
-  val startup = new Date
-/*
- * val fmt = new SimpleDateFormat("yyyy.MM.dd.HH.mm.ss")
- * fmt.format(now) = "2011.07.30.16.38.44"
- */
 }
 
 private object log {
+  private val fmt = new java.text.SimpleDateFormat("yyyy.MM.dd.HH.mm.ss")
+  private val logFile = new PrintWriter(new FileWriter(
+    "reports/log." ++ config.startupString))
+  
   def apply(s: String) {
-    if (config.verbose) println(s)
+    val outs = "[" ++ fmt.format(new Date) ++ "] " ++ s
+    if (config.verbose) println(outs)
+    logFile.println(outs)
+    logFile.flush
   }
 }
 
-private abstract class Entry {
+abstract class Entry {
   import config._
-  import Util._
 
   def name: String
   protected type S
   protected def setup: S
   protected def run(s: S, work: Int, iters: Int)
+
+  // launch a list of threads in parallel, and wait till they all
+  // finish, propagating exceptions and  recording timing information.
+  // times reported in nanos.
+  case class TimedResult[A](startTime: Long, endTime: Long, res: A)
+  def timedPar[A](threads: Int)(code: => A): Seq[TimedResult[A]] = {
+    val svs = (1 to threads).map(_ => 
+      new SyncVar[Either[TimedResult[A],Throwable]])
+    svs.foreach(sv => fork {
+      val t1  = System.nanoTime
+      val res = code
+      val t2  = System.nanoTime
+      sv.set(
+	try Left(TimedResult(t1, t2, res)) 
+	catch { case e => Right(e) })
+    })
+    svs.map(_.get).map {
+      case Left(tr) => tr
+      case Right(e) => throw e
+    }
+  }
   
   private def measureOne(work: Int, timePerWork: Double)(i: Int): Measurement = {
     log(getClass().getSimpleName().replace("$"," "))
@@ -67,15 +96,19 @@ private abstract class Entry {
       while (warmupTime < warmupMillis) {
 	warmupTime  += time(iters)._1
 	warmupIters += iters
-//	log(" i %d  wi %d  wt %f".format(iters, warmupIters, warmupTime))
+	log(" i %d  wi %d  wt %f".format(iters, warmupIters, warmupTime))
 	iters *= 2	
       }
 
       warmupIters / time(warmupIters)._1
     }
 
-    val trialIters: Int = (totalTP * (benchMillis + (250 * i))).toInt
-//    val trialIters: Int = (tp * benchMillis).toInt
+    // do longer trials for single-threaded, since uncontended
+    // "communication" will be very fast relative to spin-work
+    val trialIters: Int = 
+      (totalTP * (if (i == 1) 0.5 else 0.1) * 
+       scala.math.log(work) * scala.math.log(work) * 
+       (benchMillis + (100 * i))).toInt
     
     val estTime = time(trialIters)._1
     val estConcOpTime = estTime - (timePerWork * trialIters / i)
@@ -92,10 +125,11 @@ private abstract class Entry {
 
       val concOpTime = t - (timePerWork * trialIters / i)
 
-      val fmt = " %3d  %6.2f  %5.2f  %6.0f  %6.0f  %5.2f  %3.0f %s"
+      val fmt = " %3d  %6.2f  %7.3f  %5.2f  %6.0f  %6.0f  %5.2f  %3.0f %s"
       log(fmt.format(
 	trials, 
 	trialIters / (concOpTime * 1000), 
+	trialIters / (t * 1000), 
 	cov(times), 
 	t,
 	mean(threadTimes),
@@ -107,17 +141,17 @@ private abstract class Entry {
     log(" - iters: %d".format(trialIters))
     log(" - est time: %6.0f  conc op: %6.0f  simulated work: %4.1f".format(
       estTime, estConcOpTime, 100 * (1-estConcOpTime/estTime)) ++ "%")
-    log("          tp    cov     tot   t-avg  t-cov   sw")
+    log("          tp   raw tp    cov     tot   t-avg  t-cov   sw")
     log(" - ex %6.2f".format((trialIters/estConcOpTime) / 1000))
 
-//    for (_ <- 1 to 5) trial
-    while (trials < 5 || cov(times) > 10) trial
-
-//    if (cov(times) > 10) for (_ <- 1 to 10) print("\u0007")
+    while (trials < 5 || cov(times) > 10) {
+      if (trials > 30) throw new Exception("Variance too high, quitting.")
+      trial
+    }
 
     val meanConcOpTime = mean(times) - (timePerWork * trialIters / i)
     val throughput = trialIters / (meanConcOpTime * 1000)
-
+    val rawThroughput = trialIters / (mean(times) * 1000)
 
     log(" - ob %6.2f".format(throughput))
     log("")
@@ -126,6 +160,7 @@ private abstract class Entry {
       mean(times),
       cov(times),
       throughput,
+      rawThroughput,
       trialIters.toInt,
       trials,
       i)
@@ -135,22 +170,22 @@ private abstract class Entry {
     EntryResult(name, (1 to maxCores).map(measureOne(work, timePerWork)))
 }
 
-private abstract class Benchmark {
+abstract class Benchmark {
   import config._
 
-  def pureWork(work: Int, iters: Int)
+  protected def pureWork(work: Int, iters: Int)
 
-  def name = getClass().getSimpleName().replace("$","")
-  def entries: Seq[Entry]
+  protected def name = getClass().getSimpleName().replace("$","")
+  protected def entries: Seq[Entry]
   def go(work: Int) = {
     log("=" * 60)
 
     // warmup
-    for (_ <- 1 to 100)
-      Util.time(pureWork(work, 1000000/work)) 
+    for (_ <- 1 to 1000)
+      time(pureWork(work, 1000000/work)) 
 
-    val workIters = 100000000 / work
-    val timePerWork = Util.time(pureWork(work, workIters)) / workIters
+    val workIters = 500000000 / work
+    val timePerWork = time(pureWork(work, workIters)) / workIters
     log("Measured nanos per units work: %6.2f  tp: %5.2f".format(
       timePerWork*1000000, (1/timePerWork)/1000
     ))
@@ -158,12 +193,4 @@ private abstract class Benchmark {
 
     BenchResult(name, work, entries.map(_.measureAll(work, timePerWork)))
   }
-}
-
-object Bench extends App {  
-  private val results = for {
-    bench <- List(PushPop, EnqDeq)
-    work  <- List(50,500,5000)
-  } yield bench.go(work)
-  results.foreach(_.display)
 }
