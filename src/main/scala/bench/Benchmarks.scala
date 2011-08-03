@@ -82,6 +82,20 @@ private object EnqDeq extends Benchmark {
       }
     }
   }
+  private object lagging extends Entry {
+    def name = "lagging-ra"
+    type S = LaggingQueue[AnyRef]
+    def setup = new LaggingQueue()
+    def run(q: S, work: Int, iters: Int) {
+      val r = new Random
+      for (_ <- 1 to iters) {
+	q.enq ! SomeData;
+	Util.noop(r.fuzz(work))
+	untilSome {q.tryDeq ! ()}
+	Util.noop(r.fuzz(work))
+      }
+    }
+  }
   private object juc extends Entry {
     def name = "juc"
     type S = ConcurrentLinkedQueue[AnyRef]
@@ -168,7 +182,8 @@ private object EnqDeq extends Benchmark {
   }
 */
 
-  def entries = List(reagent, hand, juc, lock, optimistic)
+  def entries = List(reagent, hand, juc, lock)
+  // optimistic throws NullPointerException
   // fc livelocks
   // basket is not licensed for distribution
 
@@ -181,10 +196,14 @@ object Bench extends App {
   log("Beginning benchmark")
   log("")
 
+  // val benchmarks = List(
+  //   (PushPop, 100)
+  //   (PushPop, 250)
+  //   (EnqDeq,  100)
+
   private val results = for {
     bench <- List(PushPop, EnqDeq)
-//    bench <- List(EnqDeq)
-    work  <- List(100,1000,5000)
+    work  <- List(100, 250)
     r = bench.go(work)
     _ = r.reportTP(config.startupString)
     _ = r.reportTP("latest")

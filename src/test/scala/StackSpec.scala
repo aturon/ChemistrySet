@@ -52,7 +52,7 @@ object StackSpec extends Spec {
 
     def `should push from multiple threads in locally-ordered way` {
       var s = new TreiberStack[java.lang.Integer]()
-      Threads.spawnAndJoin (List(
+      TestUtil.spawnAndJoin (List(
     	() => for (i <-      1 to 100000) s.push ! i,
     	() => for (i <- 100001 to 200000) s.push ! i))
       var left = 100000
