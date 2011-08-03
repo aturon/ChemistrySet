@@ -135,8 +135,43 @@ private object EnqDeq extends Benchmark {
       }
     }
   }
+  private object optimistic extends Entry {
+    def name = "optimistic"
+    type S = OptimisticLinkedQueue[AnyRef]
+    def setup = new OptimisticLinkedQueue
+    def run(q: S, work: Int, iters: Int) {
+      val r = new Random
+      val id = Thread.currentThread.getId.toInt % config.maxCores
+      for (_ <- 1 to iters) {
+	q.offer(SomeData)
+	Util.noop(r.fuzz(work))
+	whileNull {q.poll()}
+	Util.noop(r.fuzz(work))
+      }
+    }
+  }
+/*
+  private object basket extends Entry {
+    def name = "basket"
+    type S = BasketsQueue[AnyRef]
+    def setup = new BasketsQueue(config.maxCores)
+    def run(q: S, work: Int, iters: Int) {
+      val r = new Random
+      val id = Thread.currentThread.getId.toInt % config.maxCores
+      for (_ <- 1 to iters) {
+	q.enq(SomeData, id)
+	Util.noop(r.fuzz(work))
+	whileNull {q.deq(id)}
+	Util.noop(r.fuzz(work))
+      }
+    }
+  }
+*/
 
-  def entries = List(reagent, hand, juc, lock) // fc livelocks
+  def entries = List(reagent, hand, juc, lock, optimistic)
+  // fc livelocks
+  // basket is not licensed for distribution
+
 }
 
 

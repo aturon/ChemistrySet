@@ -96,7 +96,7 @@ abstract class Entry {
       while (warmupTime < warmupMillis) {
 	warmupTime  += time(iters)._1
 	warmupIters += iters
-	log(" i %d  wi %d  wt %f".format(iters, warmupIters, warmupTime))
+//	log(" i %d  wi %d  wt %f".format(iters, warmupIters, warmupTime))
 	iters *= 2	
       }
 
