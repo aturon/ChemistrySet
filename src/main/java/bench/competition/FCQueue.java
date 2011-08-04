@@ -36,7 +36,7 @@
 
 ******************************************************************************/
 
-package chemistry.bench;
+package chemistry.bench.competition;
 
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
@@ -93,7 +93,7 @@ public class FCQueue
 
     volatile QueueFatNode queue_head, queue_tail;
 
-    FCQueue()
+    public FCQueue()
     {
         combined_pushed_items = new Object[MAX_THREADS];
         fc_lock = new AtomicInteger(0);

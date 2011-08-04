@@ -1,8 +1,12 @@
-package chemistry.bench;
+package chemistry.bench.competition;
 
 import java.util.AbstractQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
+
+// implementation from the paper 
+//   "An optimistic approach to lock-free FIFO queues"
+// by Edya Ladan-Mozes and Nir Shavit
 
 public class OptimisticLinkedQueue<E> {
     private static class Node<E> {
@@ -108,8 +112,10 @@ public class OptimisticLinkedQueue<E> {
 	Node<E> curNode = t;
 	while (h == this.head && curNode != h){
 	    curNodeNext = curNode.getNext();
-	    curNodeNext.setPrev(curNode);
-	    curNode = curNode.getNext();
+	    if (curNodeNext != null) {
+		curNodeNext.setPrev(curNode);
+		curNode = curNode.getNext();
+	    }
 	}
     }
 }

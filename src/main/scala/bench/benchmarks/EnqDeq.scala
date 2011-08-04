@@ -1,51 +1,14 @@
-package chemistry.bench
+package chemistry.bench.benchmarks
 
 import java.util.concurrent._
 import java.util.concurrent.locks._
+
 import chemistry._
+import chemistry.bench._
+import chemistry.bench.competition._
 import chemistry.Util._
 
-private object PushPop extends Benchmark {
-  def pureWork(work: Int, iters: Int) = {
-    val r = new Random
-    for (_ <-1 to iters) {
-      Util.noop(r.fuzz(work))
-      Util.noop(r.fuzz(work))
-    }
-  }
-
-  private object hand extends Entry {
-    def name = "hand"
-    type S = HandStack[AnyRef]
-    def setup = new HandStack()
-    def run(s: S, work: Int, iters: Int) {
-      val r = new Random
-      for (_ <- 1 to iters) {
-	s.push(SomeData)
-	Util.noop(r.fuzz(work))
-	untilSome {s.tryPop}
-	Util.noop(r.fuzz(work))
-      }
-    }
-  } 
-  private object reagent extends Entry {
-    def name = "reagent"
-    type S = TreiberStack[AnyRef]
-    def setup = new TreiberStack()
-    def run(s: S, work: Int, iters: Int) {
-      val r = new Random
-      for (_ <- 1 to iters) {
-	s.push ! SomeData;
-	Util.noop(r.fuzz(work))
-	untilSome {s.tryPop ! ()}
-	Util.noop(r.fuzz(work))
-      }
-    }
-  }
-  def entries = List(reagent, hand)
-}
-
-private object EnqDeq extends Benchmark {  
+object EnqDeq extends Benchmark {  
   def pureWork(work: Int, iters: Int) = {
     val r = new Random
     for (_ <-1 to iters) {
@@ -182,43 +145,7 @@ private object EnqDeq extends Benchmark {
   }
 */
 
-  def entries = List(reagent, hand, juc, lock)
-  // optimistic throws NullPointerException
+  def entries = List(reagent, lagging, optimistic, hand, juc, lock)
   // fc livelocks
   // basket is not licensed for distribution
-
-}
-
-
-object Bench extends App {
-  val t1 = System.nanoTime
-
-  log("Beginning benchmark")
-  log("")
-
-  // val benchmarks = List(
-  //   (PushPop, 100)
-  //   (PushPop, 250)
-  //   (EnqDeq,  100)
-
-  private val results = for {
-    bench <- List(PushPop, EnqDeq)
-    work  <- List(100, 250)
-    r = bench.go(work)
-    _ = r.reportTP(config.startupString)
-    _ = r.reportTP("latest")
-    _ = r.reportRTP(config.startupString)
-    _ = r.reportRTP("latest")
-    _ = r.display
-  } yield r
-
-  val t2 = System.nanoTime
-
-  log("")
-  log("Finished in %.1f minutes".format(
-    (t2-t1).toDouble / 1000 / 1000 / 1000 / 60))
-
-  log("")
-  results.foreach(_.display)
-
 }

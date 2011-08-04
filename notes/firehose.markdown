@@ -29,6 +29,13 @@ Todo:
  - skiplist-based map
  - hashtable
  
+## 8/3/2011
+
+Should be able to derive both MCS and CLH locks by differing the data
+structure used to support the relevant channel -- though, if doing it
+based on a Ref cell waiting queue, will need to be able to vary that
+as well.
+ 
 ## 7/27/2011
 
 Join calculus does not, per se, require the dissolve primitive.  Need

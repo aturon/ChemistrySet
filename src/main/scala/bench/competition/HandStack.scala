@@ -1,4 +1,4 @@
-package chemistry.bench
+package chemistry.bench.competition
 
 import java.util.concurrent.atomic._
 import scala.annotation.tailrec

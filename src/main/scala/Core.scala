@@ -93,7 +93,7 @@ sealed abstract class Reagent[-A, +B] {
       try {
     	return tryReact(a, null, finalk) 
       } catch {
-    	case ShouldRetry => return slowPath
+    	case ShouldRetry => () //return slowPath
         case ShouldBlock => return slowPath
       }
     }

@@ -13,6 +13,7 @@ import scala.concurrent._
 import scala.concurrent.ops._
 import scala.math._
 import chemistry.Util._
+import chemistry.bench.benchmarks._
 
 private object SomeData // a reference to put in collections
 
@@ -106,7 +107,7 @@ abstract class Entry {
     // do longer trials for single-threaded, since uncontended
     // "communication" will be very fast relative to spin-work
     val trialIters: Int = 
-      (totalTP * (if (i == 1) 0.5 else 0.1) * 
+      (totalTP * 0.1 * //(if (i == 1) 0.5 else 0.1) * 
        scala.math.log(work) * scala.math.log(work) * 
        (benchMillis + (100 * i))).toInt
     
@@ -144,8 +145,8 @@ abstract class Entry {
     log("          tp   raw tp    cov     tot   t-avg  t-cov   sw")
     log(" - ex %6.2f".format((trialIters/estConcOpTime) / 1000))
 
-    while (trials < 5 || cov(times) > 10) {
-      if (trials > 30) throw new Exception("Variance too high, quitting.")
+    while (trials < 5 || (cov(times) > 10 && trials < 25)) {
+//      if (trials > 30) throw new Exception("Variance too high, quitting.")
       trial
     }
 
@@ -193,4 +194,32 @@ abstract class Benchmark {
 
     BenchResult(name, work, entries.map(_.measureAll(work, timePerWork)))
   }
+}
+
+object Bench extends App {
+  val t1 = System.nanoTime
+
+  log("Beginning benchmark")
+  log("")
+
+  private val results = for {
+    bench <- List(PushPop, EnqDeq, IncDec)
+    work  <- List(100, 250)
+    r = bench.go(work)
+    _ = r.reportTP(config.startupString)
+    _ = r.reportTP("latest")
+    _ = r.reportRTP(config.startupString)
+    _ = r.reportRTP("latest")
+    _ = r.display
+  } yield r
+
+  val t2 = System.nanoTime
+
+  log("")
+  log("Finished in %.1f minutes".format(
+    (t2-t1).toDouble / 1000 / 1000 / 1000 / 60))
+
+  log("")
+  results.foreach(_.display)
+
 }
