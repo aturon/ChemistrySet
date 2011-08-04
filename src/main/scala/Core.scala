@@ -24,7 +24,11 @@ final private case class Waiter[A,B](
   var answer: AnyRef,
   status: Ref[WaiterStatus], 
   thread: Thread
-) extends AbsWaiter
+) extends AbsWaiter with Deletion {
+  def delete {
+  }
+  def isDeleted
+}
 
 private case object Impossible extends Exception
 
@@ -93,7 +97,7 @@ sealed abstract class Reagent[-A, +B] {
       try {
     	return tryReact(a, null, finalk) 
       } catch {
-    	case ShouldRetry => () //return slowPath
+    	case ShouldRetry => return slowPath
         case ShouldBlock => return slowPath
       }
     }
@@ -230,10 +234,19 @@ object choice {
 }
 
 private final class Endpoint[A,B] extends Reagent[A,B] {
-  val mq = new MSQueue[Waiter[A,B]]()
+  val holder = new Pool[Waiter[A,B]]()
   var dual: Endpoint[B,A] = null
-  def tryReact[C](a: A, trans: Transaction, k: K[B,C]): C = 
-    throw ShouldRetry
+  def tryReact[C](a: A, trans: Transaction, k: K[B,C]): C = {
+    var retry: Boolean = false
+    @tailrec def traverse(cursor: holder.Cursor): C = cursor.get match {
+      case null => throw (if (retry) ShouldRetry else ShouldBlock)
+      case holder.Node(data, next) => try {
+	val b = data.
+      } catch {
+      }	
+    }    
+    traverse(holder.cursor)
+  }
 }
 object SwapChan {
   @inline def apply[A,B](): (Reagent[A,B], Reagent[B,A]) = {
