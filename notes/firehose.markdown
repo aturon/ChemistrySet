@@ -25,6 +25,8 @@ Todo:
  x guards/never
  - bags
  - skiplist
+ - condition variables
+ - asynchronous channels (via simple queues)
  - kcss
  - skiplist-based map
  - hashtable
