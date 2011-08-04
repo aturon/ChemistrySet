@@ -28,6 +28,8 @@ final class Pool[A <: Deletion] {
   val put: Reagent[A,Unit] = cursor.ref.upd {
     (xs,x) => (Node(x, new Cursor(xs)), ())
   }
+
+  // should these delete the acquired item?
   val tryTake = cursor.ref.upd[Option[A]] {
     case null => (null, None)
     case Node(data, next) => (next.ref.read ! (), Some(data))

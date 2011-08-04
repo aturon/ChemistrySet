@@ -30,6 +30,27 @@ Todo:
  - kcss
  - skiplist-based map
  - hashtable
+
+## 8/4/2011
+
+Seems like we must enroll reagent as waiter at every stateful
+interaction up to the one that actually blocked.  Choices force blowup
+in waiter enrollment---and message passing is particularly bad.
+
+Possible tradeoff: enrolling waiters as being in the middle of a
+reaction means it's easier to tell whether they can react, but
+requires more work/space during enrollment.
+
+Every use of >>= forces an exponential search on the left when the
+right is blocked, because we do not know how data flowing from left to
+right may be influencing the blocking, and hence must try all
+possibilities.
+
+Want to think about the common case.  
+
+Note: stealing of async sends to send recvs should fall out
+automatically if using queues directly to implement them: it will just
+depend on the structure of wakeup for `Ref` cell changes.
  
 ## 8/3/2011
 

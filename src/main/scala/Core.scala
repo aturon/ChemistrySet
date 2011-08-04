@@ -237,8 +237,6 @@ private final class Endpoint[A,B] extends Reagent[A,B] {
   val holder = new Pool[Waiter[A,B]]()
   var dual: Endpoint[B,A] = null
   def tryReact[C](a: A, trans: Transaction, k: K[B,C]): C = {
-    throw ShouldBlock
-/*
     var retry: Boolean = false
     @tailrec def traverse(cursor: holder.Cursor): C = cursor.get match {
       case null => throw (if (retry) ShouldRetry else ShouldBlock)
@@ -248,7 +246,6 @@ private final class Endpoint[A,B] extends Reagent[A,B] {
       }	
     }    
     traverse(holder.cursor)
-*/
   }
 }
 object SwapChan {
