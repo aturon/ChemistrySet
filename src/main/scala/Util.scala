@@ -68,7 +68,7 @@ private final class Random {
 
   def next(max: Int): Int = {
     nextSeed
-    seed.toInt % max
+    if (max == 0) 0 else seed.toInt % max    
   }
 
   def fuzz(around: Int, percent: Int = 10): Int = {
