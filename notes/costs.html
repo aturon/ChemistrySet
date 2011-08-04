@@ -1,0 +1,109 @@
+<html> 
+        <head> 
+                <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1"> 
+                <title>JavaScript Surface Plot</title> 
+                
+                <link rel="stylesheet" href="http://magic-table.googlecode.com/svn/trunk/magic-table/google_visualisation/example.css" type="text/css"> 
+                <!--[if IE]><script type="text/javascript" src="http://surface-plot.googlecode.com/svn/trunk/javascript/excanvas.js"></script><![endif]--> 
+				<script type="text/javascript" src='http://javascript-surface-plot.googlecode.com/svn/trunk/javascript/SurfacePlot.js'></script> 
+				<script type="text/javascript" src='http://javascript-surface-plot.googlecode.com/svn/trunk/javascript/ColourGradient.js'></script> 
+                <script type="text/javascript" src="http://www.google.com/jsapi"></script> 
+        </head>
+<body>
+		
+    <script type='text/javascript'>
+			
+      google.load("visualization", "1");
+      google.setOnLoadCallback(setUp);
+			
+        function isIE() {
+          return /msie/i.test(navigator.userAgent) && !/opera/i.test(navigator.userAgent);
+        }
+	
+        function setUp() {
+          var numRows = 6;
+          var numCols = 8;
+				
+          var tooltipStrings = new Array();
+          var data = new google.visualization.DataTable();
+				
+          for (var i = 0; i < numCols; i++)
+          {
+            data.addColumn('number', 'col'+i);
+          }
+				
+          data.addRows(numRows);
+          var idx = 0;
+
+          var bench = [
+            [65.6454642340747,264.93128472984,213.016137479589,247.946298747049,262.969436905196,323.42144953169,278.261162829541,321.078306339089],
+            [103.6808222883,295.85959094733,254.191540386148,274.165968012965,311.465878165852,321.949651020297,295.341347942135,329.660303619963],
+            [77.1263581535093,255.436463812188,181.711318350489,124.323726677474,123.401648548829,124.147549774716,126.265127338155,177.603734517694],
+            [52.5610781811035,270.165215439287,182.737978347007,142.993841799466,128.349415156403,112.438799345409,112.046410975626,142.269018928596],
+            [187.249432425301,237.607166677069,165.503376448445,132.294160066561,215.238364767633,237.980809091367,260.264019392185,176.056649632973],
+            [54.8849417510881,199.958726557279,151.522185494167,127.457323715784,191.10416793383,164.745306000177,147.476517548071,117.850203252145]
+          ];
+
+          var bench = [
+[27.0711327228046,425.453351006299,329.522683465585,406.218276840327,432.062423363231,452.663009559771,441.183975816835,444.788675235989],
+[46.7407911733883,421.174854794805,383.749613268775,376.911159920001,356.897612075956,420.790303685116,421.979980472279,414.7638548332],
+[29.8681362436003,251.137452431304,247.673067441463,179.690740835116,247.165870532804,312.30520896536,332.428084661374,376.765522054735],
+[23.4396246993813,346.165821333648,217.668563155463,186.710835496243,215.958054215044,278.313377230947,328.2470850984,363.892887796429],
+[48.681575608832,242.41476533979,170.915315185299,170.856620602975,212.738197577298,187.797830099374,164.119942651902,244.593275580248],
+[10.1469994468718,232.465975355996,176.35103643058,117.061424704513,197.457535348291,168.813730544514,154.269878239456,138.287988342589]
+          ];
+
+          var work = [10,31,100,316,1000,3160]
+
+          var max = 0
+          var min = 100000
+          for (var i = 0; i < numRows; i++) {	
+	    for (var j = 0; j < numCols; j++) {
+	      if (bench[i][j] > max) max = bench[i][j]	
+	      if (bench[i][j] < min) min = bench[i][j]	
+            }
+          }
+			
+          for (var i = 0; i < numRows; i++) {	
+	    for (var j = 0; j < numCols; j++) {
+	      data.setValue(i, j, (bench[i][j] - min)/(max - min));		
+	      tooltipStrings[idx] = "w:" + work[i] + ", threads:" + j + " = " + bench[i][j];
+	      idx++;
+	    }
+          }
+
+         var surfacePlot = new greg.ross.visualisation.SurfacePlot(document.getElementById("surfacePlotDiv"));
+
+         // Don't fill polygons in IE. It's too slow.
+         var fillPly = !isIE();
+//	 var fillPly = false;
+
+         // Define a colour gradient.
+         var colour1 = {red:0, green:0, blue:255};
+         var colour2 = {red:0, green:255, blue:255};
+         var colour3 = {red:0, green:255, blue:0};
+         var colour4 = {red:255, green:255, blue:0};
+         var colour5 = {red:255, green:0, blue:0};
+         var colours = [colour1, colour2, colour3, colour4, colour5];
+
+         // Axis labels.
+         var xAxisHeader = "Work";
+         var yAxisHeader = "Threads";
+         var zAxisHeader = "Time";
+
+         var options = {xPos: 50, yPos: 50, width: 900, height: 700, colourGradient: colours,
+		   fillPolygons: fillPly, tooltips: tooltipStrings, xTitle: xAxisHeader,
+		   yTitle: yAxisHeader, zTitle: zAxisHeader};
+				
+        surfacePlot.draw(data, options);
+      }
+			
+      </script>
+		
+      <div id='surfacePlotDiv'>
+        <!-- SurfacePlot goes here... -->
+			
+      </div>
+		
+    </body>
+</html>
