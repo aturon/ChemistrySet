@@ -106,10 +106,12 @@ abstract class Entry {
 
     // do longer trials for single-threaded, since uncontended
     // "communication" will be very fast relative to spin-work
-    val trialIters: Int = 
-      (totalTP * (if (i == 1) 0.5 else 0.1) * 
-       scala.math.log(work) * scala.math.log(work) * 
-       (benchMillis + (100 * i))).toInt
+    val trialIters: Int = (totalTP * 
+			   (if (i == 1) 0.5 else 0.1) * 
+			   scala.math.log(work) * 
+			   scala.math.log(work) * 
+			   (benchMillis + (100 * i))
+			  ).toInt
     
     val estTime = time(trialIters)._1
     val estConcOpTime = estTime - (timePerWork * trialIters / i)
@@ -207,7 +209,7 @@ object Bench extends App {
 //    work  <- List(100, 250)
     bench <- List(IncDec)
 //    work <- List(10,18,32,56,100,178,316,562,1000,1778,3162,5623,10000)
-    work <- for (i <- 1 to 40) yield pow(10, 1+ ((i-1).toDouble/10)).toInt
+    work <- for (i <- 1 to 25) yield pow(10, 1+ ((i-1).toDouble/8)).toInt
     r = bench.go(work)
     _ = r.reportTP(config.startupString)
     _ = r.reportTP("latest")

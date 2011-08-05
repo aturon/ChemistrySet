@@ -80,5 +80,5 @@ object IncDec extends Benchmark {
       }
     }
   }
-  def entries: Seq[Entry] = List(lock) //List(reagent, lock)
+  def entries: Seq[Entry] = List(reagent, lock)
 }
