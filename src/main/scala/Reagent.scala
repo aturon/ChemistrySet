@@ -1,9 +1,7 @@
-// The reagent implementation
+// The core reagent implementation and accompanying combinators
 
 package chemistry
 
-import java.util.concurrent.atomic._
-import java.util.concurrent.locks._
 import scala.annotation.tailrec
 
 sealed private abstract class LogEntry
@@ -11,26 +9,6 @@ private case class CASLog[A](r: AtomicReference[A], ov: A, nv: A)
 	     extends LogEntry
 
 final private class Transaction {}
-
-private abstract class WaiterStatus
-private case object Catalyst extends WaiterStatus
-private case object Waiting  extends WaiterStatus
-private case object Finished extends WaiterStatus
-
-sealed private abstract class AbsWaiter
-final private case class Waiter[A,B](
-  r: Reagent[A,B], 
-  arg: A,
-  var answer: AnyRef,
-  status: Ref[WaiterStatus], 
-  thread: Thread
-) extends AbsWaiter with Deletion {
-  def delete {
-  }
-  def isDeleted = false
-}
-
-private case object Impossible extends Exception
 
 private sealed abstract class BacktrackCommand extends Exception
 private case object ShouldBlock extends BacktrackCommand
@@ -74,7 +52,9 @@ sealed abstract class Reagent[-A, +B] {
       val status = Ref[WaiterStatus](Waiting)
       val recheck: Reagent[A,B] = for {
       	r <- this
-      	_ <- status.cas(Waiting, Finished)
+      	_ <- status.cas(Waiting, Finished) // might be able to use
+					   // this in kcas
+					   // implementation
       } yield r
       val waiter = Waiter(this, a, null, status, Thread.currentThread())
 
@@ -89,7 +69,7 @@ sealed abstract class Reagent[-A, +B] {
 	  case ShouldBlock => LockSupport.park(waiter)
 	}
       }
-      throw Impossible
+      throw Util.Impossible
     }
 
     // first try "fast path": react without creating/enqueuing a waiter
@@ -101,7 +81,7 @@ sealed abstract class Reagent[-A, +B] {
         case ShouldBlock => return slowPath
       }
     }
-    throw Impossible
+    throw Util.Impossible
   }
 
   @inline final def !?(a:A) : Option[B] = {
@@ -223,94 +203,12 @@ object choice {
     def tryReact[C](a: A, trans: Transaction, k: K[B,C]): C = 
       try r1.tryReact(a, trans, k) catch {
 	case ShouldRetry => 
-	  try r2.tryReact(a, trans, k) catch {
-	    case ShouldBlock => throw ShouldRetry
+	  try r2.tryReact(a, trans, k) catch {       // ShouldRetry falls thru
+	    case ShouldBlock => throw ShouldRetry 
 	  }
-	case ShouldBlock => r2.tryReact(a, trans, k)
+	case ShouldBlock => r2.tryReact(a, trans, k) // exceptions fall thru
       }
   }
   @inline def apply[A,B](r1: Reagent[A,B], r2: Reagent[A,B]): Reagent[A,B] =
     Choice(r1, r2)
-}
-
-private final class Endpoint[A,B] extends Reagent[A,B] {
-  val holder = new Pool[Waiter[A,B]]()
-  var dual: Endpoint[B,A] = null
-  def tryReact[C](a: A, trans: Transaction, k: K[B,C]): C = {
-    var retry: Boolean = false
-    @tailrec def traverse(cursor: holder.Cursor): C = cursor.get match {
-      case null => throw (if (retry) ShouldRetry else ShouldBlock)
-      case holder.Node(data, next) => try {
-	val b = data.
-      } catch {
-      }	
-    }    
-    traverse(holder.cursor)
-  }
-}
-object SwapChan {
-  @inline def apply[A,B](): (Reagent[A,B], Reagent[B,A]) = {
-    val c1 = new Endpoint[A,B]
-    val c2 = new Endpoint[B,A]
-    c1.dual = c2; c2.dual = c1
-    (c1, c2)
-  }
-}
-object Chan {
-  @inline def apply[A](): (Reagent[Unit,A], Reagent[A,Unit]) =
-    SwapChan[Unit,A]()
-}
-
-final class Ref[A](init: A) extends AtomicReference[A](init) {
-//  private final var data = new AtomicReference[A](init)
-
-//  private val waiters = new MSQueue[]()
-
-  case object read extends Reagent[Unit, A] {
-    def tryReact[B](u: Unit, trans: Transaction, k: K[A,B]): B = 
-      k.tryReact(get(), trans)
-  }
-
-  private final class CAS(expect: A, update: A) extends Reagent[Unit, Unit] {
-    def tryReact[B](u: Unit, trans: Transaction, k: K[Unit,B]): B ={
-      if (compareAndSet(expect, update))
-	k.tryReact((), trans)
-      else throw ShouldRetry
-    }
-  }
-  @inline def cas(ov:A,nv:A): Reagent[Unit,Unit] = new CAS(ov,nv) 
-
-  private final class Upd[B,C](f: (A,B) => (A,C)) extends Reagent[B, C] {
-    def tryReact[D](b: B, trans: Transaction, k: K[C,D]): D = {
-      val ov = get()
-      val (nv, ret) = f(ov, b)
-      if (compareAndSet(ov, nv))
-	k.tryReact(ret, trans)
-      else throw ShouldRetry
-    }
-  }
-  private final class UpdUnit[B](f: PartialFunction[A, (A,B)]) 
-		extends Reagent[Unit, B] {
-    def tryReact[C](u: Unit, trans: Transaction, k: K[B,C]): C = {
-      val ov = get()
-      if (!f.isDefinedAt(ov)) throw ShouldBlock
-      val (nv, ret) = f(ov)
-      if (compareAndSet(ov, nv))
-	k.tryReact(ret, trans)
-      else throw ShouldRetry
-    }
-  }
-
-  @inline def upd[B,C](f: (A,B) => (A,C)): Reagent[B, C] = 
-    new Upd(f)
-  @inline def upd[B](f: PartialFunction[A, (A,B)]): Reagent[Unit, B] = 
-    new UpdUnit(f)
-}
-object Ref {
-  @inline def apply[A](init: A): Ref[A] = new Ref(init)
-  def unapply[A](r: Ref[A]): Option[A] = Some(r.get()) 
-}
-object upd {
-  @inline def apply[A,B,C](r: Ref[A])(f: (A,B) => (A,C)) = r.upd(f)
-  @inline def apply[A,B](r: Ref[A])(f: PartialFunction[A, (A,B)]) = r.upd(f)
 }

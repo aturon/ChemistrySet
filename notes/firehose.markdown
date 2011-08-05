@@ -31,6 +31,14 @@ Todo:
  - skiplist-based map
  - hashtable
 
+## 8/5/2011
+
+One problem with enrolling waiters as complete reagents (rather than
+at their midpoints): no record of the choices made leading up to the
+possible communication.  Has to be rediscovered, which could be
+expensive.  Conversely, if the choice space is exponential, you get
+exponential enrollment.
+
 ## 8/4/2011
 
 Seems like we must enroll reagent as waiter at every stateful

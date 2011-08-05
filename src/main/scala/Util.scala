@@ -55,6 +55,9 @@ private object Util {
     }
     seed
   }
+
+  // Handy exception to throw at unreachable code locations
+  private case object Impossible extends Exception
 }
 
 // an unsynchronized, but thread-varying RNG
