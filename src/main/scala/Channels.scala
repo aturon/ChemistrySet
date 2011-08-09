@@ -5,14 +5,13 @@ package chemistry
 
 import scala.annotation.tailrec
 
-private abstract class Message[A,B] extends DeletionFlag {
-  def reagent: Reagent[B,A]
-} 
+private abstract class Message[A,B] extends Reagent[A,B] with DeletionFlag 
 
 final private case class CMessage[A,B](
   m: A, k: Reagent[B,Unit]
 ) extends Message[A,B] {
   def isDeleted = false
+  def tryReact(
   val reagent = k compose ret(m)
 }
 
@@ -32,7 +31,7 @@ private final case class Endpoint[A,B,C](
   incoming: Pool[Message[B,A]],
   k: Reagent[B,C]
 ) extends Reagent[A,C] {
-  def tryReact(a: A, trans: Transaction): C = {
+  def tryReact(a: A, rx: Reaction): C = {
     // sadly, @tailrec not acceptable here due to exception handling
     var cursor = incoming.cursor
     var retry: Boolean = false
@@ -40,7 +39,7 @@ private final case class Endpoint[A,B,C](
       case null if retry => throw ShouldRetry
       case null          => throw ShouldBlock
       case incoming.Node(msg, next) => try {
-	msg.reagent.compose(k).tryReact(a, trans)
+	msg.reagent.compose(k).tryReact(a, rx)
       } catch {
 	case ShouldRetry => retry = true; cursor = next
 	case ShouldBlock => cursor = next
