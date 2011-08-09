@@ -9,7 +9,7 @@ final class MSQueue[A >: Null] {
   private val head = Ref(Node(null))
   private val tail = Ref(head.read!())
 
-  val enq: Reagent[A, Unit] = loop { (x:A) =>
+  val enq: Reagent[A, Unit] = computed { (x:A) =>
     @tailrec def search: Reagent[Unit,Unit] = tail.read ! () match {
       case    Node(_, r@Ref(null)) => r.cas(null, Node(x))
       case ov@Node(_, Ref(nv))     => tail.cas(ov,nv) !? (); search

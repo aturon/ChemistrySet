@@ -1,15 +1,14 @@
-// A concurrent, unordered bag; used to represent channels
+// A concurrent, unordered bag, used to represent channels
 
 package chemistry
 
 import scala.annotation.tailrec
 
-trait Deletion {
-  def delete: Unit
+trait DeletionFlag {
   def isDeleted: Boolean
 }
 
-final class Pool[A <: Deletion] {
+final class Pool[A <: DeletionFlag] {
   final case class Node(data: A, next: Cursor)
   val cursor = new Cursor(null)
 
@@ -29,7 +28,7 @@ final class Pool[A <: Deletion] {
     (xs,x) => (Node(x, new Cursor(xs)), ())
   }
 
-  // should these delete the acquired item?
+/**** should these delete the acquired item? ****
   val tryTake = cursor.ref.upd[Option[A]] {
     case null => (null, None)
     case Node(data, next) => (next.ref.read ! (), Some(data))
@@ -37,4 +36,5 @@ final class Pool[A <: Deletion] {
   val take = cursor.ref.upd[A] {
     case Node(data, next) => (next.ref.read ! (), data)
   }
+*/
 }

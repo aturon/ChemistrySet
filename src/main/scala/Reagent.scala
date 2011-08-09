@@ -3,37 +3,39 @@
 package chemistry
 
 import scala.annotation.tailrec
+import java.util.concurrent.locks._
+import chemistry.Util.Implicits._
 
+/*
 sealed private abstract class LogEntry
 private case class CASLog[A](r: AtomicReference[A], ov: A, nv: A) 
 	     extends LogEntry
-
+*/
 final private class Transaction {}
 
 private sealed abstract class BacktrackCommand extends Exception
 private case object ShouldBlock extends BacktrackCommand
 private case object ShouldRetry extends BacktrackCommand
 
-sealed abstract class Reagent[-A, +B] {
-  protected def tryReact(a: A, trans: Transaction): B
+abstract class Reagent[-A, +B] {
+
+  private[chemistry] def tryReact(a: A, trans: Transaction): B
   def compose[C](next: Reagent[B,C]): Reagent[A,C]
 
   final def !(a: A): B = {
     def slowPath: B = {
       val backoff = new Backoff
-      val status = Ref[WaiterStatus](Waiting)
+      val waiter = new Waiter[B]
       val recheck: Reagent[A,B] = for {
       	r <- this
-      	_ <- status.cas(Waiting, Finished) // might be able to use
-					   // this in kcas
-					   // implementation
+	// might be able to use this in kcas
+      	_ <- waiter.status.cas(Waiting, Committed) 
       } yield r
-      val waiter = Waiter(this, a, null, status, Thread.currentThread())
 
       //logWait(waiter)
 
-      while (true) status.get() match { // scalac can't do @tailrec here
-	case Finished => return waiter.answer.asInstanceOf[B]
+      while (true) waiter.status.get() match { // scalac can't do @tailrec here
+	case Committed => return waiter.answer.asInstanceOf[B]
 	case _ => try {
 	  return recheck.tryReact(a, null) 
 	} catch {
@@ -77,22 +79,24 @@ sealed abstract class Reagent[-A, +B] {
     compose(computed(k))
   @inline final def map[C](f: B => C): Reagent[A,C] = 
     compose(lift(f))
-//  @inline final def >>[C](next: Reagent[Unit,C]): Reagent[A,C] = 
-//    compose(this, (_:B) => k)
+ @inline final def >>[C](next: Reagent[Unit,C]): Reagent[A,C] = 
+   compose(lift((_:B) => ()).compose(next))
   @inline final def mapFilter[C](f: PartialFunction[B, C]): Reagent[A,C] =
-    compose(this, lift(f))
+    compose(lift(f))
   @inline final def withFilter(f: B => Boolean): Reagent[A,B] =
-    compose(this, lift(case b if f(b) => b)
+    compose(lift({ case b if f(b) => b }))
   @inline final def <+>[C <: A, D >: B](that: Reagent[C,D]): Reagent[C,D] = 
     choice(this, that)
 }
 
 object ret { 
-  private final case class Ret[A](pure: A) extends Reagent[Unit,A] {
-    def tryReact(u: Unit, trans: Transaction): A = 
+  private final case class Ret[A,B](pure: A, k: Reagent[A,B]) 
+		     extends Reagent[Any,B] {
+    def tryReact(x: Any, trans: Transaction): B = 
       k.tryReact(pure, trans)
+    def compose[C](next: Reagent[B,C]) = Ret(pure, k.compose(next))
   }
-  @inline final def apply[A](pure: A): Reagent[Unit,A] = Ret(pure)
+  @inline final def apply[A](pure: A): Reagent[Any,A] = Ret(pure, Commit[A]())
 }
 
 // Not sure whether this should be available as a combinaor
@@ -121,7 +125,7 @@ object computed {
     def compose[D](next: Reagent[C,D]) = Computed(c, k.compose(next))
   }
   @inline def apply[A,B](c: A => Reagent[Unit,B]): Reagent[A,B] = 
-    Computed(c, Commit())
+    Computed(c, Commit[B]())
 }
 
 object lift {
@@ -133,7 +137,7 @@ object lift {
     def compose[D](next: Reagent[C,D]) = Lift(f, k.compose(next))
   }
   @inline def apply[A,B](f: PartialFunction[A,B]): Reagent[A,B]  = 
-    Lift(f, Commit())
+    Lift(f, Commit[B]())
 }
 
 object choice {

@@ -57,7 +57,16 @@ private object Util {
   }
 
   // Handy exception to throw at unreachable code locations
-  private case object Impossible extends Exception
+  object Impossible extends Exception
+
+  object Implicits {
+    implicit def functionToPartialFunction[A,B](f: A => B):
+      PartialFunction[A,B] = 
+      new PartialFunction[A,B] {
+	def isDefinedAt(x:A) = true
+	def apply(x:A) = f(x)
+      }
+  }
 }
 
 // an unsynchronized, but thread-varying RNG

@@ -18,16 +18,16 @@ final class Ref[A](init: A) extends AtomicReference[A](init) {
 
   private final case class CAS[B](expect: A, update: A, k: Reagent[Unit,B]) 
 		extends Reagent[Unit, B] {
-    def tryReact[B](u: Unit, trans: Transaction): B ={
+    def tryReact(u: Unit, trans: Transaction): B ={
       if (compareAndSet(expect, update))
 	k.tryReact((), trans)
       else throw ShouldRetry
     }
     def compose[C](next: Reagent[B,C]) = CAS(expect, update, k.compose(next))
   }
-  @inline def cas(ov:A,nv:A): Reagent[Unit,Unit] = CAS(ov,nv,Commit()) 
+  @inline def cas(ov:A,nv:A): Reagent[Unit,Unit] = CAS(ov,nv,Commit[Unit]()) 
 
-  private final case class Upd[B,C,D]](f: (A,B) => (A,C), k: Reagent[C,D]) 
+  private final case class Upd[B,C,D](f: (A,B) => (A,C), k: Reagent[C,D]) 
 		     extends Reagent[B, D] {
     def tryReact(b: B, trans: Transaction): D = {
       val ov = get()
@@ -39,7 +39,7 @@ final class Ref[A](init: A) extends AtomicReference[A](init) {
     def compose[E](next: Reagent[D,E]) = Upd(f, k.compose(next))
   }
   @inline def upd[B,C](f: (A,B) => (A,C)): Reagent[B, C] = 
-    Upd(f, Commit())
+    Upd(f, Commit[C]())
 
   private final case class UpdUnit[B,C](f: PartialFunction[A, (A,B)],
 				        k: Reagent[B, C]) 
@@ -55,7 +55,7 @@ final class Ref[A](init: A) extends AtomicReference[A](init) {
     def compose[D](next: Reagent[C,D]) = UpdUnit(f, k.compose(next))
   }
   @inline def upd[B](f: PartialFunction[A, (A,B)]): Reagent[Unit, B] = 
-    UpdUnit(f, Commit())
+    UpdUnit(f, Commit[B]())
 }
 object Ref {
   @inline def apply[A](init: A): Ref[A] = new Ref(init)
