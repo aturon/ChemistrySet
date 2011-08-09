@@ -9,19 +9,23 @@ final class Ref[A](init: A) extends AtomicReference[A](init) {
 
 //  private val waiters = new MSQueue[]()
 
-  case object read extends Reagent[Unit, A] {
-    def tryReact[B](u: Unit, trans: Transaction, k: K[A,B]): B = 
+  private final case class Read[B](k: Reagent[A,B]) extends Reagent[Unit,B] {
+    def tryReact(u: Unit, trans: Transaction): B = 
       k.tryReact(get(), trans)
+    def compose[C](next: Reagent[B,C]) = Read(k.compose(next))
   }
+  @inline def read: Reagent[Unit,A] = Read(Commit())
 
-  private final class CAS(expect: A, update: A) extends Reagent[Unit, Unit] {
-    def tryReact[B](u: Unit, trans: Transaction, k: K[Unit,B]): B ={
+  private final case class CAS[B](expect: A, update: A, k: Reagent[Unit,B]) 
+		extends Reagent[Unit, B] {
+    def tryReact[B](u: Unit, trans: Transaction): B ={
       if (compareAndSet(expect, update))
 	k.tryReact((), trans)
       else throw ShouldRetry
     }
+    def compose[C](next: Reagent[B,C]) = CAS(expect, update, k.compose(next))
   }
-  @inline def cas(ov:A,nv:A): Reagent[Unit,Unit] = new CAS(ov,nv) 
+  @inline def cas(ov:A,nv:A): Reagent[Unit,Unit] = CAS(ov,nv,Commit()) 
 
   private final class Upd[B,C](f: (A,B) => (A,C)) extends Reagent[B, C] {
     def tryReact[D](b: B, trans: Transaction, k: K[C,D]): D = {
