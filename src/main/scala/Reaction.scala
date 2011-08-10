@@ -11,6 +11,7 @@ private case class CASLog[A](r: AtomicReference[A], ov: A, nv: A)
 
 private sealed class Reaction(private val postCommits: List[Unit => Unit]) {
   def tryCommit: Boolean = {
+    // eventually will do kCAS here
     postCommits.foreach(f => f())
     true
   }

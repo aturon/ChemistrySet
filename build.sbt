@@ -4,6 +4,8 @@ version := "0.1"
 
 scalacOptions += "-deprecation"
 
+scalacOptions += "-unchecked"
+
 //scalacOptions += "-optimize"
 
 // disable publishing of main docs

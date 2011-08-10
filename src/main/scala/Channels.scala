@@ -7,7 +7,7 @@ import scala.annotation.tailrec
 import java.util.concurrent.locks._
 
 private abstract class Message[A,B] extends DeletionFlag {
-  def reagent: Reagent[B,A]
+  def exchange: Reagent[B,A]
 }
 
 /*
@@ -21,18 +21,8 @@ final private case class CMessage[A,B](
 
 final private class RMessage[A,B,C](m: A, k: Reagent[B,C], waiter: Waiter[C]) 
 	      extends Message[A,B] {
-  val reagent: Reagent[B, A] = 
-    k >=>
-    postCommit { c =>
-//      waiter.answer = c
-      LockSupport.unpark(waiter.thread)
-    } >> 
-    waiter.status.cas(Waiting, Committed) >>
-    ret(m)
-  def isDeleted = waiter.status.read ! () match {
-    case Waiting => false
-    case Committed => true
-  }
+  val exchange: Reagent[B, A] = k >=> waiter.commit >> ret(m)
+  def isDeleted = waiter.isActive
 }
 
 private final case class Endpoint[A,B,C]( 
@@ -40,7 +30,7 @@ private final case class Endpoint[A,B,C](
   incoming: Pool[Message[B,A]],
   k: Reagent[B,C]
 ) extends Reagent[A,C] {
-  def tryReact(a: A, rx: Reaction): C = {
+  def tryReact(a: A, rx: Reaction, offer: Offer[C], blocking: Boolean): C = {
     // sadly, @tailrec not acceptable here due to exception handling
     var cursor = incoming.cursor
     var retry: Boolean = false
@@ -48,12 +38,12 @@ private final case class Endpoint[A,B,C](
       case null if retry => throw ShouldRetry
       case null          => throw ShouldBlock
       case incoming.Node(msg, next) => try {
-	return msg.reagent.compose(k).tryReact(a, rx)
+	return msg.exchange.compose(k).tryReact(a, rx, offer, blocking)
       } catch {
 	case ShouldRetry => retry = true; cursor = next
 	case ShouldBlock => cursor = next
       }	      
-    }    
+    }
     throw Util.Impossible
   }
   def compose[D](next: Reagent[C,D]) = 
