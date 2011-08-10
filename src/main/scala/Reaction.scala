@@ -15,8 +15,8 @@ private sealed class Reaction(private val postCommits: List[Unit => Unit]) {
     true
   }
 
-  def +:(postCommit: Unit => Unit): Reaction =
-    new Reaction(postCommit +: postCommits)
+  def +:(postCommit: => Unit): Reaction =
+    new Reaction(((u: Unit) => postCommit) +: postCommits)
 }
 
 private object Inert extends Reaction(List())

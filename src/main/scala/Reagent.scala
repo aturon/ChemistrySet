@@ -79,6 +79,8 @@ abstract class Reagent[-A, +B] {
     compose(lift({ case b if f(b) => b }))
   @inline final def <+>[C <: A, D >: B](that: Reagent[C,D]): Reagent[C,D] = 
     choice(this, that)
+  @inline final def >=>[C](k: Reagent[B,C]): Reagent[A,C] =
+    compose(k)
 }
 
 object ret { 
@@ -133,8 +135,8 @@ object lift {
 }
 
 object choice {
-  private case class Choice[A,B](r1: Reagent[A,B], r2: Reagent[A,B]) 
-	       extends Reagent[A,B] {
+  private final case class Choice[A,B](r1: Reagent[A,B], r2: Reagent[A,B]) 
+		     extends Reagent[A,B] {
     def tryReact(a: A, rx: Reaction): B = 
       try r1.tryReact(a, rx) catch {
 	case ShouldRetry => 
@@ -148,4 +150,14 @@ object choice {
   }
   @inline def apply[A,B](r1: Reagent[A,B], r2: Reagent[A,B]): Reagent[A,B] =
     Choice(r1, r2)
+}
+
+object postCommit {
+  private final case class PostCommit[A,B](pc: A => Unit, k: Reagent[A,B])
+		     extends Reagent[A,B] {
+    def tryReact(a: A, rx: Reaction): B = k.tryReact(a, pc(a) +: rx)
+    def compose[C](next: Reagent[B,C]) = PostCommit(pc, k.compose(next))
+  }
+  @inline def apply[A](pc: A => Unit): Reagent[A,A] = 
+    PostCommit(pc, Commit[A]())
 }

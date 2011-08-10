@@ -4,26 +4,35 @@
 package chemistry
 
 import scala.annotation.tailrec
+import java.util.concurrent.locks._
 
-private abstract class Message[A,B] extends Reagent[A,B] with DeletionFlag 
+private abstract class Message[A,B] extends DeletionFlag {
+  def reagent: Reagent[B,A]
+}
 
+/*
 final private case class CMessage[A,B](
   m: A, k: Reagent[B,Unit]
 ) extends Message[A,B] {
   def isDeleted = false
-  def tryReact(
   val reagent = k compose ret(m)
 }
+*/
 
-final private case class RMessage[A,B,C](
-  m: A, k: Reagent[B,C], waiter: Waiter[C]
-) extends Message[A,B] {
+final private class RMessage[A,B,C](m: A, k: Reagent[B,C], waiter: Waiter[C]) 
+	      extends Message[A,B] {
+  val reagent: Reagent[B, A] = 
+    k >=>
+    postCommit { c =>
+//      waiter.answer = c
+      LockSupport.unpark(waiter.thread)
+    } >> 
+    waiter.status.cas(Waiting, Committed) >>
+    ret(m)
   def isDeleted = waiter.status.read ! () match {
     case Waiting => false
     case Committed => true
   }
-  val reagent = k compose ret(m) // need to add post-commit action and
-				 // message consumption
 }
 
 private final case class Endpoint[A,B,C]( 
@@ -39,7 +48,7 @@ private final case class Endpoint[A,B,C](
       case null if retry => throw ShouldRetry
       case null          => throw ShouldBlock
       case incoming.Node(msg, next) => try {
-	msg.reagent.compose(k).tryReact(a, rx)
+	return msg.reagent.compose(k).tryReact(a, rx)
       } catch {
 	case ShouldRetry => retry = true; cursor = next
 	case ShouldBlock => cursor = next
