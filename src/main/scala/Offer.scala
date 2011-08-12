@@ -52,7 +52,7 @@ private final class Waiter[-A](blocking: Boolean) extends Offer[A] {
     postCommit(pc) >> status.cas(Waiting, Committed)
   }
 
-  val cancel = status.cas(Waiting, Cancelled)
+  val cancel: Reagent[Unit,Unit] = status.cas(Waiting, Cancelled)
 
   def isActive: Boolean = status.read ! () == Waiting
 

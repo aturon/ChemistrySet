@@ -17,40 +17,50 @@ abstract class Reagent[-A, +B] {
   def compose[C](next: Reagent[B,C]): Reagent[A,C]
 
   final def !(a: A): B = {
-    def slowPath: B = {
-      val backoff = new Backoff
-      val waiter = new Waiter[B](true)
-      val recheck: Reagent[A,B] = for {
+    def slowPath(blocking: Boolean): B = {
+      val waiter = new Waiter[B](blocking)
+      val retry: Reagent[A,B] = for {
       	r <- this
       	_ <- waiter.cancel // might be able to use this in kcas
       } yield r
 
-      //logWait(waiter)
+      try {
+	return retry.tryReact(a, Inert, waiter, blocking)
+      } catch {
+	case ShouldRetry => {}
+	case ShouldBlock => if (!blocking)
+      }
+
+      val backoff = new Backoff
 
       // scalac can't do @tailrec here, due to exception handling
       while (true) waiter.poll match { 
 	case Some(b) => return b.asInstanceOf[B]
 	case None => try {
-	  return recheck.tryReact(a, Inert, waiter, true) 
+	  return retry.tryReact(a, Inert, null, false) 
 	} catch {
 	  case ShouldRetry => backoff.once()
-	  case ShouldBlock => LockSupport.park(waiter)
+	  case ShouldBlock => 
+	    if (blocking) 
+	      LockSupport.park(waiter) 
+	    else waiter.cancel !? () match {
+	      case None    => if (waiter.isActive) backoff.once()
+	      case Some(_) => return slowPath(true)
+	    }
 	}
-	case _ => throw Util.Impossible
       }
       throw Util.Impossible
     }
 
-    // first try "fast path": react without creating/enqueuing a waiter
-    while (true) { // scalac can't do @tailrec here
-      try {
-    	return tryReact(a, Inert, null, false) 
-      } catch {
-    	case ShouldRetry => return slowPath
-        case ShouldBlock => return slowPath
-      }
+    // "fast path": react without creating/enqueuing a waiter
+    def fastPath: B = try {
+      tryReact(a, Inert, null, false) 
+    } catch {
+      case ShouldRetry => slowPath(false)
+      case ShouldBlock => slowPath(true)
     }
-    throw Util.Impossible
+
+    fasthPath // start with fast path
   }
 
   @inline final def !?(a:A) : Option[B] = {
