@@ -13,15 +13,14 @@ private abstract class Offer[-A] {
 }
 
 private object Catalyst extends Offer[Unit] {
-  val commit = Commit[Unit]()
+  val commit = ret(())
   val isActive = true
 }
 
 private object Waiter {
   private abstract class WaiterStatus
   private object Waiting extends WaiterStatus
-  private object Committed extends WaiterStatus
-  private object Cancelled extends WaiterStatus
+  private object Consumed extends WaiterStatus
 }
 private final class Waiter[-A](blocking: Boolean) extends Offer[A] {
   import Waiter._
@@ -43,16 +42,17 @@ private final class Waiter[-A](blocking: Boolean) extends Offer[A] {
     answerWritten = true // tell the reader that answer is now valid
   }
 
-  val commit = {
-    val pc = if (blocking) {     
-      val thread = Thread.currentThread() // the thread that *created*
+  val commit: Reagent[A,Unit] = {
+    postCommit(
+      if (blocking) {     
+	val thread = Thread.currentThread() // the thread that *created*
 					  // the Waiter
-      (a:A) => { setAnswer(a); LockSupport.unpark(thread) }
-    } else setAnswer(_)
-    postCommit(pc) >> status.cas(Waiting, Committed)
+	(a:A) => { LockSupport.unpark(thread); setAnswer(a) }
+      } else setAnswer(_:A)
+    ) >> ret(())
   }
 
-  val cancel: Reagent[Unit,Unit] = status.cas(Waiting, Cancelled)
+  val cancel: Reagent[Unit,Unit] = status.cas(Waiting, Consumed)
 
   def isActive: Boolean = status.read ! () == Waiting
 

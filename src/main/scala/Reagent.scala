@@ -25,31 +25,37 @@ abstract class Reagent[-A, +B] {
       } yield r
 
       try {
-	return retry.tryReact(a, Inert, waiter, blocking)
+	// Enroll the waiter while simultaneously attempting to react.
+	// Notice that, even for enrollment, we use an adjusted
+	// reagent that *cancels* the waiter when committed.  This is
+	// needed for cases involving choice: the waiter may be
+	// enrolled in one branch of the choice prior to another
+	// branch succeeding, and we must ensure that at most one
+	// branch succeeds.	
+	retry.tryReact(a, Inert, waiter, blocking)
       } catch {
-	case ShouldRetry => {}
-	case ShouldBlock => if (!blocking)
-      }
+	case (_ : BacktrackCommand) => {
+	  val backoff = new Backoff
 
-      val backoff = new Backoff
-
-      // scalac can't do @tailrec here, due to exception handling
-      while (true) waiter.poll match { 
-	case Some(b) => return b.asInstanceOf[B]
-	case None => try {
-	  return retry.tryReact(a, Inert, null, false) 
-	} catch {
-	  case ShouldRetry => backoff.once()
-	  case ShouldBlock => 
-	    if (blocking) 
-	      LockSupport.park(waiter) 
-	    else waiter.cancel !? () match {
-	      case None    => if (waiter.isActive) backoff.once()
-	      case Some(_) => return slowPath(true)
+	  // scalac can't do @tailrec here, due to exception handling
+	  while (true) waiter.poll match { 
+	    case Some(b) => return b.asInstanceOf[B]
+	    case None => try {
+	      return retry.tryReact(a, Inert, null, false) 
+	    } catch {
+	      case ShouldRetry => backoff.once()
+	      case ShouldBlock => 
+		if (blocking) 
+		  LockSupport.park(waiter) 
+		else waiter.cancel !? () match {
+		  case None    => if (waiter.isActive) backoff.once()
+		  case Some(_) => return slowPath(true)
+		}
 	    }
+	  }
+	  throw Util.Impossible
 	}
       }
-      throw Util.Impossible
     }
 
     // "fast path": react without creating/enqueuing a waiter
@@ -60,7 +66,7 @@ abstract class Reagent[-A, +B] {
       case ShouldBlock => slowPath(true)
     }
 
-    fasthPath // start with fast path
+    fastPath // start with fast path
   }
 
   @inline final def !?(a:A) : Option[B] = {
