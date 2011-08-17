@@ -25,7 +25,12 @@ final private case class RMessage[A,B,C](
   private case class CompleteExchange[D](kk: Reagent[A,D]) 
 	       extends Reagent[C,D] {
     def tryReact(c: C, rx: Reaction, offer: Offer[D]): D =
-      kk.tryReact(m, waiter.setAnswer(c) +: waiter.wake +: rx, offer)
+      kk.tryReact(m, 
+		  rx.withPostCommit((_:Unit) => {
+		    waiter.setAnswer(c)
+		    waiter.wake
+		  }), 
+		  offer)
     def compose[E](next: Reagent[D,E]): Reagent[C,E] =
       CompleteExchange(kk >=> next)
   }

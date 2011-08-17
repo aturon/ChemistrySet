@@ -26,10 +26,9 @@ abstract class Reagent[-A, +B] {
 	// Enroll the waiter while simultaneously attempting to react.
 	// Notice that, even for enrollment, we use an adjusted
 	// reagent that *cancels* the waiter when committed.  This is
-	// needed for cases involving choice: the waiter may be
-	// enrolled in one branch of the choice prior to another
-	// branch succeeding, and we must ensure that at most one
-	// branch succeeds.	
+	// needed because the waiter is generally enrolled prior to
+	// the reaction attempt, and is therefore visible to (and
+	// consumable by) other threads.
 	retry.tryReact(a, Inert, waiter)
       } catch {
 	case (_ : BacktrackCommand) => {
@@ -56,15 +55,14 @@ abstract class Reagent[-A, +B] {
       }
     }
 
+
     // "fast path": react without creating/enqueuing a waiter
-    def fastPath: B = try {
+    try {
       tryReact(a, Inert, null) 
     } catch {
       case ShouldRetry => slowPath(false)
       case ShouldBlock => slowPath(true)
     }
-
-    fastPath // start with fast path
   }
 
   @inline final def !?(a:A) : Option[B] = {
@@ -178,7 +176,7 @@ object postCommit {
   private final case class PostCommit[A,B](pc: A => Unit, k: Reagent[A,B])
 		     extends Reagent[A,B] {
     def tryReact(a: A, rx: Reaction, offer: Offer[B]): B = 
-      k.tryReact(a, pc(a) +: rx, offer)
+      k.tryReact(a, rx.withPostCommit((_:Unit) => pc(a)), offer)
     def compose[C](next: Reagent[B,C]) = PostCommit(pc, k.compose(next))
   }
   @inline def apply[A](pc: A => Unit): Reagent[A,A] = 
