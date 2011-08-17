@@ -22,12 +22,19 @@ object PushPop extends Benchmark {
     type S = HandStack[AnyRef]
     def setup = new HandStack()
     def run(s: S, work: Int, iters: Int) {
-      val r = new Random
-      for (_ <- 1 to iters) {
-	s.push(SomeData)
-	Util.noop(r.fuzz(work))
-	untilSome {s.tryPop}
-	Util.noop(r.fuzz(work))
+      if (work > 0) {
+	val r = new Random
+	for (_ <- 1 to iters) {
+	  s.push(SomeData)
+	  Util.noop(r.fuzz(work))
+	  untilSome {s.tryPop}
+	  Util.noop(r.fuzz(work))
+	}
+      } else {
+	for (_ <- 1 to iters) {
+	  s.push(SomeData)
+	  untilSome {s.tryPop}
+	}
       }
     }
   } 
@@ -36,12 +43,19 @@ object PushPop extends Benchmark {
     type S = TreiberStack[AnyRef]
     def setup = new TreiberStack()
     def run(s: S, work: Int, iters: Int) {
-      val r = new Random
-      for (_ <- 1 to iters) {
-	s.push ! SomeData;
-	Util.noop(r.fuzz(work))
-	untilSome {s.tryPop ! ()}
-	Util.noop(r.fuzz(work))
+      if (work > 0) {
+	val r = new Random
+	for (_ <- 1 to iters) {
+	  s.push ! SomeData;
+	  Util.noop(r.fuzz(work))
+	  untilSome {s.tryPop ! ()}
+	  Util.noop(r.fuzz(work))
+	}
+      } else {
+	for (_ <- 1 to iters) {
+	  s.push ! SomeData;
+	  untilSome {s.tryPop ! ()}
+	}
       }
     }
   }

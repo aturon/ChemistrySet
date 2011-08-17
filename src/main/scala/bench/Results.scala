@@ -42,14 +42,16 @@ case class BenchResult(name: String, work: Int, es: Seq[EntryResult]) {
   import java.io.FileWriter
   import java.io.PrintWriter
 
+  val columns = es(0).ms.length
+
   private def hrule {
-    println("-" * (18 + maxCores * 11))
+    println("-" * (18 + columns * 11))
   }
   def display {
     // header
     hrule
     print("%10.10s %5d |".format(name, work))
-    (1 to maxCores).map(i => print(" %8d |".format(i)))
+    (1 to columns).map(i => print(" %8d |".format(i)))
     println("")    
     hrule
 
@@ -57,9 +59,11 @@ case class BenchResult(name: String, work: Int, es: Seq[EntryResult]) {
     es.map(_.format).foreach(print(_))
     hrule
 
-    // raw throughput results
-    es.map(_.formatR).foreach(print(_))
-    hrule
+    if (work > 0) {
+      // raw throughput results
+      es.map(_.formatR).foreach(print(_))
+      hrule
+    }
 
     // normalized results
     es.map(_.formatN(es(0).ms(0).throughput)).foreach(print(_))
@@ -68,18 +72,24 @@ case class BenchResult(name: String, work: Int, es: Seq[EntryResult]) {
     println("")
     println("")
   }
-  def reportTP(fname: String) = {
+
+  private def reportTP(fname: String) = {
     val o = new PrintWriter(new FileWriter(
       "reports/tp." ++ name ++ "-" ++ work.toString ++ "." ++ fname))
     for (e <- es) 
       o.println(e.name ++ "," ++ e.ms.map(_.throughput).mkString(","))
     o.close
   }
-  def reportRTP(fname: String) {
+  private def reportRTP(fname: String) {
     val o = new PrintWriter(new FileWriter(
       "reports/rtp." ++ name ++ "-" ++ work.toString ++ "." ++ fname))
     for (e <- es) 
       o.println(e.name ++ "," ++ e.ms.map(_.rawThroughput).mkString(","))
     o.close
+  }
+
+  def report(fname: String) {
+    reportTP(fname)
+    if (work > 0) reportRTP(fname)
   }
 }

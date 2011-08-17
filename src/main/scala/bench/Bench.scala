@@ -22,7 +22,7 @@ private object config {
   val startup = new Date
   val startupString = fmt.format(startup)
 
-  val maxCores = min(Runtime.getRuntime.availableProcessors, 8)
+  var maxCores = min(Runtime.getRuntime.availableProcessors, 8)
   val warmupMillis = 2000
   val benchMillis = 1000
   val verbose = true
@@ -106,10 +106,10 @@ abstract class Entry {
 
     // do longer trials for single-threaded, since uncontended
     // "communication" will be very fast relative to spin-work
-    val trialIters: Int = 
-      (totalTP * 0.1 * //(if (i == 1) 0.5 else 0.1) * 
-       scala.math.log(work) * scala.math.log(work) * 
-       (benchMillis + (100 * i))).toInt
+    val trialIters: Int = (totalTP * (benchMillis + (100 * i)) * 
+      (if (work > 0) 0.1 * scala.math.log(work) * scala.math.log(work)	 
+       else 1)
+    ).toInt
     
     val estTime = time(trialIters)._1
     val estConcOpTime = estTime - (timePerWork * trialIters / i)
@@ -167,8 +167,8 @@ abstract class Entry {
       i)
   }
 
-  def measureAll(work: Int, timePerWork: Double) = 
-    EntryResult(name, (1 to maxCores).map(measureOne(work, timePerWork)))
+  def measureAll(work: Int, cores: Int, timePerWork: Double) = 
+    EntryResult(name, (1 to cores).map(measureOne(work, timePerWork)))
 }
 
 abstract class Benchmark {
@@ -178,38 +178,51 @@ abstract class Benchmark {
 
   protected def name = getClass().getSimpleName().replace("$","")
   protected def entries: Seq[Entry]
-  def go(work: Int) = {
+  def go(work: Int, cores: Int)() = {
     log("=" * 60)
 
-    // warmup
-    for (_ <- 1 to 1000)
-      time(pureWork(work, 1000000/work)) 
+    val timePerWork = 
+      if (work > 0) {
+	// warmup
+	for (_ <- 1 to 1000)
+	  time(pureWork(work, 1000000/work)) 
 
-    val workIters = 500000000 / work
-    val timePerWork = time(pureWork(work, workIters)) / workIters
-    log("Measured nanos per units work: %6.2f  tp: %5.2f".format(
-      timePerWork*1000000, (1/timePerWork)/1000
-    ))
-    log("")
+	val workIters = 500000000 / work
+	val tpw = time(pureWork(work, workIters)) / workIters
+	log("Measured nanos per units work: %6.2f  tp: %5.2f".format(
+	  tpw*1000000, (tpw)/1000
+	))
+	log("")
 
-    BenchResult(name, work, entries.map(_.measureAll(work, timePerWork)))
+	tpw
+      } else 0
+
+    BenchResult(name, work, entries.map(_.measureAll(work, cores, timePerWork)))
   }
 }
 
 object Bench extends App {
   val t1 = System.nanoTime
 
+  if (args.length > 0) config.maxCores = args(0).toInt
+
   log("Beginning benchmark")
+  log("  max cores: %d".format(config.maxCores))
   log("")
 
+  private val seqBenches = for {
+    b <- List(PushPop)
+  } yield (b, 0, 1)
+  private val concBenches = for {
+    b <- List(PushPop, EnqDeq, IncDec)
+    w <- List(100, 250)
+  } yield (b, w, config.maxCores)
+
   private val results = for {
-    bench <- List(PushPop, EnqDeq, IncDec)
-    work  <- List(100, 250)
-    r = bench.go(work)
-    _ = r.reportTP(config.startupString)
-    _ = r.reportTP("latest")
-    _ = r.reportRTP(config.startupString)
-    _ = r.reportRTP("latest")
+    (b,w,c) <- seqBenches// ++ concBenches
+    r = b.go(w,c)
+    _ = r.report(config.startupString)
+    _ = r.report("latest")
     _ = r.display
   } yield r
 
