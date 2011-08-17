@@ -19,9 +19,18 @@ final private case class CMessage[A,B](
 }
 */
 
-final private class RMessage[A,B,C](m: A, k: Reagent[B,C], waiter: Waiter[C]) 
-	      extends Message[A,B] {
-  val exchange: Reagent[B, A] = k >=> waiter.commit >> ret(m)
+final private case class RMessage[A,B,C](
+  m: A, k: Reagent[B,C], waiter: Waiter[C]
+) extends Message[A,B] {
+  private case class CompleteExchange[D](kk: Reagent[A,D]) 
+	       extends Reagent[C,D] {
+    def tryReact(c: C, rx: Reaction, offer: Offer[D]): D =
+      kk.tryReact(m, waiter.setAnswer(c) +: waiter.wake +: rx, offer)
+    def compose[E](next: Reagent[D,E]): Reagent[C,E] =
+      CompleteExchange(kk >=> next)
+  }
+
+  val exchange: Reagent[B, A] = k >=> CompleteExchange(Commit[A]())
   def isDeleted = waiter.isActive
 }
 
@@ -30,7 +39,12 @@ private final case class Endpoint[A,B,C](
   incoming: Pool[Message[B,A]],
   k: Reagent[B,C]
 ) extends Reagent[A,C] {
-  def tryReact(a: A, rx: Reaction, offer: Offer[C], blocking: Boolean): C = {
+  def tryReact(a: A, rx: Reaction, offer: Offer[C]): C = {
+    offer match {
+      case (w: Waiter[_]) => outgoing.put ! RMessage(a, k, w)
+      case null => {} // do nothing
+    }
+
     // sadly, @tailrec not acceptable here due to exception handling
     var cursor = incoming.cursor
     var retry: Boolean = false
@@ -38,7 +52,7 @@ private final case class Endpoint[A,B,C](
       case null if retry => throw ShouldRetry
       case null          => throw ShouldBlock
       case incoming.Node(msg, next) => try {
-	return msg.exchange.compose(k).tryReact(a, rx, offer, blocking)
+	return msg.exchange.compose(k).tryReact(a, rx, offer)
       } catch {
 	case ShouldRetry => retry = true; cursor = next
 	case ShouldBlock => cursor = next

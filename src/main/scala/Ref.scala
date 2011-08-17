@@ -10,17 +10,17 @@ final class Ref[A](init: A) extends AtomicReference[A](init) {
 //  private val waiters = new MSQueue[]()
 
   private final case class Read[B](k: Reagent[A,B]) extends Reagent[Unit,B] {
-    def tryReact(u: Unit, rx: Reaction, offer: Offer[B], blocking: Boolean): B = 
-      k.tryReact(get(), rx, offer, blocking)
+    def tryReact(u: Unit, rx: Reaction, offer: Offer[B]): B = 
+      k.tryReact(get(), rx, offer)
     def compose[C](next: Reagent[B,C]) = Read(k.compose(next))
   }
   @inline def read: Reagent[Unit,A] = Read(Commit())
 
   private final case class CAS[B](expect: A, update: A, k: Reagent[Unit,B]) 
 		extends Reagent[Unit, B] {
-    def tryReact(u: Unit, rx: Reaction, offer: Offer[B], blocking: Boolean): B ={
+    def tryReact(u: Unit, rx: Reaction, offer: Offer[B]): B ={
       if (compareAndSet(expect, update))
-	k.tryReact((), rx, offer, blocking)
+	k.tryReact((), rx, offer)
       else throw ShouldRetry
     }
     def compose[C](next: Reagent[B,C]) = CAS(expect, update, k.compose(next))
@@ -29,11 +29,11 @@ final class Ref[A](init: A) extends AtomicReference[A](init) {
 
   private final case class Upd[B,C,D](f: (A,B) => (A,C), k: Reagent[C,D]) 
 		     extends Reagent[B, D] {
-    def tryReact(b: B, rx: Reaction, offer: Offer[D], blocking: Boolean): D = {
+    def tryReact(b: B, rx: Reaction, offer: Offer[D]): D = {
       val ov = get()
       val (nv, ret) = f(ov, b)
       if (compareAndSet(ov, nv))
-	k.tryReact(ret, rx, offer, blocking)
+	k.tryReact(ret, rx, offer)
       else throw ShouldRetry
     }
     def compose[E](next: Reagent[D,E]) = Upd(f, k.compose(next))
@@ -44,14 +44,12 @@ final class Ref[A](init: A) extends AtomicReference[A](init) {
   private final case class UpdUnit[B,C](f: PartialFunction[A, (A,B)],
 				        k: Reagent[B, C]) 
 		     extends Reagent[Unit, C] {
-    def tryReact(
-      u: Unit, rx: Reaction, offer: Offer[C], blocking: Boolean
-    ): C = {
+    def tryReact(u: Unit, rx: Reaction, offer: Offer[C]): C = {
       val ov = get()
       if (!f.isDefinedAt(ov)) throw ShouldBlock
       val (nv, ret) = f(ov)
       if (compareAndSet(ov, nv))
-	k.tryReact(ret, rx, offer, blocking)
+	k.tryReact(ret, rx, offer)
       else throw ShouldRetry
     }
     def compose[D](next: Reagent[C,D]) = UpdUnit(f, k.compose(next))

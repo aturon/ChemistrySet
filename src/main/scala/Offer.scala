@@ -8,12 +8,10 @@ package chemistry
 import java.util.concurrent.locks._
 
 private abstract class Offer[-A] {
-  def commit: Reagent[A,Unit]
   def isActive: Boolean
 }
 
 private object Catalyst extends Offer[Unit] {
-  val commit = ret(())
   val isActive = true
 }
 
@@ -22,7 +20,7 @@ private object Waiter {
   private object Waiting extends WaiterStatus
   private object Consumed extends WaiterStatus
 }
-private final class Waiter[-A](blocking: Boolean) extends Offer[A] {
+private final class Waiter[-A](val blocking: Boolean) extends Offer[A] {
   import Waiter._
 
   // Since the answer is written *after* the Waiter is marked as
@@ -37,22 +35,18 @@ private final class Waiter[-A](blocking: Boolean) extends Offer[A] {
 
   private val status: Ref[WaiterStatus] = new Ref(Waiting)
 
-  @inline private def setAnswer(a: A) {
+  def setAnswer(a: A) {
     answer = a.asInstanceOf[AnyRef] // not sure if this will fly
     answerWritten = true // tell the reader that answer is now valid
   }
 
-  val commit: Reagent[A,Unit] = {
-    postCommit(
-      if (blocking) {     
-	val thread = Thread.currentThread() // the thread that *created*
-					  // the Waiter
-	(a:A) => { LockSupport.unpark(thread); setAnswer(a) }
-      } else setAnswer(_:A)
-    ) >> ret(())
+  // the thread that *created* the Waiter
+  private val waiterThread = Thread.currentThread() 
+  def wake {
+    if (blocking) LockSupport.unpark(waiterThread)
   }
 
-  val cancel: Reagent[Unit,Unit] = status.cas(Waiting, Consumed)
+  val consume: Reagent[Unit,Unit] = status.cas(Waiting, Consumed)
 
   def isActive: Boolean = status.read ! () == Waiting
 
