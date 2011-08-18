@@ -15,6 +15,8 @@ abstract class Reagent[-A, +B] {
   def compose[C](next: Reagent[B,C]): Reagent[A,C]
 
   final def !(a: A): B = {
+    val backoff = new Backoff
+
     def slowPath(blocking: Boolean): B = {
       val waiter = new Waiter[B](blocking)
       val retry: Reagent[A,B] = for {
@@ -31,8 +33,6 @@ abstract class Reagent[-A, +B] {
 	retry.tryReact(a, Inert, waiter)
       } catch {
 	case (_ : BacktrackCommand) => {
-	  val backoff = new Backoff
-
 	  // scalac can't do @tailrec here, due to exception handling
 	  while (true) waiter.poll match { 
 	    case Some(b) => return b.asInstanceOf[B]
@@ -55,11 +55,18 @@ abstract class Reagent[-A, +B] {
     }
 
     // "fast path": react without creating/enqueuing a waiter
-    try {
-      tryReact(a, Inert, null) 
-    } catch {
-      case ShouldRetry => slowPath(false)
-      case ShouldBlock => slowPath(true)
+    def fashPath: B = {
+      // scalac can't do @tailrec here, due to exception handling
+      while (true) {
+	try {
+	  tryReact(a, Inert, null) 
+	} catch {
+	  case ShouldRetry if backoff.count < 3 => backoff.once()
+	  case ShouldRetry                      => return slowPath(false)
+	  case ShouldBlock => return slowPath(true)
+	}
+      }
+      throw Impossible
     }
   }
 
