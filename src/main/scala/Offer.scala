@@ -51,7 +51,7 @@ private final class Waiter[-A](val blocking: Boolean) extends Offer[A] {
   def isActive: Boolean = status.read ! () == Waiting
 
   // sadly, have to use `Any` to work around variance problems
-  @inline def poll: Option[Any] = if (isActive) None else {
+  def poll: Option[Any] = if (isActive) None else {
     while (!answerWritten) {} // spin until answer is actually available
     Some(answer)
   }

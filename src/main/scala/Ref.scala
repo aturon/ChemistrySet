@@ -20,18 +20,20 @@ final class Ref[A <: AnyRef](init: A) {
 
   private final case class CAS[B](expect: A, update: A, k: Reagent[Unit,B]) 
 		extends Reagent[Unit, B] {
+    private val kIsCommit = k.isInstanceOf[Commit[_]]
     def tryReact(u: Unit, rx: Reaction, offer: Offer[B]): B = 
-      k.tryReact((), rx.withCAS(data, expect, update), offer)
+      Ref.continueWithCAS(data, (), k, kIsCommit, expect, update, rx, offer)
     def compose[C](next: Reagent[B,C]) = CAS(expect, update, k.compose(next))
   }
   @inline def cas(ov:A,nv:A): Reagent[Unit,Unit] = CAS(ov,nv,Commit[Unit]()) 
 
   private final case class Upd[B,C,D](f: (A,B) => (A,C), k: Reagent[C,D]) 
 		     extends Reagent[B, D] {
+    private val kIsCommit = k.isInstanceOf[Commit[_]]
     def tryReact(b: B, rx: Reaction, offer: Offer[D]): D = {
       val ov = get
       val (nv, ret) = f(ov, b)
-      k.tryReact(ret, rx.withCAS(data, ov, nv), offer)
+      Ref.continueWithCAS(data, ret, k, kIsCommit, ov, nv, rx, offer)
     }
     def compose[E](next: Reagent[D,E]) = Upd(f, k.compose(next))
   }
@@ -41,16 +43,30 @@ final class Ref[A <: AnyRef](init: A) {
   private final case class UpdUnit[B,C](f: PartialFunction[A, (A,B)],
 				        k: Reagent[B, C]) 
 		     extends Reagent[Unit, C] {
+    private val kIsCommit = k.isInstanceOf[Commit[_]]
     def tryReact(u: Unit, rx: Reaction, offer: Offer[C]): C = {
       val ov = get
       if (!f.isDefinedAt(ov)) throw ShouldBlock
       val (nv, ret) = f(ov)
-      k.tryReact(ret, rx.withCAS(data, ov, nv), offer)
+      Ref.continueWithCAS(data, ret, k, kIsCommit, ov, nv, rx, offer)
     }
     def compose[D](next: Reagent[C,D]) = UpdUnit(f, k.compose(next))
   }
   @inline def upd[B](f: PartialFunction[A, (A,B)]): Reagent[Unit, B] = 
     UpdUnit(f, Commit[B]())
+
+  private final case class UpdIn[B,C](f: (A,B) => A, k: Reagent[Unit, C]) 
+		     extends Reagent[B, C] {
+    private val kIsCommit = k.isInstanceOf[Commit[_]]
+    def tryReact(b: B, rx: Reaction, offer: Offer[C]): C = {
+      val ov = get
+      val nv = f(ov, b)
+      Ref.continueWithCAS(data, (), k, kIsCommit, ov, nv, rx, offer)
+    }
+    def compose[D](next: Reagent[C,D]) = UpdIn(f, k.compose(next))
+  }
+  @inline def updIn[B](f: (A,B) => A): Reagent[B, Unit] = 
+    UpdIn(f, Commit[Unit]())
 }
 object upd {
   @inline def apply[A <: AnyRef,B,C](r: Ref[A])(f: (A,B) => (A,C)) = 
@@ -58,7 +74,21 @@ object upd {
   @inline def apply[A <: AnyRef,B](r: Ref[A])(f: PartialFunction[A, (A,B)]) = 
     r.upd(f)
 }
+object updIn {
+  @inline def apply[A <: AnyRef,B](r: Ref[A])(f: (A,B) => A) = 
+    r.updIn(f)
+}
 object Ref {
   @inline def apply[A <: AnyRef](init: A): Ref[A] = new Ref(init)
   @inline def unapply[A <: AnyRef](r: Ref[A]): Option[A] = Some(r.get)
+
+  @inline private def continueWithCAS[A <: AnyRef,B,C](
+    ref: AtomicReference[AnyRef], ret: B, k: Reagent[B,C], 
+    kIsCommit: Boolean, ov: A, nv: A, rx: Reaction, offer: Offer[C]
+  ): C = 
+    if (rx.casCount == 0 && kIsCommit)
+      if (ref.compareAndSet(ov,nv))
+	k.tryReact(ret, rx, offer)
+      else throw ShouldRetry
+    else k.tryReact(ret, rx.withCAS(ref, ov, nv), offer)
 }

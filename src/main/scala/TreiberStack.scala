@@ -5,8 +5,8 @@ package chemistry
 final class TreiberStack[A] {
   private val head = Ref[List[A]](List())
 
-  val push: Reagent[A,Unit] = head.upd { 
-    (xs,x) => (x::xs, ())
+  val push: Reagent[A,Unit] = head.updIn { 
+    (xs,x) => x::xs
   }
 
   val tryPop: Reagent[Unit,Option[A]] = head.upd[Option[A]] {

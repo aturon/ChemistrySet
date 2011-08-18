@@ -38,8 +38,8 @@ object PushPop extends Benchmark {
       }
     }
   } 
-  private object reagent extends Entry {
-    def name = "reagent"
+  private object rTreiber extends Entry {
+    def name = "r-treiber"
     type S = TreiberStack[AnyRef]
     def setup = new TreiberStack()
     def run(s: S, work: Int, iters: Int) {
@@ -59,5 +59,26 @@ object PushPop extends Benchmark {
       }
     }
   }
-  def entries = List(reagent, hand)
+  private object rElim extends Entry {
+    def name = "r-elim"
+    type S = EliminationStack[AnyRef]
+    def setup = new EliminationStack()
+    def run(s: S, work: Int, iters: Int) {
+      if (work > 0) {
+	val r = new Random
+	for (_ <- 1 to iters) {
+	  s.push ! SomeData;
+	  Util.noop(r.fuzz(work))
+	  untilSome {s.tryPop ! ()}
+	  Util.noop(r.fuzz(work))
+	}
+      } else {
+	for (_ <- 1 to iters) {
+	  s.push ! SomeData;
+	  untilSome {s.tryPop ! ()}
+	}
+      }
+    }
+  }
+  def entries = List(rTreiber, rElim, hand)
 }

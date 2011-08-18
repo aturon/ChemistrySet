@@ -23,12 +23,11 @@ abstract class Reagent[-A, +B] {
       } yield r
 
       try {
-	// Enroll the waiter while simultaneously attempting to react.
-	// Notice that, even for enrollment, we use an adjusted
-	// reagent that *cancels* the waiter when committed.  This is
-	// needed because the waiter is generally enrolled prior to
-	// the reaction attempt, and is therefore visible to (and
-	// consumable by) other threads.
+	// Enroll the waiter while simultaneously attempting to react.  Notice
+	// that, even for enrollment, we use an adjusted reagent that
+	// *cancels* the waiter when committed.  This is needed because the
+	// waiter is generally enrolled prior to the reaction attempt, and is
+	// therefore visible to (and consumable by) other threads.
 	retry.tryReact(a, Inert, waiter)
       } catch {
 	case (_ : BacktrackCommand) => {
@@ -55,7 +54,6 @@ abstract class Reagent[-A, +B] {
       }
     }
 
-
     // "fast path": react without creating/enqueuing a waiter
     try {
       tryReact(a, Inert, null) 
@@ -69,11 +67,10 @@ abstract class Reagent[-A, +B] {
     try {
       Some(tryReact(a, Inert, null))
     } catch {
-      case ShouldRetry => None	// should we actually retry here?  if
-				// we do, more informative: a failed
-				// attempt entails a linearization
-				// where no match was possible.  but
-				// could diverge...
+      case ShouldRetry => None	// should we actually retry here?  if we do,
+				// more informative: a failed attempt entails
+				// a linearization where no match was
+				// possible.  but could diverge...
       case ShouldBlock => None
     }
   }

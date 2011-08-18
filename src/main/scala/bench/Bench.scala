@@ -108,7 +108,7 @@ abstract class Entry {
     // "communication" will be very fast relative to spin-work
     val trialIters: Int = (totalTP * (benchMillis + (100 * i)) * 
       (if (work > 0) 0.1 * scala.math.log(work) * scala.math.log(work)	 
-       else 3)
+       else 1)
     ).toInt
     
     val estTime = time(trialIters)._1
@@ -143,7 +143,10 @@ abstract class Entry {
     log(" - est time: %6.0f  conc op: %6.0f  simulated work: %4.1f".format(
       estTime, estConcOpTime, 100 * (1-estConcOpTime/estTime)) ++ "%")
     log("          tp   raw tp    cov     tot   t-avg  t-cov   sw")
-    log(" - ex %6.2f".format((trialIters/estConcOpTime) / 1000))
+    log(" - ex%6.1f %7.1f".format(
+      (trialIters/estConcOpTime) / 1000,
+      (trialIters/estTime) / 1000
+    ))
 
     while (trials < 5 || (cov(times) > 10 && trials < 25)) {
 //      if (trials > 30) throw new Exception("Variance too high, quitting.")
@@ -154,7 +157,7 @@ abstract class Entry {
     val throughput = trialIters / (meanConcOpTime * 1000)
     val rawThroughput = trialIters / (mean(times) * 1000)
 
-    log(" - ob %6.2f".format(throughput))
+    log(" - ob%6.1f %7.1f".format(throughput, rawThroughput))
     log("")
 
     Measurement(
@@ -204,7 +207,11 @@ abstract class Benchmark {
 object Bench extends App {
   val t1 = System.nanoTime
 
-  if (args.length > 0) config.maxCores = args(0).toInt
+  var seqOnly: Boolean = false
+
+  for (a <- args) a match {
+    case "--seq" => seqOnly = true
+  }
 
   log("Beginning benchmark")
   log("  max cores: %d".format(config.maxCores))
@@ -218,8 +225,10 @@ object Bench extends App {
     w <- List(100, 250)
   } yield (b, w, config.maxCores)
 
+  val benches = if (seqOnly) seqBenches else seqBenches ++ concBenches
+
   private val results = for {
-    (b,w,c) <- seqBenches ++ concBenches
+    (b,w,c) <- benches
     r = b.go(w,c)
     _ = r.report(config.startupString)
     _ = r.report("latest")

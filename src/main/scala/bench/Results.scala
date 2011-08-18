@@ -14,7 +14,7 @@ case class Measurement(
   def format = " %8.2f |".format(throughput)
   def formatR = " %8.2f |".format(rawThroughput)
   def formatN(compTo: Double) = 
-    " %8.2f |".format(throughput / compTo)
+    " %8.2f |".format(rawThroughput / compTo)
 }
 
 case class EntryResult(name: String, ms: Seq[Measurement]) {
@@ -66,7 +66,7 @@ case class BenchResult(name: String, work: Int, es: Seq[EntryResult]) {
     }
 
     // normalized results
-    es.map(_.formatN(es(0).ms(0).throughput)).foreach(print(_))
+    es.map(_.formatN(es(0).ms(0).rawThroughput)).foreach(print(_))
     hrule   
 
     println("")

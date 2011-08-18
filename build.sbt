@@ -6,7 +6,9 @@ scalacOptions += "-deprecation"
 
 scalacOptions += "-unchecked"
 
-//scalacOptions += "-optimize"
+scalacOptions += "-optimize"
+
+parallelExecution in Test := false
 
 // disable publishing of main docs
 publishArtifact in (Compile, packageDoc) := false
@@ -16,7 +18,8 @@ scalaVersion := "2.9.0-1"
 resolvers += "repo.codahale.com" at "http://repo.codahale.com"
 
 libraryDependencies ++= Seq(
-  "com.codahale" % "simplespec_2.9.0-1" % "0.3.4"
+//  "com.codahale" % "simplespec_2.9.0-1" % "0.3.4"
+  "com.codahale" % "simplespec_2.9.0-1" % "0.4.1"
 )
 
 fork := true

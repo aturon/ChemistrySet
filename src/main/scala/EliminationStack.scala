@@ -6,8 +6,8 @@ final class EliminationStack[A] {
   private val head = Ref[List[A]](List())
   private val (elimPop, elimPush) = Chan[A]()
 
-  val push: Reagent[A,Unit] = head.upd { 
-    (xs,x:A) => (x::xs, ())
+  val push: Reagent[A,Unit] = head.updIn { 
+    (xs,x:A) => x::xs
   } <+> elimPush
 
   val tryPop: Reagent[Unit,Option[A]] = head.upd[Option[A]] {

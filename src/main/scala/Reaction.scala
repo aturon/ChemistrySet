@@ -9,7 +9,7 @@ import java.util.concurrent.atomic._
 private abstract sealed class Reaction {
   import Reaction._
 
-  protected def casCount: Int
+  def casCount: Int
 
   def withPostCommit(postCommit: Unit => Unit): Reaction =
     PostCommit(postCommit, this)
