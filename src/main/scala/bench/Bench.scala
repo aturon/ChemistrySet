@@ -108,7 +108,7 @@ abstract class Entry {
     // "communication" will be very fast relative to spin-work
     val trialIters: Int = (totalTP * (benchMillis + (100 * i)) * 
       (if (work > 0) 0.1 * scala.math.log(work) * scala.math.log(work)	 
-       else 1)
+       else 3)
     ).toInt
     
     val estTime = time(trialIters)._1
@@ -219,7 +219,7 @@ object Bench extends App {
   } yield (b, w, config.maxCores)
 
   private val results = for {
-    (b,w,c) <- seqBenches// ++ concBenches
+    (b,w,c) <- seqBenches ++ concBenches
     r = b.go(w,c)
     _ = r.report(config.startupString)
     _ = r.report("latest")

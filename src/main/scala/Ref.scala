@@ -3,18 +3,13 @@
 package chemistry
 
 import java.util.concurrent.atomic._
-// import sun.misc._
 
 final class Ref[A <: AnyRef](init: A) {
-//  @volatile private var value: Any = init
 //  private val waiters = new MSQueue[]()
 
+  // really, the type of data should belong to Reaction
   private val data = new AtomicReference[AnyRef](init)
-  private def get: A = data.get.asInstanceOf[A]
-  private def compareAndSet(ov: A, nv: A): Boolean = 
-   data.compareAndSet(ov, nv)
-
-//    Ref.unsafe.compareAndSwapObject(this, Ref.valueOffset, ov, nv)
+  private def get: A = Reaction.read(data).asInstanceOf[A]
 
   private final case class Read[B](k: Reagent[A,B]) extends Reagent[Unit,B] {
     def tryReact(u: Unit, rx: Reaction, offer: Offer[B]): B = 
@@ -65,9 +60,5 @@ object upd {
 }
 object Ref {
   @inline def apply[A <: AnyRef](init: A): Ref[A] = new Ref(init)
-  @inline def unapply[A <: AnyRef](r: Ref[A]): Option[A] = Some(r.get) 
-
-//  private val unsafe = Unsafe.getUnsafe()
-//  private val valueOffset = 
-//    unsafe.objectFieldOffset(classOf[Ref[_]].getDeclaredField("value"))
+  @inline def unapply[A <: AnyRef](r: Ref[A]): Option[A] = Some(r.get)
 }
