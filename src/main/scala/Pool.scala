@@ -24,8 +24,8 @@ final class Pool[A <: DeletionFlag] {
     }
   }
 
-  val put: Reagent[A,Unit] = cursor.ref.upd {
-    (xs,x) => (Node(x, new Cursor(xs)), ())
+  val put: Reagent[A,Unit] = cursor.ref.updIn {
+    (xs,x) => Node(x, new Cursor(xs))
   }
 
 /**** should these delete the acquired item? ****

@@ -55,19 +55,21 @@ abstract class Reagent[-A, +B] {
     }
 
     // "fast path": react without creating/enqueuing a waiter
-    def fashPath: B = {
+    def fastPath: B = {
       // scalac can't do @tailrec here, due to exception handling
       while (true) {
 	try {
-	  tryReact(a, Inert, null) 
+	  return tryReact(a, Inert, null) 
 	} catch {
-	  case ShouldRetry if backoff.count < 3 => backoff.once()
+	  case ShouldRetry if backoff.count < 4 => backoff.once()
 	  case ShouldRetry                      => return slowPath(false)
 	  case ShouldBlock => return slowPath(true)
 	}
       }
-      throw Impossible
+      throw Util.Impossible
     }
+    
+    fastPath
   }
 
   @inline final def !?(a:A) : Option[B] = {

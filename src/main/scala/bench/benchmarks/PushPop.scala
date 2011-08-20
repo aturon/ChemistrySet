@@ -80,5 +80,6 @@ object PushPop extends Benchmark {
       }
     }
   }
-  def entries = List(rTreiber, rElim, hand)
+//  def entries = List(rTreiber, rElim, hand)
+  def entries = List(rTreiber, hand)
 }

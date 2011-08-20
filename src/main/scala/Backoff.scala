@@ -12,6 +12,6 @@ final class Backoff {
 
   def once() {
     if (c < 20) c += 1
-    Util.noop(rand.next(1 << c))
+    Util.noop(rand.next(128 << c))
   }
 }

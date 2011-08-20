@@ -8,7 +8,7 @@ final class Ref[A <: AnyRef](init: A) {
 //  private val waiters = new MSQueue[]()
 
   // really, the type of data should belong to Reaction
-  private val data = new AtomicReference[AnyRef](init)
+  val data = new AtomicReference[AnyRef](init)
   private def get: A = Reaction.read(data).asInstanceOf[A]
 
   private final case class Read[B](k: Reagent[A,B]) extends Reagent[Unit,B] {
@@ -67,6 +67,23 @@ final class Ref[A <: AnyRef](init: A) {
   }
   @inline def updIn[B](f: (A,B) => A): Reagent[B, Unit] = 
     UpdIn(f, Commit[Unit]())
+
+  private final case class FastUpd[B,C,D](f: (A,B) => A, g: (A,B) => C, k: Reagent[C, D]) 
+		     extends Reagent[B, D] {
+    private val kIsCommit = k.isInstanceOf[Commit[_]]
+    def tryReact(b: B, rx: Reaction, offer: Offer[D]): D = {
+      val ov = get
+      val nv = f(ov, b)
+      if (rx.casCount == 0 && kIsCommit)
+	if (data.compareAndSet(ov,nv))
+	  k.tryReact(g(ov,b), rx, offer)
+	else throw ShouldRetry
+      else k.tryReact(g(ov,b), rx.withCAS(data, ov, nv), offer)
+    }
+    def compose[E](next: Reagent[D,E]) = FastUpd(f, g, k.compose(next))
+  }
+  @inline def fastUpd[B,C](f: (A,B) => A, g: (A,B) => C): Reagent[B, C] = 
+    FastUpd(f, g, Commit[C]())
 }
 object upd {
   @inline def apply[A <: AnyRef,B,C](r: Ref[A])(f: (A,B) => (A,C)) = 
