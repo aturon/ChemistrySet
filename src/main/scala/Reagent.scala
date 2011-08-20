@@ -61,7 +61,7 @@ abstract class Reagent[-A, +B] {
 	try {
 	  return tryReact(a, Inert, null) 
 	} catch {
-	  case ShouldRetry if backoff.count < 4 => backoff.once()
+//	  case ShouldRetry if backoff.count < 4 => backoff.once()
 	  case ShouldRetry                      => return slowPath(false)
 	  case ShouldBlock => return slowPath(true)
 	}

@@ -8,6 +8,8 @@ import chemistry.bench._
 import chemistry.bench.competition._
 import chemistry.Util._
 
+import org.amino.ds.lockfree._
+
 object PushPop extends Benchmark {
   def pureWork(work: Int, iters: Int) = {
     val r = new Random
@@ -16,7 +18,27 @@ object PushPop extends Benchmark {
       Util.noop(r.fuzz(work))
     }
   }
-
+  private object handElim extends Entry {
+    def name = "handElim"
+    type S = HandElimStack[AnyRef]
+    def setup = new HandElimStack()
+    def run(s: S, work: Int, iters: Int) {
+      if (work > 0) {
+	val r = new Random
+	for (_ <- 1 to iters) {
+	  s.push(SomeData)
+	  Util.noop(r.fuzz(work))
+	  untilSome {s.tryPop}
+	  Util.noop(r.fuzz(work))
+	}
+      } else {
+	for (_ <- 1 to iters) {
+	  s.push(SomeData)
+	  untilSome {s.tryPop}
+	}
+      }
+    }
+  } 
   private object hand extends Entry {
     def name = "hand"
     type S = HandStack[AnyRef]
@@ -80,6 +102,29 @@ object PushPop extends Benchmark {
       }
     }
   }
+/*
+  private object ebstack extends Entry {
+    def name = "ebstack"
+    type S = EBStack[AnyRef]
+    def setup = new EBStack()
+    def run(s: S, work: Int, iters: Int) {
+      if (work > 0) {
+	val r = new Random
+	for (_ <- 1 to iters) {
+	  s.push(SomeData)
+	  Util.noop(r.fuzz(work))
+	  s.pop
+	  Util.noop(r.fuzz(work))
+	}
+      } else {
+	for (_ <- 1 to iters) {
+	  s.push(SomeData)
+	  s.pop
+	}
+      }
+    }
+  } 
+*/
 //  def entries = List(rTreiber, rElim, hand)
-  def entries = List(rTreiber, hand)
+  def entries = List(rElim, handElim, rTreiber, hand)
 }
