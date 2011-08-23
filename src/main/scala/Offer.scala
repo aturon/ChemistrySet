@@ -47,6 +47,8 @@ private final class Waiter[-A](val blocking: Boolean) extends Offer[A] {
   }
 
   val consume: Reagent[Unit,Unit] = status.cas(Waiting, Consumed)
+  def consumeRX(rx: Reaction): Reaction =
+    rx.withCAS(status.data, Waiting, Consumed) 
 
   def isActive: Boolean = status.read ! () == Waiting
 

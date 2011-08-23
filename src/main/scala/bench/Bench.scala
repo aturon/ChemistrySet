@@ -224,8 +224,8 @@ object Bench extends App {
 //    b <- List(PushPop, EnqDeq, IncDec)
 //    w <- List(100, 250)
     b <- List(PushPop)
-    w <- List(316, 562)
-//    w <- List(0) ++ (for (i <- 0 to 15) yield pow(10, 1+i.toDouble * 0.25).toInt)
+//    w <- List(316, 562)
+    w <- List(0) ++ (for (i <- 0 to 15) yield pow(10, 1+i.toDouble * 0.25).toInt)
   } yield (b, w, config.maxCores)
 
 //  val benches = if (seqOnly) seqBenches else seqBenches ++ concBenches
