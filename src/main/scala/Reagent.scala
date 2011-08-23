@@ -36,6 +36,7 @@ abstract class Reagent[-A, +B] {
 	  // scalac can't do @tailrec here, due to exception handling
 
       var bcount = 1
+      val rand = new Random
 
 	  while (true) {
 	    val waiter = new Waiter[B](blocking)
@@ -47,22 +48,15 @@ abstract class Reagent[-A, +B] {
 //	      return retry.tryReact(a, Inert, null) 
 	    } catch {
 	      case ShouldRetry => {
-		val t = System.nanoTime
-		val timeout = 128 << bcount
-		while (waiter.isActive && System.nanoTime - t < timeout) {}
+		var spins = rand.next(128 << bcount)
+		while (waiter.isActive && spins > 0) spins -= 1
 
 //		backoff.once()
-		waiter.consume !? () match {
-		  case None =>
-		    waiter.poll match { 
-		      case Some(b) => return b.asInstanceOf[B]
-		      case _ => throw Util.Impossible
-		    }
-		  case Some(()) => {}
+		waiter.abort match {
+		  case Some(b) => return b.asInstanceOf[B]
+		  case _ => {}
 		} 
-	      }
-
-	      bcount += 1
+	      }	      
 /*
 	      case ShouldBlock => 
 		if (blocking) 
@@ -73,6 +67,8 @@ abstract class Reagent[-A, +B] {
 		}
 */
 	    }
+
+	    if (bcount < 8) bcount += 1
 	  }
 	  throw Util.Impossible
 //	}
