@@ -8,7 +8,7 @@ import chemistry.bench._
 import chemistry.bench.competition._
 import chemistry.Util._
 
-import org.amino.ds.lockfree._
+//import org.amino.ds.lockfree._
 
 object PushPop extends Benchmark {
   def pureWork(work: Int, iters: Int) = {
@@ -22,6 +22,27 @@ object PushPop extends Benchmark {
     def name = "handElim"
     type S = HandElimStack[AnyRef]
     def setup = new HandElimStack()
+    def run(s: S, work: Int, iters: Int) {
+      if (work > 0) {
+	val r = new Random
+	for (_ <- 1 to iters) {
+	  s.push(SomeData)
+	  Util.noop(r.fuzz(work))
+	  untilSome {s.tryPop}
+	  Util.noop(r.fuzz(work))
+	}
+      } else {
+	for (_ <- 1 to iters) {
+	  s.push(SomeData)
+	  untilSome {s.tryPop}
+	}
+      }
+    }
+  } 
+  private object handPool extends Entry {
+    def name = "handPool"
+    type S = HandPoolStack[AnyRef]
+    def setup = new HandPoolStack()
     def run(s: S, work: Int, iters: Int) {
       if (work > 0) {
 	val r = new Random
@@ -126,5 +147,7 @@ object PushPop extends Benchmark {
   } 
 */
 //  def entries = List(rTreiber, rElim, hand)
-  def entries = List(rElim, handElim, rTreiber, hand)
+//  def entries = List(rElim, handElim, rTreiber, hand)
+//  def entries: List[Entry] = List(handPool)
+  def entries: List[Entry] = List(rElim)
 }

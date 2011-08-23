@@ -15,31 +15,55 @@ abstract class Reagent[-A, +B] {
   def compose[C](next: Reagent[B,C]): Reagent[A,C]
 
   final def !(a: A): B = {
-    val backoff = new Backoff
+//    val backoff = new Backoff
 
     def slowPath(blocking: Boolean): B = {
-      val waiter = new Waiter[B](blocking)
-      val retry: Reagent[A,B] = for {
-      	r <- this
-      	_ <- waiter.consume // might be able to use this in kcas
-      } yield r
+      // val waiter = new Waiter[B](blocking)
+      // val retry: Reagent[A,B] = for {
+      // 	r <- this
+      // 	_ <- waiter.consume // might be able to use this in kcas
+      // } yield r
 
-      try {
+//      try {
 	// Enroll the waiter while simultaneously attempting to react.  Notice
 	// that, even for enrollment, we use an adjusted reagent that
 	// *cancels* the waiter when committed.  This is needed because the
 	// waiter is generally enrolled prior to the reaction attempt, and is
 	// therefore visible to (and consumable by) other threads.
-	retry.tryReact(a, Inert, waiter)
-      } catch {
-	case (_ : BacktrackCommand) => {
+//	retry.tryReact(a, Inert, waiter)
+//      } catch {
+//	case (_ : BacktrackCommand) => {
 	  // scalac can't do @tailrec here, due to exception handling
-	  while (true) waiter.poll match { 
-	    case Some(b) => return b.asInstanceOf[B]
-	    case None => try {
-	      return retry.tryReact(a, Inert, null) 
+
+      var bcount = 1
+
+	  while (true) {
+	    val waiter = new Waiter[B](blocking)
+	    
+//	    case Some(b) => return b.asInstanceOf[B]
+//	    case None => try {
+	    try {
+	      return tryReact(a, Inert, waiter)
+//	      return retry.tryReact(a, Inert, null) 
 	    } catch {
-	      case ShouldRetry => backoff.once()
+	      case ShouldRetry => {
+		val t = System.nanoTime
+		val timeout = 128 << bcount
+		while (waiter.isActive && System.nanoTime - t < timeout) {}
+
+//		backoff.once()
+		waiter.consume !? () match {
+		  case None =>
+		    waiter.poll match { 
+		      case Some(b) => return b.asInstanceOf[B]
+		      case _ => throw Util.Impossible
+		    }
+		  case Some(()) => {}
+		} 
+	      }
+
+	      bcount += 1
+/*
 	      case ShouldBlock => 
 		if (blocking) 
 		  LockSupport.park(waiter) 
@@ -47,11 +71,12 @@ abstract class Reagent[-A, +B] {
 		  case None    => if (waiter.isActive) backoff.once()
 		  case Some(_) => return slowPath(true)
 		}
+*/
 	    }
 	  }
 	  throw Util.Impossible
-	}
-      }
+//	}
+//      }
     }
 
     // "fast path": react without creating/enqueuing a waiter

@@ -19,23 +19,48 @@ final private case class CMessage[A,B](
 }
 */
 
+final private case class RMessage[A,B](
+  m: A, waiter: Waiter[B]
+) extends Message[A,B] {
+/*
 final private case class RMessage[A,B,C](
   m: A, k: Reagent[B,C], waiter: Waiter[C]
 ) extends Message[A,B] {
+*/
+
+  private case object CompleteExchange extends Reagent[B,A] {
+    def tryReact(b: B, rx: Reaction, offer: Offer[A]): A = waiter.consume !? () match {
+      case None => throw ShouldBlock
+//      case Some(()) => kk.tryReact(m, rx, offer)
+      case Some(()) => {
+	waiter.setAnswer(b)
+	m
+      }
+    }
+    def compose[C](next: Reagent[A,C]) = throw Util.Impossible
+
+/*
   private case class CompleteExchange[D](kk: Reagent[A,D]) 
 	       extends Reagent[C,D] {
-    def tryReact(c: C, rx: Reaction, offer: Offer[D]): D =
+    def tryReact(c: C, rx: Reaction, offer: Offer[D]): D = waiter.consume !? () match {
+      case None => throw ShouldBlock
+      case Some(()) => kk.tryReact(m, rx, offer)
+    }
+
       kk.tryReact(m, 
 		  rx.withPostCommit((_:Unit) => {
 		    waiter.setAnswer(c)
 		    waiter.wake
 		  }), 
 		  offer)
+
     def compose[E](next: Reagent[D,E]): Reagent[C,E] =
       CompleteExchange(kk >=> next)
+*/
   }
 
-  val exchange: Reagent[B, A] = k >=> CompleteExchange(Commit[A]())
+  val exchange: Reagent[B, A] = //k >=> CompleteExchange(Commit[A]())
+    CompleteExchange
   def isDeleted = waiter.isActive
 }
 
@@ -45,19 +70,22 @@ private final case class Endpoint[A,B,C](
   k: Reagent[B,C]
 ) extends Reagent[A,C] {
   def tryReact(a: A, rx: Reaction, offer: Offer[C]): C = {
-    offer match {
-      case (w: Waiter[_]) => outgoing.put ! RMessage(a, k, w)
-      case null => {} // do nothing
-    }
-
     // sadly, @tailrec not acceptable here due to exception handling
     var cursor = incoming.cursor
     var retry: Boolean = false
     while (true) cursor.get match {
       case null if retry => throw ShouldRetry
-      case null          => throw ShouldBlock
+      case null          => {
+	offer match {
+//	  case (w: Waiter[_]) => outgoing.put ! RMessage(a, k, w)
+	  case (w: Waiter[_]) => outgoing.put ! RMessage(a, w.asInstanceOf[Waiter[B]])
+	  case null => {} // do nothing
+	}
+	throw ShouldRetry
+      }
       case incoming.Node(msg, next) => try {
-	return msg.exchange.compose(k).tryReact(a, rx, offer)
+	return msg.exchange.tryReact(a, rx, null).asInstanceOf[C]
+	//return msg.exchange.compose(k).tryReact(a, rx, offer)
       } catch {
 	case ShouldRetry => retry = true; cursor = next
 	case ShouldBlock => cursor = next
