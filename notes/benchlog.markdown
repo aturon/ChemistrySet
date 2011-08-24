@@ -21,3 +21,11 @@ PushPop with
   - hand, handElim, r-elim
   
 measured at linear scale 0 - 300 by 50s
+
+# 2011.08.23.22.52.02
+
+PushPop with 
+
+  - hand, handElim, improved r-elim
+  
+measured at linear scale 0 - 1000 by 50s

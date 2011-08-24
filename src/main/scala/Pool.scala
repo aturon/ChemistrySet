@@ -19,7 +19,7 @@ final class Pool[A <: DeletionFlag] {
       case n@Node(data, next) =>
 	if (data.isDeleted) { 
 //	  ref.cas(n, next.ref.read ! ()) !? ()
-	  ref.data.lazySet(next.ref.read)
+	  ref.data.lazySet(next.ref.data.get)
 	  get
 	} else n
     }

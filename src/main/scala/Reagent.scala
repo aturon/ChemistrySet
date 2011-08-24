@@ -48,7 +48,7 @@ abstract class Reagent[-A, +B] {
 //	      return retry.tryReact(a, Inert, null) 
 	    } catch {
 	      case ShouldRetry => {
-		var spins = rand.next(128 << bcount)
+		var spins = 128 << bcount
 		while (waiter.isActive && spins > 0) spins -= 1
 
 //		backoff.once()

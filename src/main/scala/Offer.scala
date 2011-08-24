@@ -60,7 +60,7 @@ private final class Waiter[-A](val blocking: Boolean) extends Offer[A] {
 
   // sadly, have to use `Any` to work around variance problems
   def abort: Option[Any] = 
-    if (status.data.compareAndSet(Waiting, Consumed))
+    if (isActive && status.data.compareAndSet(Waiting, Consumed))
       None
     else {
       while (!answerWritten) {} // spin until answer is actually available

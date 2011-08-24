@@ -107,7 +107,7 @@ abstract class Entry {
     // do longer trials for single-threaded, since uncontended
     // "communication" will be very fast relative to spin-work
     val trialIters: Int = (totalTP * (benchMillis + (100 * i)) * 
-      (if (i == 0) 10 else 1) *     			   
+      (if (i == 1) 5 else 1) *     			   
       (if (work > 0) 0.1 * scala.math.log(work) * scala.math.log(work)	 
        else 1)
     ).toInt
