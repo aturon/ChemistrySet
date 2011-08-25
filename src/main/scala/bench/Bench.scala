@@ -107,7 +107,7 @@ abstract class Entry {
     // do longer trials for single-threaded, since uncontended
     // "communication" will be very fast relative to spin-work
     val trialIters: Int = (totalTP * (benchMillis + (100 * i)) * 
-      (if (i == 1) 5 else 1) *     			   
+//      (if (i == 1) 5 else 1) *     			   
       (if (work > 0) 0.1 * scala.math.log(work) * scala.math.log(work)	 
        else 1)
     ).toInt
@@ -225,9 +225,9 @@ object Bench extends App {
 //    b <- List(PushPop, EnqDeq, IncDec)
 //    w <- List(100, 250)
     b <- List(PushPop)
-//    w <- List(316, 562)
+    w <- List(100, 250, 500)
 //    w <- List(0) ++ (for (i <- 0 to 15) yield pow(10, 1+i.toDouble * 0.25).toInt)
-    w <- (0 to 1000 by 50)
+//    w <- (0 to 1000 by 50)
   } yield (b, w, config.maxCores)
 
 //  val benches = if (seqOnly) seqBenches else seqBenches ++ concBenches

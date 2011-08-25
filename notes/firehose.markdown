@@ -15,7 +15,7 @@ To try coding:
  
 Todo:
 
- - kcas
+ ~ kcas
  - lazy set
  ~ channels 
  - blocking
@@ -23,7 +23,7 @@ Todo:
  ~ synchronization examples from Scalable Joins
  x choice
  x guards/never
- - bags
+ ~ bags
  - skiplist
  - condition variables
  - asynchronous channels (via simple queues)

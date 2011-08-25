@@ -10,53 +10,26 @@ private sealed abstract class BacktrackCommand extends Exception
 private case object ShouldBlock extends BacktrackCommand
 private case object ShouldRetry extends BacktrackCommand
 
+private object Reagent {
+  val offerSpinBase = 32
+  val offerSpinCutoff = 9
+}
 abstract class Reagent[-A, +B] {
-  private[chemistry] def tryReact(a: A, rx: Reaction, offer: Offer[B]): B
+  import Reagent._
+
+  private[chemistry] def tryReact(a: A, rx: Reaction): B
+  protected def makeOfferI(a: A, offer: Offer[B]): Unit
   def compose[C](next: Reagent[B,C]): Reagent[A,C]
+  def alwaysCommits: Boolean
+  def maySync: Boolean
+
+  private[chemistry] def makeOffer(a: A, offer: Offer[B]) {
+    makeOfferI(a, offer)
+  }
 
   final def !(a: A): B = {
-//    val backoff = new Backoff
+    def block: B = throw Util.Impossible
 
-    def slowPath(blocking: Boolean): B = {
-      // val waiter = new Waiter[B](blocking)
-      // val retry: Reagent[A,B] = for {
-      // 	r <- this
-      // 	_ <- waiter.consume // might be able to use this in kcas
-      // } yield r
-
-//      try {
-	// Enroll the waiter while simultaneously attempting to react.  Notice
-	// that, even for enrollment, we use an adjusted reagent that
-	// *cancels* the waiter when committed.  This is needed because the
-	// waiter is generally enrolled prior to the reaction attempt, and is
-	// therefore visible to (and consumable by) other threads.
-//	retry.tryReact(a, Inert, waiter)
-//      } catch {
-//	case (_ : BacktrackCommand) => {
-	  // scalac can't do @tailrec here, due to exception handling
-
-      var bcount = 1
-      val rand = new Random
-
-	  while (true) {
-	    val waiter = new Waiter[B](blocking)
-	    
-//	    case Some(b) => return b.asInstanceOf[B]
-//	    case None => try {
-	    try {
-	      return tryReact(a, Inert, waiter)
-//	      return retry.tryReact(a, Inert, null) 
-	    } catch {
-	      case ShouldRetry => {
-		var spins = 128 << bcount
-		while (waiter.isActive && spins > 0) spins -= 1
-
-//		backoff.once()
-		waiter.abort match {
-		  case Some(b) => return b.asInstanceOf[B]
-		  case _ => {}
-		} 
-	      }	      
 /*
 	      case ShouldBlock => 
 		if (blocking) 
@@ -66,36 +39,61 @@ abstract class Reagent[-A, +B] {
 		  case Some(_) => return slowPath(true)
 		}
 */
-	    }
 
-	    if (bcount < 8) bcount += 1
-	  }
-	  throw Util.Impossible
-//	}
-//      }
+    def offer: B = {
+      var bcount = 0
+//      val rand = new Random
+
+      // scalac can't do @tailrec here, due to exception handling
+      val waiter = new Waiter[B](false)
+      while (true) {
+	waiter.reset
+	makeOffer(a, waiter)
+	
+	var spins = offerSpinBase << bcount
+	while (waiter.isActive && spins > 0) spins -= 1
+
+	waiter.abort match {
+	  case Some(b) => return b.asInstanceOf[B]
+	  case _ => {}
+	} 
+
+	try return tryReact(a, Inert) catch {
+	  case ShouldRetry => if (bcount < offerSpinCutoff) bcount += 1
+	  case ShouldBlock => return block
+	}
+	
+      }
+      throw Util.Impossible
     }
 
-    // "fast path": react without creating/enqueuing a waiter
-    def fastPath: B = {
+    def withBackoff: B = {
+      val backoff = new Backoff
       // scalac can't do @tailrec here, due to exception handling
       while (true) {
 	try {
-	  return tryReact(a, Inert, null) 
+	  return tryReact(a, Inert) 
 	} catch {
-//	  case ShouldRetry if backoff.count < 4 => backoff.once()
-	  case ShouldRetry                      => return slowPath(false)
-	  case ShouldBlock => return slowPath(true)
+//	  case ShouldRetry if backoff.count > 2 && maySync => return offer
+	  case ShouldRetry => backoff.once()
+	  case ShouldBlock => return block
 	}
       }
       throw Util.Impossible
     }
     
-    fastPath
+    try {
+      tryReact(a, Inert) 
+    } catch {
+      case ShouldRetry if maySync => offer
+      case ShouldRetry            => withBackoff
+      case ShouldBlock		  => block
+    }
   }
 
   @inline final def !?(a:A) : Option[B] = {
     try {
-      Some(tryReact(a, Inert, null))
+      Some(tryReact(a, Inert))
     } catch {
       case ShouldRetry => None	// should we actually retry here?  if we do,
 				// more informative: a failed attempt entails
@@ -128,11 +126,15 @@ abstract class Reagent[-A, +B] {
 object ret { 
   private final case class Ret[A,B](pure: A, k: Reagent[A,B]) 
 		     extends Reagent[Any,B] {
-    def tryReact(x: Any, rx: Reaction, offer: Offer[B]): B = 
-      k.tryReact(pure, rx, offer)
+    def tryReact(x: Any, rx: Reaction): B = 
+      k.tryReact(pure, rx)
+    def makeOfferI(a: Any, offer: Offer[B]) =
+      k.makeOffer(pure, offer)
     def compose[C](next: Reagent[B,C]) = Ret(pure, k.compose(next))
+    def alwaysCommits = k.alwaysCommits
+    def maySync = k.maySync
   }
-  @inline final def apply[A](pure: A): Reagent[Any,A] = Ret(pure, Commit[A]())
+  @inline final def apply[A](pure: A): Reagent[Any,A] = Ret(pure, Commit[A]())  
 }
 
 // Not sure whether this should be available as a combinaor
@@ -142,24 +144,34 @@ object ret {
 // }
 
 private case class Commit[A]() extends Reagent[A,A] {
-  def tryReact(a: A, rx: Reaction, offer: Offer[A]): A = 
+  def tryReact(a: A, rx: Reaction): A = 
     if (rx.tryCommit) a else throw ShouldRetry
+  def makeOfferI(a: A, offer: Offer[A]) {}
   def compose[B](next: Reagent[A,B]) = next
+  def alwaysCommits = true
+  def maySync = false
 }
 
 object never extends Reagent[Any, Nothing] {
-  def tryReact(a: Any, rx: Reaction, offer: Offer[Nothing]): Nothing = 
+  def tryReact(a: Any, rx: Reaction): Nothing = 
     throw ShouldBlock
+  def makeOfferI(a: Any, offer: Offer[Nothing]) {}
   def compose[A](next: Reagent[Nothing, A]) = never
+  def alwaysCommits = false
+  def maySync = false
 }
 
 object computed {
   private final case class Computed[A,B,C](c: A => Reagent[Unit,B], 
 					   k: Reagent[B,C]) 
 		     extends Reagent[A,C] {
-    def tryReact(a: A, rx: Reaction, offer: Offer[C]): C = 
-      c(a).compose(k).tryReact((), rx, offer)
+    def tryReact(a: A, rx: Reaction): C = 
+      c(a).compose(k).tryReact((), rx)
+    def makeOfferI(a: A, offer: Offer[C]) =
+      c(a).compose(k).makeOffer((), offer)
     def compose[D](next: Reagent[C,D]) = Computed(c, k.compose(next))
+    def alwaysCommits = false
+    def maySync = true
   }
   @inline def apply[A,B](c: A => Reagent[Unit,B]): Reagent[A,B] = 
     Computed(c, Commit[B]())
@@ -169,11 +181,15 @@ object lift {
   private final case class Lift[A,B,C](f: PartialFunction[A,B], 
 				       k: Reagent[B,C]) 
 		     extends Reagent[A,C] {
-    def tryReact(a: A, rx: Reaction, offer: Offer[C]): C =
+    def tryReact(a: A, rx: Reaction): C =
       if (f.isDefinedAt(a)) 
-	k.tryReact(f(a), rx, offer) 
+	k.tryReact(f(a), rx) 
       else throw ShouldBlock
+    def makeOfferI(a: A, offer: Offer[C]) = 
+      if (f.isDefinedAt(a)) k.makeOffer(f(a), offer)
     def compose[D](next: Reagent[C,D]) = Lift(f, k.compose(next))
+    def alwaysCommits = k.alwaysCommits
+    def maySync = k.maySync
   }
   @inline def apply[A,B](f: PartialFunction[A,B]): Reagent[A,B]  = 
     Lift(f, Commit[B]())
@@ -182,18 +198,24 @@ object lift {
 object choice {
   private final case class Choice[A,B](r1: Reagent[A,B], r2: Reagent[A,B]) 
 		     extends Reagent[A,B] {
-    def tryReact(a: A, rx: Reaction, offer: Offer[B]): B = 
-      try r1.tryReact(a, rx, offer) catch {
+    def tryReact(a: A, rx: Reaction): B = 
+      try r1.tryReact(a, rx) catch {
 	case ShouldRetry => 
-	  try r2.tryReact(a, rx, offer) catch {
+	  try r2.tryReact(a, rx) catch {
 	    // ShouldRetry falls thru
 	    case ShouldBlock => throw ShouldRetry 
 	  }
 	case ShouldBlock => 
-	  r2.tryReact(a, rx, offer) // all exceptions fall thru
+	  r2.tryReact(a, rx) // all exceptions fall thru
       }
+    def makeOfferI(a: A, offer: Offer[B]) {
+      r1.makeOffer(a, offer)
+      r2.makeOffer(a, offer)
+    }
     def compose[C](next: Reagent[B,C]) = 
       Choice(r1.compose(next), r2.compose(next))
+    def alwaysCommits = r1.alwaysCommits && r2.alwaysCommits
+    def maySync = r1.maySync || r2.maySync
   }
   @inline def apply[A,B](r1: Reagent[A,B], r2: Reagent[A,B]): Reagent[A,B] =
     Choice(r1, r2)
@@ -202,9 +224,13 @@ object choice {
 object postCommit {
   private final case class PostCommit[A,B](pc: A => Unit, k: Reagent[A,B])
 		     extends Reagent[A,B] {
-    def tryReact(a: A, rx: Reaction, offer: Offer[B]): B = 
-      k.tryReact(a, rx.withPostCommit((_:Unit) => pc(a)), offer)
+    def tryReact(a: A, rx: Reaction): B = 
+      k.tryReact(a, rx.withPostCommit((_:Unit) => pc(a)))
+    def makeOfferI(a: A, offer: Offer[B]) =
+      k.makeOffer(a, offer)
     def compose[C](next: Reagent[B,C]) = PostCommit(pc, k.compose(next))
+    def alwaysCommits = k.alwaysCommits
+    def maySync = k.maySync
   }
   @inline def apply[A](pc: A => Unit): Reagent[A,A] = 
     PostCommit(pc, Commit[A]())

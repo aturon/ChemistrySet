@@ -22,20 +22,20 @@ final private case class CMessage[A,B](
 final private case class RMessage[A,B,C](
   m: A, k: Reagent[B,C], waiter: Waiter[C]
 ) extends Message[A,B] {
-
   private case class CompleteExchange[D](kk: Reagent[A,D]) 
 	       extends Reagent[C,D] {
-    def tryReact(c: C, rx: Reaction, offer: Offer[D]): D = 
-      kk.tryReact(
-	m, 
-	waiter.consumeRX(rx).withPostCommit((_:Unit) => {
-	  waiter.setAnswer(c)
-	  waiter.wake
-	}), 
-	offer)
-
+    def tryReact(c: C, rx: Reaction): D = {
+      val newRX = rx.withPostCommit((_:Unit) => {
+	waiter.setAnswer(c)
+	waiter.wake
+      })
+      Ref.continueWithCAS(waiter.status, newRX, m, kk, Waiter.Waiting, Waiter.Consumed)
+    }
+    def makeOfferI(c: C, offer: Offer[D]) = throw Util.Impossible
     def compose[E](next: Reagent[D,E]): Reagent[C,E] =
       CompleteExchange(kk >=> next)
+    def maySync = kk.maySync
+    def alwaysCommits = false		
   }
 
   def exchange[D](kk: Reagent[A,D]): Reagent[B, D] =
@@ -48,21 +48,15 @@ private final case class Endpoint[A,B,C](
   incoming: Pool[Message[B,A]],
   k: Reagent[B,C]
 ) extends Reagent[A,C] {
-  def tryReact(a: A, rx: Reaction, offer: Offer[C]): C = {
+  def tryReact(a: A, rx: Reaction): C = {
     // sadly, @tailrec not acceptable here due to exception handling
     var cursor = incoming.cursor
     var retry: Boolean = false
     while (true) cursor.get match {
       case null if retry => throw ShouldRetry
-      case null          => {
-	offer match { 
-	  case (w: Waiter[_]) => outgoing.put ! RMessage(a, k, w)
-	  case null => {} // do nothing
-	}
-	throw ShouldRetry
-      }
+      case null          => throw ShouldBlock
       case incoming.Node(msg, next) => try {
-	return msg.exchange(k).tryReact(a, rx, offer)
+	return msg.exchange(k).tryReact(a, rx)
       } catch {
 	case ShouldRetry => retry = true; cursor = next
 	case ShouldBlock => cursor = next
@@ -70,8 +64,19 @@ private final case class Endpoint[A,B,C](
     }
     throw Util.Impossible
   }
+  def makeOfferI(a: A, offer: Offer[C]) {
+    offer match { 
+      case (w: Waiter[_]) => outgoing.put(RMessage(a, k, w))
+      // todo: catalysts
+    }
+    
+    // todo: make offers enabled by outstanding messages
+//    var cursor = incoming.cursor 
+  }
   def compose[D](next: Reagent[C,D]) = 
     Endpoint(outgoing,incoming,k.compose(next))
+  def maySync = true
+  def alwaysCommits = false
 }
 object SwapChan {
   @inline def apply[A,B](): (Reagent[A,B], Reagent[B,A]) = {

@@ -6,6 +6,7 @@
 package chemistry
 
 import java.util.concurrent.locks._
+import java.util.concurrent.atomic._
 
 private abstract class Offer[-A] {
   def isActive: Boolean
@@ -16,9 +17,9 @@ private object Catalyst extends Offer[Unit] {
 }
 
 private object Waiter {
-  private abstract class WaiterStatus
-  private object Waiting extends WaiterStatus
-  private object Consumed extends WaiterStatus
+  abstract class WaiterStatus
+  object Waiting extends WaiterStatus
+  object Consumed extends WaiterStatus
 }
 private final class Waiter[-A](val blocking: Boolean) extends Offer[A] {
   import Waiter._
@@ -33,7 +34,8 @@ private final class Waiter[-A](val blocking: Boolean) extends Offer[A] {
   @volatile private var answer: AnyRef = null // will hold an A
   @volatile private var answerWritten: Boolean = false
 
-  private val status: Ref[WaiterStatus] = new Ref(Waiting)
+  private[chemistry] val status: AtomicReference[AnyRef] = 
+    new AtomicReference(Waiting)
 
   def setAnswer(a: A) {
     answer = a.asInstanceOf[AnyRef] // not sure if this will fly
@@ -46,11 +48,8 @@ private final class Waiter[-A](val blocking: Boolean) extends Offer[A] {
     if (blocking) LockSupport.unpark(waiterThread)
   }
 
-  val consume: Reagent[Unit,Unit] = status.cas(Waiting, Consumed)
-  def consumeRX(rx: Reaction): Reaction =
-    rx.withCAS(status.data, Waiting, Consumed) 
-
-  def isActive: Boolean = status.read ! () == Waiting
+  def tryConsume: Boolean = status.compareAndSet(Waiting, Consumed)
+  def isActive: Boolean = status.get == Waiting
 
   // sadly, have to use `Any` to work around variance problems
   def poll: Option[Any] = if (isActive) None else {
@@ -60,11 +59,14 @@ private final class Waiter[-A](val blocking: Boolean) extends Offer[A] {
 
   // sadly, have to use `Any` to work around variance problems
   def abort: Option[Any] = 
-    if (isActive && status.data.compareAndSet(Waiting, Consumed))
-      None
+    if (isActive && tryConsume) None
     else {
       while (!answerWritten) {} // spin until answer is actually available
       Some(answer)
     }
+
+  def reset {
+    status.set(Waiting)
+  }
 }
 
