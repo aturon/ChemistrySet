@@ -74,7 +74,7 @@ abstract class Reagent[-A, +B] {
 	try {
 	  return tryReact(a, Inert) 
 	} catch {
-//	  case ShouldRetry if backoff.count > 2 && maySync => return offer
+	  case ShouldRetry if maySync => return offer
 	  case ShouldRetry => backoff.once()
 	  case ShouldBlock => return block
 	}
@@ -85,7 +85,7 @@ abstract class Reagent[-A, +B] {
     try {
       tryReact(a, Inert) 
     } catch {
-      case ShouldRetry if maySync => offer
+//      case ShouldRetry if maySync => offer
       case ShouldRetry            => withBackoff
       case ShouldBlock		  => block
     }

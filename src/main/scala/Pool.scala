@@ -56,40 +56,118 @@ private final class PaddedAtomicReference[A](init:A)
   var qe: Long = 0
 }
 
+private object ArrayPool {
+  //val size = math.max(1,Chemistry.procs / 2)
+  val size = 8
+}
+final class ArrayPool[A >: Null <: DeletionFlag] {
+  import ArrayPool._
+
+  private val arr = new Array[PaddedAtomicReference[A]](size)
+  for (i <- (0 to size-1)) arr(i) = new PaddedAtomicReference[A](null)
+
+  private def myStart = (Thread.currentThread.getId % size).toInt
+
+  def tryPut(a: A): Boolean = {
+//    val slot = myStart
+    var slot = 0
+    while (slot < size) {
+      val cur = arr(slot).get
+      if (cur != null && !cur.isDeleted) return false
+      if (arr(slot).compareAndSet(cur, a)) return true
+      slot += 1
+    }
+    false
+  }
+
+  def cursor = 0
+  @tailrec def get(cursor: Int): A = {
+    val cur = arr(cursor).get
+    if (cur != null && !cur.isDeleted) 
+      cur
+    else if (cursor + 1 < size) 
+      get(cursor+1)
+    else 
+      null
+  }
+  def next(cursor: Int): A = 
+    if (cursor + 1 < size) get(cursor+1) else null
+}
+
+private object Pool {
+  val size = math.max(1,Chemistry.procs / 2)
+//  val size = 32
+}
 final class Pool[A <: DeletionFlag] {
+  import Pool._
+
   abstract class Node {
     def data: A
     def next: Cursor
   }
   object Node {
-    @inline def unapply(n: Node): Option[(A, Cursor)] = Some((n.data, n.next))
+    @inline def unapply(n: Node): Option[(A, Cursor)] =
+      if (n != null) Some((n.data, n.next)) else None
   }
   private final case class InnerNode(data: A, next: Cursor) extends Node
   private final case class LinkNode(next: Cursor) extends Node {
+/*
+  var q0: Long = 0
+  var q1: Long = 0
+  var q2: Long = 0
+  var q3: Long = 0
+  var q4: Long = 0
+  var q5: Long = 0
+  var q6: Long = 0
+  var q7: Long = 0
+*/
     def data = throw Util.Impossible 
   }
 
-  private val cursors = new Array[Cursor](Chemistry.procs)
-  cursors(Chemistry.procs-1) = new Cursor(null)
-  for (i <- Chemistry.procs-1 to 1 by -1) {
+  private val cursors = new Array[Cursor](size)
+  cursors(size-1) = new Cursor(null)
+  for (i <- size-1 to 1 by -1) {
     cursors(i-1) = new Cursor(LinkNode(cursors(i)))
   }
 
-  private def myStart = (Thread.currentThread.getId % Chemistry.procs).toInt
+  private def myStart = (Thread.currentThread.getId % size).toInt
 
-  val cursor = cursors(0)
+  def cursor = cursors(0)
+//  val cursor = cursors(0)
 //  def cursor = cursors(myStart)
 
   final class Cursor private[Pool](node: Node) {
-    private[Pool] val ref = new PaddedAtomicReference(node)
+    private[Pool] val ref = new AtomicReference(node)
     @tailrec def get: Node = ref.get match {
-      case null => null
+      case null => return null
       case LinkNode(next) => next.get
       case n@Node(data, next) =>
-	if (data.isDeleted) { 
-	  ref.lazySet(next.ref.get)
+	if (data.isDeleted) {
+	  var leap = next.ref.get
+	  @tailrec def loop: Unit = leap match {
+	    case null => ()
+	    case LinkNode(_) => ()
+	    case Node(data, next) =>
+	      if (data.isDeleted) {
+		leap = next.ref.get
+		loop
+	      } else ()		
+	  }
+	  loop
+	  ref.set(leap)
 	  get
 	} else n
+    }
+    private[Pool] def head: Node = {
+      var cur = ref.get
+      while (true) cur match {
+	case null => return null
+	case LinkNode(next) => return cur
+	case n@Node(data, next) =>
+	  if (data.isDeleted) cur = next.ref.get
+	  else return n
+      }
+      throw Util.Impossible
     }
   }
 
@@ -97,9 +175,11 @@ final class Pool[A <: DeletionFlag] {
     var i = myStart //0
     while (true) {
       val oldHead = cursors(i).ref.get
-      if (cursors(i).ref.compareAndSet(oldHead, InnerNode(a, new Cursor(oldHead))))
+//      val realHead = cursors(i).head
+      if (cursors(i).ref.compareAndSet(oldHead, 
+				       InnerNode(a, new Cursor(oldHead))))
 	return
-      else i = (i+1) % Chemistry.procs
+      else i = (i+1) % size
     }
   }
 }

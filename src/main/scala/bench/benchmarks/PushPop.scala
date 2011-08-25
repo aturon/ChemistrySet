@@ -39,7 +39,6 @@ object PushPop extends Benchmark {
       }
     }
   } 
-/*
   private object handPool extends Entry {
     def name = "handPool"
     type S = HandPoolStack[AnyRef]
@@ -61,7 +60,6 @@ object PushPop extends Benchmark {
       }
     }
   } 
-*/
   private object hand extends Entry {
     def name = "hand"
     type S = HandStack[AnyRef]
@@ -149,7 +147,8 @@ object PushPop extends Benchmark {
   } 
 */
 //  def entries = List(rTreiber, rElim, hand)
-//  def entries = List(rElim, handElim, hand)
-//  def entries: List[Entry] = List(rTreiber)
-  def entries: List[Entry] = List(rElim)
+  def entries = List(rElim, rTreiber, handElim, hand, handPool)
+//  def entries: List[Entry] = List(handPool)
+//  def entries: List[Entry] = List(handElim)
+//  def entries: List[Entry] = List(rElim)
 }

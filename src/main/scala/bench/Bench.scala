@@ -22,10 +22,14 @@ private object config {
   val startup = new Date
   val startupString = fmt.format(startup)
 
+  var trialsMin = 5
+  var trialsMax = 25
+  var doTP: Boolean = false
+  var minCores = 1
   var maxCores = min(Runtime.getRuntime.availableProcessors, 8)
-  val warmupMillis = 2000
-  val benchMillis = 1000
-  val verbose = true
+  var warmupMillis = 2000
+  var benchMillis = 1000
+  var verbose = true
 }
 
 private object log {
@@ -71,6 +75,8 @@ abstract class Entry {
   }
   
   private def measureOne(work: Int, timePerWork: Double)(i: Int): Measurement = {
+    if (!config.verbose) print(".")
+
     log(getClass().getSimpleName().replace("$"," "))
     log(" - threads: %d".format(i))
     log(" - work: %d".format(work))
@@ -149,7 +155,7 @@ abstract class Entry {
       (trialIters/estTime) / 1000
     ))
 
-    while (trials < 5 || (cov(times) > 10 && trials < 25)) {
+    while (trials < trialsMin || (cov(times) > 10 && trials < trialsMax)) {
 //      if (trials > 30) throw new Exception("Variance too high, quitting.")
       trial
     }
@@ -171,8 +177,16 @@ abstract class Entry {
       i)
   }
 
-  def measureAll(work: Int, cores: Int, timePerWork: Double) = 
-    EntryResult(name, (1 to cores).map(measureOne(work, timePerWork)))
+  def measureAll(work: Int, minCores:Int, maxCores: Int, timePerWork: Double) = {
+    val ms = (minCores to maxCores).map(measureOne(work, timePerWork))
+    if (!config.verbose) {
+      println("")   
+      print("%s %d: ".format(name, work))
+      ms.foreach(m => print("%6.2d ".format(m.rawThroughput)))
+      println("")   
+    }
+    EntryResult(name, ms)
+  }
 }
 
 abstract class Benchmark {
@@ -182,11 +196,11 @@ abstract class Benchmark {
 
   protected def name = getClass().getSimpleName().replace("$","")
   protected def entries: Seq[Entry]
-  def go(work: Int, cores: Int)() = {
+  def go(work: Int, minCores: Int, maxCores: Int)() = {
     log("=" * 60)
 
     val timePerWork = 
-      if (work > 0) {
+      if (work > 0 && config.doTP) {
 	// warmup
 	for (_ <- 1 to 1000)
 	  time(pureWork(work, 1000000/work)) 
@@ -201,41 +215,51 @@ abstract class Benchmark {
 	tpw
       } else 0
 
-    BenchResult(name, work, entries.map(_.measureAll(work, cores, timePerWork)))
+    BenchResult(
+      name, 
+      work, 
+      entries.map(_.measureAll(work, minCores, maxCores, timePerWork)))
   }
 }
 
 object Bench extends App {
   val t1 = System.nanoTime
-
   var seqOnly: Boolean = false
 
-  for (a <- args) a match {
-    case "--seq" => seqOnly = true
+  @tailrec def procArgs(args: List[String]): Unit = args match {
+    case List() => {}
+    case "--tp"::more  => config.doTP = true; procArgs(more)
+    case "--seq"::more  => seqOnly = true; procArgs(more)
+    case "--min"::n::more => config.minCores = n.toInt; procArgs(more)
+    case "--max"::n::more => config.maxCores = n.toInt; procArgs(more)
+    case "--tmin"::n::more => config.trialsMin = n.toInt; procArgs(more)
+    case "--tmax"::n::more => config.trialsMax = n.toInt; procArgs(more)
+    case "--quiet"::more => config.verbose = false; procArgs(more)
   }
+  procArgs(args.toList)
 
   log("Beginning benchmark")
-  log("  max cores: %d".format(config.maxCores))
+  log("  cores: %d-%d".format(config.minCores, config.maxCores))
   log("")
 
   private val seqBenches = for {
     b <- List(PushPop)
-  } yield (b, 0, 1)
+  } yield (b, 0, 1, 1)
   private val concBenches = for {
 //    b <- List(PushPop, EnqDeq, IncDec)
-//    w <- List(100, 250)
     b <- List(PushPop)
-    w <- List(100, 250, 500)
+//    w <- List(100)
+//    w <- List(100, 250, 500)
 //    w <- List(0) ++ (for (i <- 0 to 15) yield pow(10, 1+i.toDouble * 0.25).toInt)
-//    w <- (0 to 1000 by 50)
-  } yield (b, w, config.maxCores)
+    w <- (0 to 500 by 100)
+  } yield (b, w, config.minCores, config.maxCores)
 
 //  val benches = if (seqOnly) seqBenches else seqBenches ++ concBenches
   val benches = concBenches
 
   private val results = for {
-    (b,w,c) <- benches
-    r = b.go(w,c)
+    (b,w,minc,maxc) <- benches
+    r = b.go(w,minc,maxc)
     _ = r.report(config.startupString)
     _ = r.report("latest")
     _ = r.display

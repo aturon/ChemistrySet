@@ -59,7 +59,7 @@ case class BenchResult(name: String, work: Int, es: Seq[EntryResult]) {
     es.map(_.format).foreach(print(_))
     hrule
 
-    if (work > 0) {
+    if (work > 0 && config.doTP) {
       // raw throughput results
       es.map(_.formatR).foreach(print(_))
       hrule
@@ -89,7 +89,7 @@ case class BenchResult(name: String, work: Int, es: Seq[EntryResult]) {
   }
 
   def report(fname: String) {
-    reportTP(fname)
-    if (work > 0) reportRTP(fname)
+    if (work > 0 && config.doTP) reportTP(fname)
+    reportRTP(fname)
   }
 }
