@@ -75,7 +75,7 @@ abstract class Entry {
   }
   
   private def measureOne(work: Int, timePerWork: Double)(i: Int): Measurement = {
-    if (!config.verbose) print(".")
+    if (!config.verbose) print(i)
 
     log(getClass().getSimpleName().replace("$"," "))
     log(" - threads: %d".format(i))
@@ -180,9 +180,9 @@ abstract class Entry {
   def measureAll(work: Int, minCores:Int, maxCores: Int, timePerWork: Double) = {
     val ms = (minCores to maxCores).map(measureOne(work, timePerWork))
     if (!config.verbose) {
-      println("")   
-      print("%s %d: ".format(name, work))
-      ms.foreach(m => print("%6.2d ".format(m.rawThroughput)))
+      print("\b" * (maxCores-minCores))
+      print("%10.10s %5d: ".format(name, work))
+      ms.foreach(m => print("%6.2f ".format(m.rawThroughput)))
       println("")   
     }
     EntryResult(name, ms)
@@ -251,7 +251,8 @@ object Bench extends App {
 //    w <- List(100)
 //    w <- List(100, 250, 500)
 //    w <- List(0) ++ (for (i <- 0 to 15) yield pow(10, 1+i.toDouble * 0.25).toInt)
-    w <- (0 to 500 by 100)
+//    w <- (0 to 500 by 100)
+    w <- List(100, 0)
   } yield (b, w, config.minCores, config.maxCores)
 
 //  val benches = if (seqOnly) seqBenches else seqBenches ++ concBenches

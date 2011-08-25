@@ -11,7 +11,7 @@ private case object ShouldBlock extends BacktrackCommand
 private case object ShouldRetry extends BacktrackCommand
 
 private object Reagent {
-  val offerSpinBase = 32
+  val offerSpinBase = 128
   val offerSpinCutoff = 9
 }
 abstract class Reagent[-A, +B] {
@@ -24,11 +24,25 @@ abstract class Reagent[-A, +B] {
   def maySync: Boolean
 
   private[chemistry] def makeOffer(a: A, offer: Offer[B]) {
-    makeOfferI(a, offer)
+    // abort early if offer has already been consumed
+    if (offer.isActive) makeOfferI(a, offer)
   }
 
   final def !(a: A): B = {
-    def block: B = throw Util.Impossible
+    def block: B = {
+      val waiter = new Waiter[B](true)
+      val initRX = waiter.rxForConsume
+      while (true) {
+	waiter.reset
+	makeOffer(a, waiter)
+
+	try return tryReact(a, initRX) catch {
+	  case ShouldRetry => throw Util.Impossible
+	  case ShouldBlock => throw Util.Impossible
+	}
+      }
+      throw Util.Impossible
+    }
 
 /*
 	      case ShouldBlock => 
@@ -41,8 +55,9 @@ abstract class Reagent[-A, +B] {
 */
 
     def offer: B = {
-      var bcount = 0
+//      var bcount = 0
 //      val rand = new Random
+      var backoff = 1
 
       // scalac can't do @tailrec here, due to exception handling
       val waiter = new Waiter[B](false)
@@ -50,8 +65,12 @@ abstract class Reagent[-A, +B] {
 	waiter.reset
 	makeOffer(a, waiter)
 	
-	var spins = offerSpinBase << bcount
-	while (waiter.isActive && spins > 0) spins -= 1
+//	var spins = rand.next(offerSpinBase << bcount)
+//	while (waiter.isActive && spins > 0) spins -= 1
+
+	val timeout = 128 << backoff
+	val t = System.nanoTime
+	while (waiter.isActive && System.nanoTime - t < timeout) {}
 
 	waiter.abort match {
 	  case Some(b) => return b.asInstanceOf[B]
@@ -59,7 +78,8 @@ abstract class Reagent[-A, +B] {
 	} 
 
 	try return tryReact(a, Inert) catch {
-	  case ShouldRetry => if (bcount < offerSpinCutoff) bcount += 1
+	  case ShouldRetry => //if (bcount < offerSpinCutoff) bcount += 1
+	    backoff += 1
 	  case ShouldBlock => return block
 	}
 	
@@ -85,7 +105,7 @@ abstract class Reagent[-A, +B] {
     try {
       tryReact(a, Inert) 
     } catch {
-//      case ShouldRetry if maySync => offer
+      case ShouldRetry if maySync => offer
       case ShouldRetry            => withBackoff
       case ShouldBlock		  => block
     }

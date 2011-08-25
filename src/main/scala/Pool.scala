@@ -158,24 +158,12 @@ final class Pool[A <: DeletionFlag] {
 	  get
 	} else n
     }
-    private[Pool] def head: Node = {
-      var cur = ref.get
-      while (true) cur match {
-	case null => return null
-	case LinkNode(next) => return cur
-	case n@Node(data, next) =>
-	  if (data.isDeleted) cur = next.ref.get
-	  else return n
-      }
-      throw Util.Impossible
-    }
   }
 
   def put(a: A): Unit = {
     var i = myStart //0
     while (true) {
       val oldHead = cursors(i).ref.get
-//      val realHead = cursors(i).head
       if (cursors(i).ref.compareAndSet(oldHead, 
 				       InnerNode(a, new Cursor(oldHead))))
 	return

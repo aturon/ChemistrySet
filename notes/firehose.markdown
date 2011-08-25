@@ -30,6 +30,12 @@ Todo:
  - kcss
  - skiplist-based map
  - hashtable
+ 
+ - better testing support
+ - implicits for configuration?
+ - framework for collecting stats
+ 
+ - comparison to STM
 
 ## 8/5/2011
 

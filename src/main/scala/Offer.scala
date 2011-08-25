@@ -48,6 +48,7 @@ private final class Waiter[-A](val blocking: Boolean) extends Offer[A] {
     if (blocking) LockSupport.unpark(waiterThread)
   }
 
+  def rxForConsume = Inert.withCAS(status, Waiting, Consumed)
   def tryConsume: Boolean = status.compareAndSet(Waiting, Consumed)
   def isActive: Boolean = status.get == Waiting
 

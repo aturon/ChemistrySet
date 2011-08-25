@@ -147,8 +147,8 @@ object PushPop extends Benchmark {
   } 
 */
 //  def entries = List(rTreiber, rElim, hand)
-  def entries = List(rElim, rTreiber, handElim, hand, handPool)
-//  def entries: List[Entry] = List(handPool)
-//  def entries: List[Entry] = List(handElim)
+//  def entries = List(rElim, rTreiber, handElim, hand, handPool)
+//  def entries: List[Entry] = List(rElim, handPool, handElim)
+  def entries: List[Entry] = List(handPool)
 //  def entries: List[Entry] = List(rElim)
 }
