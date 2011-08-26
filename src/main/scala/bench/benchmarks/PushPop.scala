@@ -11,6 +11,32 @@ import chemistry.Util._
 //import org.amino.ds.lockfree._
 
 object PushPop extends Benchmark {
+  private trait Generic {
+    type S 
+    def push(s: S, x: AnyRef)
+    def tryPop(s: S): Option[AnyRef]
+
+    def run(s: S, work: Int, iters: Int) {
+//      var elims = 0
+      if (work > 0) {
+	val r = new Random
+	for (_ <- 1 to iters) {
+	  push(s, SomeData)
+	  Util.noop(r.fuzz(work))
+	  tryPop(s)
+	  Util.noop(r.fuzz(work))
+	}
+      } else {
+	for (_ <- 1 to iters) {
+	  push(s,SomeData)
+	  untilSome { tryPop(s) }
+	}
+      }
+
+//      print(" %5.1f".format(100.toDouble * elims.toDouble/iters.toDouble) ++ "%")
+    }
+  }
+
   def pureWork(work: Int, iters: Int) = {
     val r = new Random
     for (_ <-1 to iters) {
@@ -18,110 +44,40 @@ object PushPop extends Benchmark {
       Util.noop(r.fuzz(work))
     }
   }
-  private object handElim extends Entry {
+  private object handElim extends Entry with Generic {
     def name = "handElim"
     type S = HandElimStack[AnyRef]
     def setup = new HandElimStack()
-    def run(s: S, work: Int, iters: Int) {
-      if (work > 0) {
-	val r = new Random
-	for (_ <- 1 to iters) {
-	  s.push(SomeData)
-	  Util.noop(r.fuzz(work))
-	  untilSome {s.tryPop}
-	  Util.noop(r.fuzz(work))
-	}
-      } else {
-	for (_ <- 1 to iters) {
-	  s.push(SomeData)
-	  untilSome {s.tryPop}
-	}
-      }
-    }
+    def push(s: S, x: AnyRef) = s.push(x)
+    def tryPop(s: S): Option[AnyRef]  = s.tryPop
   } 
-  private object handPool extends Entry {
+  private object handPool extends Entry with Generic {
     def name = "handPool"
     type S = HandPoolStack[AnyRef]
     def setup = new HandPoolStack()
-    def run(s: S, work: Int, iters: Int) {
-      if (work > 0) {
-	val r = new Random
-	for (_ <- 1 to iters) {
-	  s.push(SomeData)
-	  Util.noop(r.fuzz(work))
-	  untilSome {s.tryPop}
-	  Util.noop(r.fuzz(work))
-	}
-      } else {
-	for (_ <- 1 to iters) {
-	  s.push(SomeData)
-	  untilSome {s.tryPop}
-	}
-      }
-    }
+    def push(s: S, x: AnyRef) = s.push(x)
+    def tryPop(s: S): Option[AnyRef]  = s.tryPop
   } 
-  private object hand extends Entry {
+  private object hand extends Entry with Generic{
     def name = "hand"
     type S = HandStack[AnyRef]
     def setup = new HandStack()
-    def run(s: S, work: Int, iters: Int) {
-      if (work > 0) {
-	val r = new Random
-	for (_ <- 1 to iters) {
-	  s.push(SomeData)
-	  Util.noop(r.fuzz(work))
-	  untilSome {s.tryPop}
-	  Util.noop(r.fuzz(work))
-	}
-      } else {
-	for (_ <- 1 to iters) {
-	  s.push(SomeData)
-	  untilSome {s.tryPop}
-	}
-      }
-    }
+    def push(s: S, x: AnyRef) = s.push(x)
+    def tryPop(s: S): Option[AnyRef]  = s.tryPop
   } 
-  private object rTreiber extends Entry {
-    def name = "r-treiber"
+  private object rTreiber extends Entry with Generic {
+    def name = "rTreiber"
     type S = TreiberStack[AnyRef]
     def setup = new TreiberStack()
-    def run(s: S, work: Int, iters: Int) {
-      if (work > 0) {
-	val r = new Random
-	for (_ <- 1 to iters) {
-	  s.push ! SomeData;
-	  Util.noop(r.fuzz(work))
-	  untilSome {s.tryPop ! ()}
-	  Util.noop(r.fuzz(work))
-	}
-      } else {
-	for (_ <- 1 to iters) {
-	  s.push ! SomeData;
-	  untilSome {s.tryPop ! ()}
-	}
-      }
-    }
+    def push(s: S, x: AnyRef) = s.push ! x
+    def tryPop(s: S): Option[AnyRef]  = s.tryPop ! ()
   }
-  private object rElim extends Entry {
-    def name = "r-elim"
+  private object rElim extends Entry with Generic {
+    def name = "rElim"
     type S = EliminationStack[AnyRef]
     def setup = new EliminationStack()
-    def run(s: S, work: Int, iters: Int) {
-      if (work > 0) {
-	val r = new Random
-	for (_ <- 1 to iters) {
-	  s.push ! SomeData;
-	  Util.noop(r.fuzz(work))
-	  untilSome {s.tryPop ! ()}
-	  Util.noop(r.fuzz(work))
-	}
-      } else {
-	for (_ <- 1 to iters) {
-	  s.push ! SomeData;
-	  untilSome {s.tryPop ! ()}
-	}
-      }
-    }
+    def push(s: S, x: AnyRef) = s.push ! x
+    def tryPop(s: S): Option[AnyRef]  = s.tryPop ! ()    
   }
 /*
   private object ebstack extends Entry {
@@ -149,6 +105,6 @@ object PushPop extends Benchmark {
 //  def entries = List(rTreiber, rElim, hand)
 //  def entries = List(rElim, rTreiber, handElim, hand, handPool)
 //  def entries: List[Entry] = List(rElim, handPool, handElim)
-  def entries: List[Entry] = List(handPool)
 //  def entries: List[Entry] = List(rElim)
+  def entries: List[Entry] = List(rElim, handPool, handElim, rTreiber, hand)
 }

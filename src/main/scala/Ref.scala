@@ -34,10 +34,10 @@ final class Ref[A <: AnyRef](init: A) {
   private def get: A = Reaction.read(data).asInstanceOf[A]
 
   private final case class Read[B](k: Reagent[A,B]) extends Reagent[Unit,B] {
-    def tryReact(u: Unit, rx: Reaction): B = 
+    def tryReact(u: Unit, rx: Reaction): Any = 
       k.tryReact(get, rx)
     def makeOfferI(u: Unit, offer: Offer[B]) = k.makeOffer(get, offer)
-    def compose[C](next: Reagent[B,C]) = Read(k.compose(next))
+    def composeI[C](next: Reagent[B,C]) = Read(k.compose(next))
     def maySync = k.maySync
     def alwaysCommits = k.alwaysCommits
   }
@@ -45,54 +45,76 @@ final class Ref[A <: AnyRef](init: A) {
 
   private final case class CAS[B](expect: A, update: A, k: Reagent[Unit,B]) 
 		extends Reagent[Unit, B] {
-    def tryReact(u: Unit, rx: Reaction): B = 
+    def tryReact(u: Unit, rx: Reaction): Any = 
       Ref.continueWithCAS(data, rx, (), k, expect, update)
     def makeOfferI(u: Unit, offer: Offer[B]) =
       k.makeOffer(u, offer)
-    def compose[C](next: Reagent[B,C]) = CAS(expect, update, k.compose(next))
+    def composeI[C](next: Reagent[B,C]) = CAS(expect, update, k.compose(next))
     def maySync = k.maySync
     def alwaysCommits = false		  
   }
   @inline def cas(ov:A,nv:A): Reagent[Unit,Unit] = CAS(ov,nv,Commit[Unit]()) 
 
-  private abstract class Upd[B,C,D](k: Reagent[C,D]) extends Reagent[B,D] {
-    @inline def compute(a: A, b: B): (A, C)
-    @inline def isDefinedAt(a: A, b: B): Boolean
-
-    def tryReact(b: B, rx: Reaction): D = {
+  private final case class Upd[B,C,D](f: (A,B) => (A,C), k: Reagent[C,D]) 
+		     extends Reagent[B, D] {
+    private val kIsCommit = k.isInstanceOf[Commit[_]]
+    def tryReact(b: B, rx: Reaction): Any = {
       val ov = get
-      if (!isDefinedAt(ov, b)) throw ShouldRetry
-      val (nv, ret) = compute(ov, b)
+      val (nv, ret) = f(ov, b)
       Ref.continueWithCAS(data, rx, ret, k, ov, nv)
     }
     def makeOfferI(b: B, offer: Offer[D]): Unit = {
       val ov = get
-      if (!isDefinedAt(ov, b)) return
-      val (_, ret) = compute(ov, b)
+      val (_, ret) = f(ov, b)
       k.makeOffer(ret, offer)
     }
-    def compose[E](next: Reagent[D,E]) = new Upd[B,C,E](k.compose(next)) {
-      @inline final def compute(a: A, b: B) = Upd.this.compute(a,b)
-      @inline final def isDefinedAt(a: A, b: B) = Upd.this.isDefinedAt(a,b)
-    }
+    def composeI[E](next: Reagent[D,E]) = Upd(f, k.compose(next))
     def maySync = k.maySync
-    def alwaysCommits = false    
+    def alwaysCommits = false
   }
   @inline def upd[B,C](f: (A,B) => (A,C)): Reagent[B, C] = 
-    new Upd[B,C,C](Commit[C]()) {
-      @inline final def compute(a: A, b: B) = f(a,b)
-      @inline final def isDefinedAt(a: A, b: B) = true
+    Upd(f, Commit[C]())
+
+  private final case class UpdUnit[B,C](f: PartialFunction[A, (A,B)],
+				        k: Reagent[B, C]) 
+		     extends Reagent[Unit, C] {
+    private val kIsCommit = k.isInstanceOf[Commit[_]]
+    def tryReact(u: Unit, rx: Reaction): Any = {
+      val ov = get
+      if (!f.isDefinedAt(ov)) return ShouldBlock
+      val (nv, ret) = f(ov)
+      Ref.continueWithCAS(data, rx, ret, k, ov, nv)
     }
+    def makeOfferI(u: Unit, offer: Offer[C]): Unit = {
+      val ov = get
+      if (!f.isDefinedAt(ov)) return
+      val (_, ret) = f(ov)
+      k.makeOffer(ret, offer)
+    }
+    def composeI[D](next: Reagent[C,D]) = UpdUnit(f, k.compose(next))
+    def maySync = k.maySync
+    def alwaysCommits = false
+  }
   @inline def upd[B](f: PartialFunction[A, (A,B)]): Reagent[Unit, B] = 
-    new Upd[Unit, B, B](Commit[B]()) {
-      @inline final def compute(a: A, u: Unit) = f(a)
-      @inline final def isDefinedAt(a: A, u: Unit) = f.isDefinedAt(a)
+    UpdUnit(f, Commit[B]())
+
+  private final case class UpdIn[B,C](f: (A,B) => A, k: Reagent[Unit, C]) 
+		     extends Reagent[B, C] {
+    private val kIsCommit = k.isInstanceOf[Commit[_]]
+    def tryReact(b: B, rx: Reaction): Any = {
+      val ov = get
+      val nv = f(ov, b)
+      Ref.continueWithCAS(data, rx, (), k, ov, nv)
+    } 
+    def makeOfferI(b: B, offer: Offer[C]): Unit = {
+      k.makeOffer((), offer)
     }
+    def composeI[D](next: Reagent[C,D]) = UpdIn(f, k.compose(next))
+    def maySync = k.maySync
+    def alwaysCommits = false
+  }
   @inline def updIn[B](f: (A,B) => A): Reagent[B, Unit] = 
-    new Upd[B, Unit, Unit](Commit[Unit]()) {
-      @inline final def compute(a: A, b: B) = (f(a,b), ())
-      @inline final def isDefinedAt(a: A, b: B) = true
-    }
+    UpdIn(f, Commit[Unit]())
 }
 object upd {
   @inline def apply[A <: AnyRef,B,C](r: Ref[A])(f: (A,B) => (A,C)) = 
@@ -109,12 +131,13 @@ object Ref {
   @inline def unapply[A <: AnyRef](r: Ref[A]): Option[A] = Some(r.get)
 
   @inline private[chemistry] def continueWithCAS[A, B](
-    ref: AtomicReference[AnyRef], rx: Reaction, ret: A, k: Reagent[A,B], ov: AnyRef, nv: AnyRef
-  ): B = 
+    ref: AtomicReference[AnyRef], rx: Reaction, ret: A, 
+    k: Reagent[A,B], ov: AnyRef, nv: AnyRef
+  ): Any = 
     if (rx.casCount == 0 && k.alwaysCommits) {
       if (ref.compareAndSet(ov, nv))
 	k.tryReact(ret, rx)
-      else throw ShouldRetry
+      else ShouldRetry
     } else {
       k.tryReact(ret, rx.withCAS(ref, ov, nv))
     }

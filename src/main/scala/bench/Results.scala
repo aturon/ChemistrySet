@@ -55,15 +55,15 @@ case class BenchResult(name: String, work: Int, es: Seq[EntryResult]) {
     println("")    
     hrule
 
-    // throughput results
-    es.map(_.format).foreach(print(_))
-    hrule
-
     if (work > 0 && config.doTP) {
-      // raw throughput results
-      es.map(_.formatR).foreach(print(_))
+      // throughput results
+      es.map(_.format).foreach(print(_))
       hrule
     }
+
+    // raw throughput results
+    es.map(_.formatR).foreach(print(_))
+    hrule
 
     // normalized results
     es.map(_.formatN(es(0).ms(0).rawThroughput)).foreach(print(_))

@@ -1,5 +1,5 @@
 package chemistry
 
 object Chemistry {
-  val procs = Runtime.getRuntime.availableProcessors
+  var procs = Runtime.getRuntime.availableProcessors
 }

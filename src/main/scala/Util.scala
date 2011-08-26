@@ -46,9 +46,9 @@ private object Util {
   def cov(ds: Seq[Double]): Double = 100 * (stddev(ds) / abs(mean(ds)))
   
   // compute6 from j.u.c.
-  @inline def noop(times: Int = 1) {
+  def noop(times: Int = 1) {
     var seed = 1;
-    for (_ <- 1 to times) {
+    for (_ <- 0 to times) {
       seed = seed ^ (seed << 1)
       seed = seed ^ (seed >>> 3)
       seed = seed ^ (seed << 10)
@@ -67,6 +67,12 @@ private object Util {
 	def apply(x:A) = f(x)
       }
   }
+
+  // Untagged unions, due to Miles Sabin
+  // see www.chuusai.com/2011/06/09/scala-union-types-curry-howard/
+  type Not[A] = A => Nothing
+  type NotNot[A] = Not[Not[A]]
+  type UntaggedSum[A,B] = { type F[X] = NotNot[X] <:< Not[Not[A] with Not[B]] }
 }
 
 // an unsynchronized, but thread-varying RNG

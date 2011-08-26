@@ -14,6 +14,7 @@ import scala.concurrent.ops._
 import scala.math._
 import chemistry.Util._
 import chemistry.bench.benchmarks._
+import chemistry.Chemistry
 
 private object SomeData // a reference to put in collections
 
@@ -75,6 +76,8 @@ abstract class Entry {
   }
   
   private def measureOne(work: Int, timePerWork: Double)(i: Int): Measurement = {
+    Chemistry.procs = i // for benchmarking, pretend machine has i cores
+
     if (!config.verbose) print(i)
 
     log(getClass().getSimpleName().replace("$"," "))
@@ -96,7 +99,7 @@ abstract class Entry {
     // warmup and compute estimated throughput
     val totalTP = {
       log(" - warmup")
-      var iters = 128
+      var iters = 10000
       var warmupIters = 0
       var warmupTime: Double = 0
 
@@ -104,7 +107,7 @@ abstract class Entry {
 	warmupTime  += time(iters)._1
 	warmupIters += iters
 //	log(" i %d  wi %d  wt %f".format(iters, warmupIters, warmupTime))
-	iters *= 2	
+	iters *= 10	
       }
 
       warmupIters / time(warmupIters)._1
@@ -147,8 +150,11 @@ abstract class Entry {
     }
 
     log(" - iters: %d".format(trialIters))
-    log(" - est time: %6.0f  conc op: %6.0f  simulated work: %4.1f".format(
-      estTime, estConcOpTime, 100 * (1-estConcOpTime/estTime)) ++ "%")
+    if (config.doTP) 
+      log(" - est time: %6.0f  conc op: %6.0f  simulated work: %4.1f".format(
+	estTime, estConcOpTime, 100 * (1-estConcOpTime/estTime)) ++ "%")
+    else
+      log(" - est time: %6.0f".format(estTime))
     log("          tp   raw tp    cov     tot   t-avg  t-cov   sw")
     log(" - ex%6.1f %7.1f".format(
       (trialIters/estConcOpTime) / 1000,
@@ -180,7 +186,7 @@ abstract class Entry {
   def measureAll(work: Int, minCores:Int, maxCores: Int, timePerWork: Double) = {
     val ms = (minCores to maxCores).map(measureOne(work, timePerWork))
     if (!config.verbose) {
-      print("\b" * (maxCores-minCores))
+      print("\b" * (1+maxCores-minCores))
       print("%10.10s %5d: ".format(name, work))
       ms.foreach(m => print("%6.2f ".format(m.rawThroughput)))
       println("")   
@@ -251,8 +257,8 @@ object Bench extends App {
 //    w <- List(100)
 //    w <- List(100, 250, 500)
 //    w <- List(0) ++ (for (i <- 0 to 15) yield pow(10, 1+i.toDouble * 0.25).toInt)
-//    w <- (0 to 500 by 100)
-    w <- List(100, 0)
+    w <- (0 to 500 by 100)
+//    w <- List(100)
   } yield (b, w, config.minCores, config.maxCores)
 
 //  val benches = if (seqOnly) seqBenches else seqBenches ++ concBenches

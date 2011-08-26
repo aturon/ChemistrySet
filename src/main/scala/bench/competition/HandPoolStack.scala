@@ -1,4 +1,3 @@
-/*
 package chemistry.bench.competition
 
 import chemistry._
@@ -99,7 +98,7 @@ class HandPoolStack[A >: Null] {
   def push(x: A) {
     val n = new Node(x, null)
     var backoff = 1
-    val offer = new Offer(x)
+    var offer: Offer[A] = null
     while (true) {
       n.next = head.get
       if (head.compareAndSet(n.next, n)) return
@@ -114,13 +113,14 @@ class HandPoolStack[A >: Null] {
 //	  if (offer.isDeleted || !offer.tryConsume) return
 	  if (theirOffer.tryConsume) {
 	    theirOffer.data = x
-	    return
+	    return 
 	  } 
 	  // offer.reset
 	  // pushPool.put(offer)
 	}
       }
 
+      if (offer eq null) offer = new Offer(x)
       offer.reset
       pushPool.put(offer)
 
@@ -128,15 +128,16 @@ class HandPoolStack[A >: Null] {
       val t = System.nanoTime
       while (!offer.isDeleted && System.nanoTime - t < timeout) {}
 
-      if (offer.isDeleted) return
-      else if (!offer.tryConsume) return
+      if (offer.isDeleted) return 
+      else if (!offer.tryConsume) return 
       backoff += 1
     }
+    throw Util.Impossible
   }
 
   def tryPop(): Option[A] = {
     var backoff = 1
-    val offer = new Offer[A](null)
+    var offer: Offer[A] = null
     while (true) {
       val h = head.get
       if (h eq null) 
@@ -161,6 +162,7 @@ class HandPoolStack[A >: Null] {
 	}
       }
 
+      if (offer eq null) offer = new Offer[A](null)
       offer.reset
       popPool.put(offer)
 
@@ -177,8 +179,8 @@ class HandPoolStack[A >: Null] {
     throw new Exception("Impossible")
   }
 }
-*/
 
+/*
 package chemistry.bench.competition
 
 import chemistry.Pool
@@ -368,3 +370,4 @@ class HandPoolStack[A >: Null] {
     throw new Exception("Impossible")
   }
 }
+*/

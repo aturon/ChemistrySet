@@ -4,6 +4,8 @@ import java.util.concurrent.atomic._
 import java.util.concurrent._
 import scala.annotation.tailrec
 
+import chemistry.Util
+
 // Elminiation backoff stack
 class HandElimStack[A >: Null] {
   class Node(val data: A, var next: Node) 
@@ -28,6 +30,7 @@ class HandElimStack[A >: Null] {
 	case _ => backoff += 1
       }
     }
+    throw Util.Impossible
   }
 
   def tryPop(): Option[A] = {
@@ -48,6 +51,6 @@ class HandElimStack[A >: Null] {
       }
       
     }
-    throw new Exception("Impossible")
+    throw Util.Impossible
   }
 }
