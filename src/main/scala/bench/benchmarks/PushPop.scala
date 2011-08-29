@@ -77,7 +77,7 @@ object PushPop extends Benchmark {
     type S = EliminationStack[AnyRef]
     def setup = new EliminationStack()
     def push(s: S, x: AnyRef) = s.push ! x
-    def tryPop(s: S): Option[AnyRef]  = s.tryPop ! ()    
+    def tryPop(s: S): Option[AnyRef] = Some(s.pop ! ()) //s.tryPop ! ()    
   }
 /*
   private object ebstack extends Entry {
@@ -105,6 +105,6 @@ object PushPop extends Benchmark {
 //  def entries = List(rTreiber, rElim, hand)
 //  def entries = List(rElim, rTreiber, handElim, hand, handPool)
 //  def entries: List[Entry] = List(rElim, handPool, handElim)
-//  def entries: List[Entry] = List(rElim)
-  def entries: List[Entry] = List(rElim, handPool, handElim, rTreiber, hand)
+  def entries: List[Entry] = List(handPool, rElim)
+//  def entries: List[Entry] = List(rElim, handPool, handElim, rTreiber, hand)
 }

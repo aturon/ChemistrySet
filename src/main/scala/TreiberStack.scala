@@ -2,6 +2,7 @@
 
 package chemistry
 
+import scala.annotation.tailrec
 import java.util.concurrent.atomic._
 
 final class TreiberStack[A] {
@@ -19,7 +20,7 @@ final class TreiberStack[A] {
       case (emp,   _) => None }
   )
 */
-
+/*
   private val head = Ref[List[A]](List())
 
   val push: Reagent[A,Unit] = head.updIn { 
@@ -34,33 +35,45 @@ final class TreiberStack[A] {
   val pop: Reagent[Unit,A] = head.upd[A] {
     case (x::xs) => (xs, x)
   }
+*/
 
-/*
   private val headX = new AtomicReference[List[A]](List())
 
-  object dpush extends Reagent[A,Int] {
+  object push extends Reagent[A,Unit] {
     def tryReact(x:A, rx: Reaction): Any = {
       val xs = headX.get
-      if (headX.compareAndSet(xs,x::xs)) 0 else ShouldRetry
+      if (headX.compareAndSet(xs,x::xs)) () else ShouldRetry
     }
-    def makeOfferI(x:A, offer: Offer[Int]) {}
-    def composeI[B](next: Reagent[Int,B]) = throw Util.Impossible
+    def makeOfferI(x:A, offer: Offer[Unit]) {}
+    def composeI[B](next: Reagent[Unit,B]) = throw Util.Impossible
     def maySync = false
     def alwaysCommits = false
   }
 
-  object dtryPop extends Reagent[Unit,Int] {
+  object tryPop extends Reagent[Unit,Option[A]] {
     def tryReact(u:Unit, rx: Reaction): Any = headX.get match {
       case (ov@(x::xs)) => 
-	if (headX.compareAndSet(ov,xs)) 0 else ShouldRetry
-      case emp     => 0
+	if (headX.compareAndSet(ov,xs)) Some(x) else ShouldRetry
+      case emp     => None
     }
-    def makeOfferI(u:Unit, offer: Offer[Int]) {}
-    def composeI[B](next: Reagent[Int,B]) = throw Util.Impossible
+    def makeOfferI(u:Unit, offer: Offer[Option[A]]) {}
+    def composeI[B](next: Reagent[Option[A],B]) = throw Util.Impossible
     def maySync = false
     def alwaysCommits = false
   }
-*/
+
+  object pop extends Reagent[Unit,A] {
+    @tailrec def tryReact(u:Unit, rx: Reaction): Any = headX.get match {
+      case (ov@(x::xs)) => 
+	if (headX.compareAndSet(ov,xs)) x else ShouldRetry
+      case emp     => tryReact(u, rx)
+    }
+    def makeOfferI(u:Unit, offer: Offer[A]) {}
+    def composeI[B](next: Reagent[A,B]) = throw Util.Impossible
+    def maySync = false
+    def alwaysCommits = false
+  }
+
 /*
   private val headX = Ref[List[A]](List())
 

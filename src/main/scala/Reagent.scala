@@ -24,17 +24,18 @@ abstract class Reagent[-A, +B] {
   private[chemistry] def alwaysCommits: Boolean
   private[chemistry] def maySync: Boolean
 
-  private[chemistry] def makeOffer(a: A, offer: Offer[B]) {
+  @inline private[chemistry] final def makeOffer(a: A, offer: Offer[B]) {
     // abort early if offer has already been consumed
     if (offer.isActive) makeOfferI(a, offer)
   }
-  def compose[C](next: Reagent[B,C]): Reagent[A,C] = next match {
+  final def compose[C](next: Reagent[B,C]): Reagent[A,C] = next match {
     case Commit() => this.asInstanceOf[Reagent[A,C]] // B = C
     case _ => composeI(next)
   }
 
   final def !(a: A): B = {
     def block: B = {
+/*
       val waiter = new Waiter[B](true)
       val initRX = waiter.rxForConsume
       while (true) {
@@ -47,6 +48,7 @@ abstract class Reagent[-A, +B] {
 	  case ans         => return ans.asInstanceOf[B]
 	}
       }
+*/
       throw Util.Impossible
     }
 
@@ -76,9 +78,9 @@ abstract class Reagent[-A, +B] {
 	var spins = (Chemistry.procs * offerSpinBase) << backoff
 	while (waiter.isActive && spins > 0) spins -= 1
 
-//	val timeout = 1024 << backoff
-//	val t = System.nanoTime
-//	while (waiter.isActive && System.nanoTime - t < timeout) {}
+	// val timeout = 128 << backoff
+	// val t = System.nanoTime
+	// while (waiter.isActive && System.nanoTime - t < timeout) {}
 
 	waiter.abort match {
 	  case Some(b) => return b.asInstanceOf[B]
@@ -110,8 +112,9 @@ abstract class Reagent[-A, +B] {
     }
     
     tryReact(a, Inert) match {
-      case ShouldRetry if maySync => offer
-      case ShouldRetry            => withBackoff
+      case ShouldRetry            => offer
+//      case ShouldRetry if maySync => offer
+//      case ShouldRetry            => withBackoff
       case ShouldBlock		  => block
       case ans			  => ans.asInstanceOf[B]
     }
@@ -168,13 +171,13 @@ object ret {
 //     throw ShouldRetry
 // }
 
-private case class Commit[A]() extends Reagent[A,A] {
-  def tryReact(a: A, rx: Reaction): Any = 
+private final case class Commit[A]() extends Reagent[A,A] {
+  @inline def tryReact(a: A, rx: Reaction): Any = 
     if (rx.tryCommit) a else ShouldRetry
-  def makeOfferI(a: A, offer: Offer[A]) {}
-  def composeI[B](next: Reagent[A,B]) = next
-  def alwaysCommits = true
-  def maySync = false
+  @inline def makeOfferI(a: A, offer: Offer[A]) {}
+  @inline def composeI[B](next: Reagent[A,B]) = next
+  @inline def alwaysCommits = true
+  @inline def maySync = false
 }
 
 object never extends Reagent[Any, Nothing] {
@@ -223,7 +226,7 @@ object lift {
 object choice {
   private final case class Choice[A,B](r1: Reagent[A,B], r2: Reagent[A,B]) 
 		     extends Reagent[A,B] {
-    def tryReact(a: A, rx: Reaction): Any = 
+    @inline def tryReact(a: A, rx: Reaction): Any = 
       r1.tryReact(a, rx) match {
 	case ShouldRetry => 
 	  r2.tryReact(a, rx) match {
@@ -235,14 +238,14 @@ object choice {
 	  r2.tryReact(a, rx) // all backtracking falls thru
 	case ans => ans
       }
-    def makeOfferI(a: A, offer: Offer[B]) {
+    @inline def makeOfferI(a: A, offer: Offer[B]) {
       r1.makeOffer(a, offer)
       r2.makeOffer(a, offer)
     }
-    def composeI[C](next: Reagent[B,C]) = 
+    @inline def composeI[C](next: Reagent[B,C]) = 
       Choice(r1.compose(next), r2.compose(next))
-    def alwaysCommits = r1.alwaysCommits && r2.alwaysCommits
-    def maySync = r1.maySync || r2.maySync
+    @inline def alwaysCommits = r1.alwaysCommits && r2.alwaysCommits
+    @inline def maySync = r1.maySync || r2.maySync
   }
   @inline def apply[A,B](r1: Reagent[A,B], r2: Reagent[A,B]): Reagent[A,B] =
     Choice(r1, r2)
