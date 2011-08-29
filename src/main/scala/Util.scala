@@ -77,23 +77,31 @@ private object Util {
 
 // an unsynchronized, but thread-varying RNG
 private final class Random(var seed: Long = 1) {
-  private def nextSeed() {
-    seed = seed ^ (seed << 13)
-    seed = seed ^ (seed >>> 7)
-    seed = seed ^ (seed << 17)
+  def nextSeed {
+    seed = Random.nextSeed(seed)
   }
 
   def next(max: Int): Int = {    
-    if (max <= 0) 
-      0 
-    else {
-      nextSeed
-      val r = (seed % max).toInt
-      if (r < 0) -r else r
-    }
+    nextSeed
+    Random.scale(seed, max)
   }
 
   def fuzz(around: Int, percent: Int = 10): Int = {
     around + next((around * percent) / 100)
+  }
+}
+private object Random {
+  def nextSeed(oldSeed: Long): Long = {
+    var seed = oldSeed
+    seed = seed ^ (seed << 13)
+    seed = seed ^ (seed >>> 7)
+    seed = seed ^ (seed << 17)
+    seed
+  }
+  def scale(seed: Long, max: Int): Int = {
+    if (max <= 0) max else {
+      val r = (seed % max).toInt
+      if (r < 0) -r else r
+    }
   }
 }

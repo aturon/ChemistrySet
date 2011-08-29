@@ -37,6 +37,37 @@ final class TreiberStack[A] {
   }
 */
 
+  case class Node(val data: A, var next: Node) 
+  private val head = Ref[Node](null)
+
+  val push: Reagent[A,Unit] = new head.FastUpd[A,Unit] {
+    @inline final def newValue(cur: Node, a: A): Node = Node(a,cur)
+    @inline override final def retryValue(
+      cur: Node, lastAttempt: Node, a: A
+    ): Node = {
+      lastAttempt.next = cur
+      lastAttempt
+    }      
+    @inline final def retValue(cur: Node, a: A): Unit = ()
+  }
+
+  val tryPop: Reagent[Unit,Option[A]] = new head.FastUpd[Unit,Option[A]] {
+    @inline final def newValue(cur: Node, u: Unit): Node = cur match { 
+      case null   => null
+      case Node(x,xs) => xs
+    }
+    @inline final def retValue(cur: Node, u: Unit): Option[A] = cur match {
+      case null   => None
+      case Node(x,xs) => Some(x)
+
+    }
+  }
+
+  val pop: Reagent[Unit,A] = head.upd[A] {
+    case Node(x,xs) => (xs, x)
+  }
+
+/*
   private val headX = new AtomicReference[List[A]](List())
 
   object push extends Reagent[A,Unit] {
@@ -73,7 +104,7 @@ final class TreiberStack[A] {
     def maySync = false
     def alwaysCommits = false
   }
-
+*/
 /*
   private val headX = Ref[List[A]](List())
 

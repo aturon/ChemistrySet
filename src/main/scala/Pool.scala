@@ -4,6 +4,7 @@ package chemistry
 
 import scala.annotation.tailrec
 import java.util.concurrent.atomic._
+import java.util.concurrent.locks._
 
 trait DeletionFlag {
   def isDeleted: Boolean
@@ -130,6 +131,7 @@ final class Pool[A <: DeletionFlag] {
 
 //  def cursor = cursors(0)
 //  val cursor = cursors(0)
+//  @inline def get = cursors(myStart).get
   def cursor = cursors(myStart)
 
   final class Cursor private[Pool](node: Node) {
@@ -160,15 +162,96 @@ final class Pool[A <: DeletionFlag] {
     }
   }
 
-  def put(a: A): Unit = {
-    var i = myStart //0
+  def put(a: A) {
+    val start = myStart
+    var i = start //0    
     while (true) {
       val oldHead = cursors(i).ref.get
       if (cursors(i).ref.compareAndSet(oldHead, 
 				       InnerNode(a, new Cursor(oldHead))))
-	return
+	return 
       else i = (i+1) % size
     }
   }
 }
 
+private object BoundPool {
+  val capacity = 32
+  val full = math.max(0, math.min(capacity, Chemistry.procs / 2) - 1)
+}
+final class BoundPool[A <: DeletionFlag] {
+  import BoundPool._
+
+  case class Node(data: A) //, next: Int)
+
+  private val lock = new ReentrantLock
+  @volatile private var arena = new Array[PaddedAtomicReference[Node]](capacity)
+  private val max = new AtomicInteger
+
+  def put(a: A) {
+    val n = Node(a)
+    var index = hashIndex
+    var fails = 0
+
+    while (fails < 50) {
+      val slot = arena(index)
+      if (slot == null) {
+	val slot = new PaddedAtomicReference[Node](null)
+	lock.lock
+	if (arena(index) == null)
+	  arena(index) = slot
+	lock.unlock
+      } else {
+	val cur = slot.get
+	if (cur == null || cur.data.isDeleted) {
+	  if (slot.compareAndSet(cur, n)) return
+	}
+
+	fails +=1 
+	if (fails >= 2) {
+	  val m = max.get
+	  if (fails > 3 && m < full && max.compareAndSet(m, m+1))
+	    index = m + 1
+	  else if (index == 0)
+	    index = m
+	  else index -= 1
+	}
+      }
+    }
+
+    throw OfferFail
+  }
+
+  @inline private final def hashIndex: Int = {
+    val id = Thread.currentThread().getId()
+    var hash = ((id ^ (id >>> 32)).toInt ^ 0x811c9dc5) * 0x01000193
+
+    val m = max.get()
+    val nbits = (((0xfffffc00  >> m) & 4) | // Compute ceil(log2(m+1))
+                 ((0x000001f8 >>> m) & 2) | // The constants hold
+                 ((0xffff00f2 >>> m) & 1))  // a lookup table
+
+    var index = hash & ((1 << nbits) - 1)
+    while (index > m) {       // May retry on
+      hash = (hash >>> nbits) | (hash << (33 - nbits))    // non-power-2 m
+      index = hash & ((1 << nbits) - 1)
+    }
+    index
+  }
+
+  def get: Node = {
+    var i = 0
+    val m = max.get
+    while (i <= m) {
+      arena(i) match {
+	case null => {}
+	case slot => {
+	  val n = slot.get
+	  if (n != null && !n.data.isDeleted) return n
+	}
+      }
+      i += 1
+    }
+    return null
+  }
+}

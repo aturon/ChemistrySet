@@ -57,7 +57,6 @@ final class Ref[A <: AnyRef](init: A) {
 
   private final case class Upd[B,C,D](f: (A,B) => (A,C), k: Reagent[C,D]) 
 		     extends Reagent[B, D] {
-    private val kIsCommit = k.isInstanceOf[Commit[_]]
     def tryReact(b: B, rx: Reaction): Any = {
       val ov = get
       val (nv, ret) = f(ov, b)
@@ -75,10 +74,54 @@ final class Ref[A <: AnyRef](init: A) {
   @inline def upd[B,C](f: (A,B) => (A,C)): Reagent[B, C] = 
     Upd(f, Commit[C]())
 
+  abstract class InnerFastUpd[B,C,D] private[chemistry] (k: Reagent[C,D])
+	   extends Reagent[B, D] {
+    def tryReact(b: B, rx: Reaction): Any = {
+      if (rx.casCount == 0 && k.alwaysCommits) {
+	var ov = get
+	var nv = newValue(ov, b)
+	val tries = 6
+	var triesLeft = tries
+	var seed = Thread.currentThread.getId
+	while (triesLeft > 0) {
+	  if (data.compareAndSet(ov, nv))
+	    return k.tryReact(retValue(ov, b), rx)
+	  Util.noop(Random.scale(seed, 64 << (tries - triesLeft)))
+	  seed = Random.nextSeed(seed)
+	  ov = get
+	  nv = retryValue(ov, nv, b)
+	  triesLeft -= 1
+//	  if (triesLeft < 45) println(triesLeft)
+	}
+//	println("d'oh!")
+	ShouldRetry
+      } else {
+	val ov = get
+	val nv = newValue(ov, b)
+	k.tryReact(retValue(ov, b), rx.withCAS(data, ov, nv))
+      }
+    }
+    def makeOfferI(b: B, offer: Offer[D]): Unit = {
+      val ov = get
+      k.makeOffer(retValue(ov, b), offer)
+    }
+    def composeI[E](next: Reagent[D,E]) = 
+      new InnerFastUpd[B,C,E](k.compose(next)) {
+	final def newValue(a: A, b: B): A = InnerFastUpd.this.newValue(a, b)
+	final def retValue(a: A, b: B): C = InnerFastUpd.this.retValue(a, b)
+      }
+    def maySync = k.maySync
+    def alwaysCommits = false
+
+    def newValue(a: A, b: B): A
+    def retValue(a: A, b: B): C
+    def retryValue(cur: A, lastAttempt: A, b: B): A = newValue(cur, b)
+  }
+  abstract class FastUpd[B,C] extends InnerFastUpd[B,C,C](Commit[C]()) 
+
   private final case class UpdUnit[B,C](f: PartialFunction[A, (A,B)],
 				        k: Reagent[B, C]) 
 		     extends Reagent[Unit, C] {
-    private val kIsCommit = k.isInstanceOf[Commit[_]]
     def tryReact(u: Unit, rx: Reaction): Any = {
       val ov = get
       if (!f.isDefinedAt(ov)) return ShouldBlock
@@ -100,7 +143,6 @@ final class Ref[A <: AnyRef](init: A) {
 
   private final case class UpdIn[B,C](f: (A,B) => A, k: Reagent[Unit, C]) 
 		     extends Reagent[B, C] {
-    private val kIsCommit = k.isInstanceOf[Commit[_]]
     def tryReact(b: B, rx: Reaction): Any = {
       val ov = get
       val nv = f(ov, b)
@@ -140,5 +182,5 @@ object Ref {
       else ShouldRetry
     } else {
       k.tryReact(ret, rx.withCAS(ref, ov, nv))
-    }
+    }    
 }

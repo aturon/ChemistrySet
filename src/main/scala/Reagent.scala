@@ -6,17 +6,13 @@ import scala.annotation.tailrec
 import java.util.concurrent.locks._
 import chemistry.Util.Implicits._
 
-private sealed abstract class BacktrackCommand //extends Exception
+private sealed abstract class BacktrackCommand
 private case object ShouldBlock extends BacktrackCommand 
 private case object ShouldRetry extends BacktrackCommand 
 
-private object Reagent {
-  val offerSpinBase = 256 
-  val offerSpinCutoff = 9
-}
-abstract class Reagent[-A, +B] {
-  import Reagent._
+private object OfferFail extends Exception
 
+abstract class Reagent[-A, +B] {
   // returns either a BacktrackCommand or a B
   private[chemistry] def tryReact(a: A, rx: Reaction): Any
   protected def makeOfferI(a: A, offer: Offer[B]): Unit
@@ -33,7 +29,7 @@ abstract class Reagent[-A, +B] {
     case _ => composeI(next)
   }
 
-  final def !(a: A): B = {
+  final def !(a: A): B = {    
     def block: B = {
 /*
       val waiter = new Waiter[B](true)
@@ -63,47 +59,44 @@ abstract class Reagent[-A, +B] {
 */
 
     def offer: B = {
-//      var bcount = 0
-//      val rand = new Random
-      var backoff = 0
-
+      val backoff = new Backoff
       // scalac can't do @tailrec here, due to exception handling
       val waiter = new Waiter[B](false)
       while (true) {
-//	if (backoff > 3) println("****** %d".format(backoff))
-
 	waiter.reset
 	makeOffer(a, waiter)
 	
-	var spins = (Chemistry.procs * offerSpinBase) << backoff
-	while (waiter.isActive && spins > 0) spins -= 1
+	// var spins = (Chemistry.procs * offerSpinBase) << backoff
+	// while (waiter.isActive && spins > 0) spins -= 1
 
-	// val timeout = 128 << backoff
+	// val timeout = Chemistry.procs << (backoff + 5)
 	// val t = System.nanoTime
 	// while (waiter.isActive && System.nanoTime - t < timeout) {}
 
+	backoff.once(waiter.isActive)
+
 	waiter.abort match {
 	  case Some(b) => return b.asInstanceOf[B]
-	  case _ => {}
+	  case _ => tryReact(a, Inert) match {
+	    case ShouldRetry => {}
+	    case ShouldBlock => return block
+	    case ans         => return ans.asInstanceOf[B]
+	  }
 	} 
-
-	tryReact(a, Inert) match {
-	  case ShouldRetry => //if (bcount < offerSpinCutoff) bcount += 1
-	    backoff += 1
-	  case ShouldBlock => return block
-	  case ans         => return ans.asInstanceOf[B]
-	}
       }
       throw Util.Impossible
     }
 
     def withBackoff: B = {
-      val backoff = new Backoff      
+      var backoff = 0
+//      val backoff = new Backoff
+//      backoff.once
       // scalac can't do @tailrec here, due to exception handling
       while (true) {
 	tryReact(a, Inert) match {
-	  case ShouldRetry if maySync => return offer
-	  case ShouldRetry => backoff.once()
+//	  case ShouldRetry if maySync && backoff.count > 2 => 
+//	    return offer
+	  case ShouldRetry => backoff += 1
 	  case ShouldBlock => return block
 	  case ans         => return ans.asInstanceOf[B]
 	}
@@ -112,9 +105,9 @@ abstract class Reagent[-A, +B] {
     }
     
     tryReact(a, Inert) match {
-      case ShouldRetry            => offer
+//      case ShouldRetry            => offer
 //      case ShouldRetry if maySync => offer
-//      case ShouldRetry            => withBackoff
+      case ShouldRetry            => withBackoff
       case ShouldBlock		  => block
       case ans			  => ans.asInstanceOf[B]
     }
