@@ -80,7 +80,10 @@ abstract class Reagent[-A, +B] {
 	while (true) {
 	  boff += 1
 	  seed = Random.nextSeed(seed)
-	  var spins = Random.scale(seed, 1 << boff)
+	  var spins = 
+	    Random.scale(
+	      seed, 
+	      (Chemistry.procs >> 1) << (boff + (if (doOffer) 0 else 3)))
 
 	  tryReact(a, Inert, cache) match {
 	    case (_: Retry) if doOffer && seed % 4 == 0 => {
@@ -98,7 +101,7 @@ abstract class Reagent[-A, +B] {
 	      }
 	    }
 	    case (_: Retry) => 
-	      while (!snoop(a) && spins > 0) spins -= 1
+	      while (spins > 0 || (doOffer && !snoop(a))) spins -= 1
 	    case Blocked    => return block
 	    case ans        => return ans.asInstanceOf[B]
 	  }
