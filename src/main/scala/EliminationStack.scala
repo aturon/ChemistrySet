@@ -8,7 +8,7 @@ final class EliminationStack[A >: Null] {
 
   val push: Reagent[A,Unit] = stack.push <+> elimPush
   val tryPop: Reagent[Unit,Option[A]] = stack.tryPop <+> elimPop.map(Some(_))
-  val pop: Reagent[Unit,A] = stack.pop <+> elimPop
+  def pop: Reagent[Unit,A] = stack.pop <+> elimPop
 
 /*
   val dpush: Reagent[A,Int] = 

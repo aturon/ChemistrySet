@@ -50,6 +50,7 @@ final class Ref[A <: AnyRef](init: A) {
       }
     def makeOfferI(u: Unit, offer: Offer[B]) =
       k.makeOffer(u, offer)
+    def snoop(u: Unit) = false
     def composeI[C](next: Reagent[B,C]) = CAS(expect, update, k.compose(next))
     def maySync = k.maySync
     def alwaysCommits = false
@@ -85,13 +86,10 @@ final class Ref[A <: AnyRef](init: A) {
     def useCache = k.useCache
     def tryReact(b: B, rx: Reaction, cache: Cache): Any = {
       if (rx.casCount == 0 && k.alwaysCommits) {
-	// pushed inside if to keep close to CAS
-//	while (true) {
-	  val ov = get
-	  val nv = newValue(ov, b)
-	  if (data.compareAndSet(ov, nv))
-	    return k.tryReact(retValue(ov, b), rx, cache)
-//        }
+	val ov = get
+	val nv = newValue(ov, b)
+	if (data.compareAndSet(ov, nv))
+	  return k.tryReact(retValue(ov, b), rx, cache)
 	RetryUncached
       } else {
 	val ov = get
@@ -99,10 +97,9 @@ final class Ref[A <: AnyRef](init: A) {
 	k.tryReact(retValue(ov, b), rx.withCAS(data, ov, nv), cache)
       }
     }
-    def makeOfferI(b: B, offer: Offer[D]): Unit = {
-      val ov = get
-      k.makeOffer(retValue(ov, b), offer)
-    }
+    def snoop(b: B) = false
+    def makeOfferI(b: B, offer: Offer[D]): Unit =
+      k.makeOffer(retValue(get, b), offer)
     def composeI[E](next: Reagent[D,E]) = 
       new InnerFastUpd[B,C,E](k.compose(next)) {
 	final def newValue(a: A, b: B): A = InnerFastUpd.this.newValue(a, b)
@@ -121,6 +118,7 @@ final class Ref[A <: AnyRef](init: A) {
   ) extends Reagent[C, E] {
     type Cache >: Null <: Retry
     def useCache = true
+    def snoop(c: C) = false
 
     def tryReact(c: C, rx: Reaction, cache: Cache): Any = {
       val cached: Cache = if (cache == null) initCache else cache
@@ -129,13 +127,13 @@ final class Ref[A <: AnyRef](init: A) {
 	if (rx.casCount == 0 && k.alwaysCommits) {
 	  // pushed inside if to keep close to CAS	
 //	  var tries = 20
-	  while (true) {
+//	  while (true) {
 	    val ov = get
 	    val nv = newValue(ov, cached, c)
 	    if (data.compareAndSet(ov, nv))
 	      return k.tryReact(retValue(ov, c), rx, null)
 //	    tries -= 1
-	  }
+//	  }
 //	  println("> 20")
 	  RetryUncached
 	} else {

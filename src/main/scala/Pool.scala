@@ -129,6 +129,8 @@ final class Pool[A <: DeletionFlag] {
 
   private def myStart = (Thread.currentThread.getId % size).toInt
 
+  private var lastPut: Int = 0
+
 //  def cursor = cursors(0)
 //  val cursor = cursors(0)
 //  @inline def get = cursors(myStart).get
@@ -162,15 +164,31 @@ final class Pool[A <: DeletionFlag] {
     }
   }
 
+  private final def snoop(n: Int): Boolean = cursors(n).ref.get match {
+    case null => throw Util.Impossible
+    case LinkNode(next) => false
+    case Node(data, _) => !data.isDeleted
+  }
+  final def snoop: Boolean = {
+    var i: Int = 0
+    val start = myStart
+    while (i < size) {
+      if (snoop((start + i) % size)) return true
+      i += 1
+    }
+    false
+  }
+
   def put(a: A) {
     val start = myStart
     var i = start //0    
     while (true) {
       val oldHead = cursors(i).ref.get
       if (cursors(i).ref.compareAndSet(oldHead, 
-				       InnerNode(a, new Cursor(oldHead))))
+				       InnerNode(a, new Cursor(oldHead)))) {
+//        lastPut = i
 	return 
-      else i = (i+1) % size
+      } else i = (i+1) % size
     }
   }
 }

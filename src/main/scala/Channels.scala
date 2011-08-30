@@ -41,6 +41,7 @@ final private case class RMessage[A,B,C](
       CompleteExchange(kk >=> next)
     def maySync = kk.maySync
     def alwaysCommits = false		
+    def snoop(c: C) = waiter.isActive && kk.snoop(m)
   }
 
   def exchange[D](kk: Reagent[A,D]): Reagent[B, D] =
@@ -56,7 +57,7 @@ private final case class Endpoint[A,B,C](
   type Cache = Retry
   def useCache = false
 
-  @inline def tryReact(a: A, rx: Reaction, cache: Cache): Any = {
+  def tryReact(a: A, rx: Reaction, cache: Cache): Any = {
     // sadly, @tailrec not acceptable here due to exception handling
     var cursor = incoming.cursor
     var retry: Boolean = false
@@ -72,7 +73,8 @@ private final case class Endpoint[A,B,C](
     }
     throw Util.Impossible
   }
-  @inline def makeOfferI(a: A, offer: Offer[C]) {
+  def snoop(a: A): Boolean = incoming.snoop
+  def makeOfferI(a: A, offer: Offer[C]) {
     offer match { 
       case (w: Waiter[_]) => outgoing.put(RMessage(a, k, w))
       // todo: catalysts
