@@ -2,7 +2,7 @@
 
 package chemistry
 
-final class EliminationStack[A] {
+final class EliminationStack[A >: Null] {
   private val stack = new TreiberStack[A]
   private val (elimPop, elimPush) = Chan[A]()
 

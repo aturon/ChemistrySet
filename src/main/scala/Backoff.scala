@@ -5,14 +5,16 @@ package chemistry
 import scala.util._
 
 final class Backoff {
-  private val rand = new Random(Thread.currentThread.getId)
+//  private val rand = new Random(Thread.currentThread.getId)
+  private var seed: Long = Thread.currentThread.getId
   private var c = 0;
 
   def count = c
 
   def once() {
     if (c < 10) c += 1
-    Util.noop(rand.next((Chemistry.procs-1) << (c + 3)))
+    seed = Random.nextSeed(seed)
+    Util.noop(Random.scale(seed, (Chemistry.procs-1) << (c + 2)))
   }
 
   def once(until: => Boolean) {

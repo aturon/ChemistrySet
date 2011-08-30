@@ -5,7 +5,7 @@ package chemistry
 import scala.annotation.tailrec
 import java.util.concurrent.atomic._
 
-final class TreiberStack[A] {
+final class TreiberStack[A >: Null] {
 
 /*
   val push: Reagent[A,Unit] = head.fastUpd[A,Unit](
@@ -37,17 +37,17 @@ final class TreiberStack[A] {
   }
 */
 
-  case class Node(val data: A, var next: Node) 
+  case class Node(var data: A, var next: Node) extends Retry
   private val head = Ref[Node](null)
 
-  val push: Reagent[A,Unit] = new head.FastUpd[A,Unit] {
-    @inline final def newValue(cur: Node, a: A): Node = Node(a,cur)
-    @inline override final def retryValue(
-      cur: Node, lastAttempt: Node, a: A
-    ): Node = {
-      lastAttempt.next = cur
-      lastAttempt
-    }      
+  val push: Reagent[A,Unit] = new head.CachedUpd[A,Unit] {
+    type Cache = Node
+    @inline final def initCache: Node = Node(null, null)
+    @inline final def newValue(cur: Node, cache: Node, a: A): Node = {
+      cache.data = a
+      cache.next = cur
+      cache
+    } 
     @inline final def retValue(cur: Node, a: A): Unit = ()
   }
 
@@ -59,11 +59,10 @@ final class TreiberStack[A] {
     @inline final def retValue(cur: Node, u: Unit): Option[A] = cur match {
       case null   => None
       case Node(x,xs) => Some(x)
-
     }
   }
 
-  val pop: Reagent[Unit,A] = head.upd[A] {
+  def pop: Reagent[Unit,A] = head.upd[A] {
     case Node(x,xs) => (xs, x)
   }
 

@@ -18,16 +18,19 @@ object PushPop extends Benchmark {
 
     def run(s: S, work: Int, iters: Int) {
 //      var elims = 0
+      var n: Int = 0
       if (work > 0) {
 	val r = new Random
-	for (_ <- 1 to iters) {
+	while (n < iters) {
+	  n += 1
 	  push(s, SomeData)
 	  Util.noop(r.fuzz(work))
 	  tryPop(s)
 	  Util.noop(r.fuzz(work))
 	}
       } else {
-	for (_ <- 1 to iters) {
+	while (n < iters) {
+	  n += 1
 	  push(s,SomeData)
 	  untilSome { tryPop(s) }
 	}
@@ -39,7 +42,9 @@ object PushPop extends Benchmark {
 
   def pureWork(work: Int, iters: Int) = {
     val r = new Random
-    for (_ <-1 to iters) {
+    var n: Int = 0
+    while (n < iters) {
+      n += 1
       Util.noop(r.fuzz(work))
       Util.noop(r.fuzz(work))
     }
@@ -119,6 +124,6 @@ object PushPop extends Benchmark {
 //  def entries = List(rTreiber, rElim, hand)
 //  def entries = List(rElim, rTreiber, handElim, hand, handPool)
 //  def entries: List[Entry] = List(rElim, handPool, handElim)
-  def entries: List[Entry] = List(rTreiber)
+  def entries: List[Entry] = List(rTreiber, hand)
 //  def entries: List[Entry] = List(rElim, handPool, handElim, rTreiber, hand)
 }

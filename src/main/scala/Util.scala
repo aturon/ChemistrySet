@@ -46,12 +46,14 @@ private object Util {
   def cov(ds: Seq[Double]): Double = 100 * (stddev(ds) / abs(mean(ds)))
   
   // compute6 from j.u.c.
-  def noop(times: Int = 1) {
-    var seed = 1;
-    for (_ <- 0 to times) {
+  def noop(times: Int = 1): Int = {
+    var seed: Int = 1
+    var n: Int = times
+    while (seed == 1 || n > 0) { // need to inspect seed or is optimized away
       seed = seed ^ (seed << 1)
       seed = seed ^ (seed >>> 3)
       seed = seed ^ (seed << 10)
+      n -= 1
     }
     seed
   }

@@ -24,13 +24,17 @@ final private case class RMessage[A,B,C](
 ) extends Message[A,B] {
   private case class CompleteExchange[D](kk: Reagent[A,D]) 
 	       extends Reagent[C,D] {
-    def tryReact(c: C, rx: Reaction): Any = {
-      val newRX = 
-	if (waiter.blocking)
-	  rx.withPostCommit((_:Unit) => waiter.wake)
-	else rx
-      Ref.continueWithCAS(waiter.status, newRX, m, kk, 
-			  Waiter.Waiting, c.asInstanceOf[AnyRef])
+    type Cache = Retry
+    def useCache = false
+    def tryReact(c: C, rx: Reaction, cache: Cache): Any = {
+      Ref.rxWithCAS(rx, waiter.status, 
+		    Waiter.Waiting, c.asInstanceOf[AnyRef], kk) match {
+	case (rx: Reaction) if waiter.blocking =>
+	  kk.tryReact(m, rx.withPostCommit((_:Unit) => waiter.wake), null)
+	case (rx: Reaction) =>
+	  kk.tryReact(m, rx, null)
+	case ow => ow
+      }
     }
     def makeOfferI(c: C, offer: Offer[D]) = throw Util.Impossible
     def composeI[E](next: Reagent[D,E]): Reagent[C,E] =
@@ -49,19 +53,22 @@ private final case class Endpoint[A,B,C](
   incoming: Pool[Message[B,A]],
   k: Reagent[B,C]
 ) extends Reagent[A,C] {
-  @inline def tryReact(a: A, rx: Reaction): Any = {
+  type Cache = Retry
+  def useCache = false
+
+  @inline def tryReact(a: A, rx: Reaction, cache: Cache): Any = {
     // sadly, @tailrec not acceptable here due to exception handling
     var cursor = incoming.cursor
     var retry: Boolean = false
     while (true) cursor.get match {
-      case null if retry => return ShouldRetry
-      case null          => return ShouldBlock
+      case null if retry => return RetryUncached
+      case null          => return Blocked
       case incoming.Node(msg, next) => 
-	msg.exchange(k).tryReact(a, rx) match {
-	  case ShouldRetry => retry = true; cursor = next
-	  case ShouldBlock => cursor = next
-	  case ans         => return ans
-	}	      
+	msg.exchange(k).tryReact(a, rx, null) match {
+	  case (_: Retry) => retry = true; cursor = next
+	  case Blocked    => cursor = next
+	  case ans        => return ans
+	} 
     }
     throw Util.Impossible
   }
