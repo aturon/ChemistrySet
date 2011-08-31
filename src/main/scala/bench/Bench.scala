@@ -256,8 +256,8 @@ object Bench extends App {
     b <- List(PushPop)
 //    w <- List(100, 250, 500)
 //    w <- List(0) ++ (for (i <- 0 to 15) yield pow(10, 1+i.toDouble * 0.25).toInt)
-//    w <- (0 to 550 by 50)
-    w <- List(200)
+    w <- (0 to 600 by 50)
+//    w <- List(200)
 //    w <- (0 to 600 by 100)
   } yield (b, w, config.minCores, config.maxCores)
 

@@ -1,3 +1,5 @@
+/*
+
 package chemistry.bench.competition
 
 import chemistry._
@@ -182,3 +184,4 @@ class HandPoolStack[A >: Null] {
 }
 
 
+*/

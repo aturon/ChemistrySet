@@ -55,7 +55,8 @@ object PushPop extends Benchmark {
     def setup = new HandElimStack()
     def push(s: S, x: AnyRef) = s.push(x)
     def tryPop(s: S): Option[AnyRef]  = s.tryPop
-  } 
+  }
+/*
   private object handPool extends Entry with Generic {
     def name = "handPool"
     type S = HandPoolStack[AnyRef]
@@ -76,7 +77,8 @@ object PushPop extends Benchmark {
     def setup = new hand4.HandPoolStack()
     def push(s: S, x: AnyRef) = s.push(x)
     def tryPop(s: S): Option[AnyRef]  = s.tryPop
-  } 
+  }
+*/
   private object hand extends Entry with Generic{
     def name = "hand"
     type S = HandStack[AnyRef]
@@ -124,6 +126,6 @@ object PushPop extends Benchmark {
 //  def entries = List(rTreiber, rElim, hand)
 //  def entries = List(rElim, rTreiber, handElim, hand, handPool)
 //  def entries: List[Entry] = List(rElim, handPool, handElim)
-  def entries: List[Entry] = List(rTreiber, hand, handElim)
+  def entries: List[Entry] = List(rTreiber, rElim, hand, handElim)
 //  def entries: List[Entry] = List(rElim, handPool, handElim, rTreiber, hand)
 }

@@ -58,20 +58,15 @@ private final case class Endpoint[A,B,C](
   def useCache = false
 
   def tryReact(a: A, rx: Reaction, cache: Cache): Any = {
-    // sadly, @tailrec not acceptable here due to exception handling
-    var cursor = incoming.cursor
-    var retry: Boolean = false
-    while (true) cursor.get match {
-      case null if retry => return RetryUncached
-      case null          => return Blocked
-      case incoming.Node(msg, next) => 
-	msg.exchange(k).tryReact(a, rx, null) match {
-	  case (_: Retry) => retry = true; cursor = next
-	  case Blocked    => cursor = next
-	  case ans        => return ans
-	} 
-    }
-    throw Util.Impossible
+    @tailrec def tryFrom(n: incoming.Node, retry: Boolean): Any = 
+      if (n == null) {
+	if (retry) RetryUncached else Blocked
+      } else n.data.exchange(k).tryReact(a, rx, null) match {
+	case (_: Retry) => tryFrom(n.next, true)
+	case Blocked    => tryFrom(n.next, retry)
+	case ans        => ans
+      }
+    tryFrom(incoming.cursor, false)
   }
   def snoop(a: A): Boolean = incoming.snoop
   def makeOfferI(a: A, offer: Offer[C]) {

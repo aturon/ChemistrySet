@@ -96,78 +96,46 @@ final class ArrayPool[A >: Null <: DeletionFlag] {
 }
 
 final class Pool[A <: DeletionFlag] {
-  abstract class Node {
-    def data: A
-    def next: Cursor
-  }
-  object Node {
-    @inline def unapply(n: Node): Option[(A, Cursor)] =
-      if (n != null) Some((n.data, n.next)) else None
-  }
-  private final case class InnerNode(data: A, next: Cursor) extends Node
-  private final case class LinkNode(next: Cursor) extends Node {
-/*
-    var q0: Long = 0
-    var q1: Long = 0
-    var q2: Long = 0
-    var q3: Long = 0
-    var q4: Long = 0
-    var q5: Long = 0
-    var q6: Long = 0
-    var q7: Long = 0
-*/
-    def data = throw Util.Impossible 
+  @tailrec private final def findNext(start: AbsNode): Node = start match {
+    case (n: Node) => 
+      if (n.data.isDeleted) findNext(n.nextVar) else n
+    case(l: LinkNode) => 
+      if (l == cursors(myStart)) null else findNext(l.nextRef.get)
   }
 
-  private def size = math.max(1,Chemistry.procs/2)
-  private val cursors = new Array[Cursor](size)
-  cursors(size-1) = new Cursor(null)
-  for (i <- size-1 to 1 by -1) {
-    cursors(i-1) = new Cursor(LinkNode(cursors(i)))
+  abstract class AbsNode {
+    def next: Node
   }
-  cursors(size-1).ref.set(LinkNode(cursors(0))) // tie the knot
-
-  private def myStart = (Thread.currentThread.getId % size).toInt
-
-  private var lastPut: Int = 0
-
-//  def cursor = cursors(0)
-//  val cursor = cursors(0)
-//  @inline def get = cursors(myStart).get
-  def cursor = cursors(myStart)
-
-  final class Cursor private[Pool](node: Node) {
-    private[Pool] val ref = new AtomicReference(node)
-    @tailrec def get: Node = ref.get match {
-//      case null => return null
-      case null => throw Util.Impossible
-      case LinkNode(next) => 
-//	next.get
-	if (next eq cursors(myStart)) null
-	else next.get
-      case n@Node(data, next) =>
-	if (data.isDeleted) {
-	  var leap = next.ref.get
-	  @tailrec def loop: Unit = leap match {
-	    case null => ()
-	    case LinkNode(_) => ()
-	    case Node(data, next) =>
-	      if (data.isDeleted) {
-		leap = next.ref.get
-		loop
-	      } else ()		
-	  }
-	  loop
-	  ref.set(leap)
-	  get
-	} else n
+  final class Node private[Pool](val data: A) extends AbsNode {
+    private[Pool] var nextVar: AbsNode = null
+    def next = findNext(nextVar)
+  }
+  private final class LinkNode extends AbsNode {
+    private[Pool] val nextRef = new AtomicReference[AbsNode](null)
+    def next = findNext(this)
+    def nextInLane: AbsNode = {
+      @tailrec def findNext(cur: AbsNode): AbsNode = cur match {
+	case null => null
+	case (n: Node) => 
+	  if (n.data.isDeleted) findNext(n.nextVar) else n
+	case(l: LinkNode) => l
+      }
+      findNext(nextRef.get)
     }
   }
 
-  private final def snoop(n: Int): Boolean = cursors(n).ref.get match {
-    case null => throw Util.Impossible
-    case LinkNode(next) => false
-    case Node(data, _) => !data.isDeleted
+  private def size = math.max(1,Chemistry.procs/2)
+  private val cursors = new Array[LinkNode](size)
+  for (i <- 0 to size-1) cursors(i) = new LinkNode
+  for (i <- 0 to size-1) cursors(i).nextRef.set(cursors((i+1) % size))
+
+  private def myStart = (Thread.currentThread.getId % size).toInt
+
+  def cursor: Node = cursors(myStart).next
+
+  private final def snoop(n: Int): Boolean = cursors(n).nextRef.get match {    
+    case (n: Node) => !n.data.isDeleted
+    case _ => false
   }
   final def snoop: Boolean = {
     var i: Int = 0
@@ -180,15 +148,13 @@ final class Pool[A <: DeletionFlag] {
   }
 
   def put(a: A) {
-    val start = myStart
-    var i = start //0    
+    val link = cursors(myStart)
+    val ref = link.nextRef
+    val node = new Node(a)
     while (true) {
-      val oldHead = cursors(i).ref.get
-      if (cursors(i).ref.compareAndSet(oldHead, 
-				       InnerNode(a, new Cursor(oldHead)))) {
-//        lastPut = i
-	return 
-      } else i = (i+1) % size
+      val oldHead = ref.get
+      node.nextVar = link.nextInLane
+      if (ref.compareAndSet(oldHead, node)) return
     }
   }
 }
