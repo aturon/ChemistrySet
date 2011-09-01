@@ -63,6 +63,7 @@ trait QueueTests {
 }
 
 object QueueSpec extends Spec {
+/*
   class `an MSQueue` extends QueueTests {
     type queue[A >: Null] = MSQueue[A]
     protected def newQueue[A >: Null]() = new MSQueue[A]()
@@ -71,4 +72,5 @@ object QueueSpec extends Spec {
     type queue[A >: Null] = LaggingQueue[A]
     protected def newQueue[A >: Null]() = new LaggingQueue[A]()
   }
+*/
 }

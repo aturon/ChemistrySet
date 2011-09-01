@@ -25,7 +25,7 @@ object PushPop extends Benchmark {
 	  n += 1
 	  push(s, SomeData)
 	  Util.noop(r.fuzz(work))
-	  tryPop(s)
+	  untilSome { tryPop(s) }
 	  Util.noop(r.fuzz(work))
 	}
       } else {
@@ -37,6 +37,35 @@ object PushPop extends Benchmark {
       }
 
 //      print(" %5.1f".format(100.toDouble * elims.toDouble/iters.toDouble) ++ "%")
+    }
+  }
+
+  private trait GenericCounting {
+    type S 
+    def push(s: S, x: AnyRef): Int
+    def tryPop(s: S): Int
+
+    def run(s: S, work: Int, iters: Int) {
+      var elims = 0
+      var n: Int = 0
+      if (work > 0) {
+	val r = new Random
+	while (n < iters) {
+	  n += 1
+	  elims += push(s, SomeData)
+	  Util.noop(r.fuzz(work))
+	  elims += tryPop(s) 
+	  Util.noop(r.fuzz(work))
+	}
+      } else {
+	while (n < iters) {
+	  n += 1
+	  elims += push(s,SomeData)
+	  elims += tryPop(s)
+	}
+      }
+
+      println(" %5.1f".format(100.toDouble * elims.toDouble/iters.toDouble) ++ "%")
     }
   }
 
@@ -100,6 +129,13 @@ object PushPop extends Benchmark {
     def push(s: S, x: AnyRef) = s.push ! x
     def tryPop(s: S): Option[AnyRef] =  s.tryPop ! ()    
   }
+  private object rElimStat extends Entry with GenericCounting {
+    def name = "rElimStat"
+    type S = EliminationStack[AnyRef]
+    def setup = new EliminationStack()
+    def push(s: S, x: AnyRef): Int = s.dpush ! x
+    def tryPop(s: S): Int =  s.dtryPop ! ()    
+  }
 /*
   private object ebstack extends Entry {
     def name = "ebstack"
@@ -126,6 +162,6 @@ object PushPop extends Benchmark {
 //  def entries = List(rTreiber, rElim, hand)
 //  def entries = List(rElim, rTreiber, handElim, hand, handPool)
 //  def entries: List[Entry] = List(rElim, handPool, handElim)
-  def entries: List[Entry] = List(rTreiber, rElim, hand, handElim)
+  def entries: List[Entry] = List(rElim, rTreiber, hand, handElim)
 //  def entries: List[Entry] = List(rElim, handPool, handElim, rTreiber, hand)
 }

@@ -16,22 +16,22 @@ trait StackTests {
   protected def newStack[A >: Null](): stack[A]
 
   @test def `should tryPop as None when empty` {
-    var s = newStack[java.lang.Integer]()
+    val s = newStack[java.lang.Integer]()
     s.tryPop ! () must beNone
   }
   @test def `should tryPop as Some _ when full` {
-    var s = newStack[java.lang.Integer]()
+    val s = newStack[java.lang.Integer]()
     s.push ! 1;
     s.tryPop ! () must beSome
   }
   @test def `should tryPop as None after emptying` {
-    var s = newStack[java.lang.Integer]()
+    val s = newStack[java.lang.Integer]()
     s.push ! 1;
     s.tryPop ! ();
     s.tryPop ! () must beNone
   }
   @test def `should tryPop in reverse order` {
-    var s = newStack[java.lang.Integer]()
+    val s = newStack[java.lang.Integer]()
     s.push ! 1;
     s.push ! 2;
     (s.tryPop!(), s.tryPop!()) must beEqualTo(Some(2), Some(1))
@@ -64,7 +64,7 @@ trait StackTests {
   }
 
   @test def `should push from multiple threads in locally-ordered way` {
-    val testResults = for (_ <- 1 to 100) yield concTest
+    val testResults = for (_ <- 1 to 10) yield concTest
     (true /: testResults)(_ && _) must beTrue
   }
 }
@@ -74,8 +74,8 @@ object StackSpec extends Spec {
     type stack[A >: Null] = TreiberStack[A]
     protected def newStack[A >: Null]() = new TreiberStack[A]()
   }
-//  class `an EliminationStack` extends StackTests {    
-//    type stack[A >: Null] = EliminationStack[A]
-//    protected def newStack[A >: Null]() = new EliminationStack[A]()
-//  }
+ class `an EliminationStack` extends StackTests {    
+   type stack[A >: Null] = EliminationStack[A]
+   protected def newStack[A >: Null]() = new EliminationStack[A]()
+ }
 }

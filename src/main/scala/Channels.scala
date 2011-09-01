@@ -7,7 +7,7 @@ import scala.annotation.tailrec
 import java.util.concurrent.locks._
 
 private abstract class Message[A,B] extends DeletionFlag {
-  def exchange[C](k: Reagent[A,C]): Reagent[B,C]
+  def exchange: Reagent[B,A]
 }
 
 /*
@@ -19,7 +19,7 @@ final private case class CMessage[A,B](
 }
 */
 
-final private case class RMessage[A,B,C](
+final private class RMessage[A,B,C](
   m: A, k: Reagent[B,C], waiter: Waiter[C]
 ) extends Message[A,B] {
   private case class CompleteExchange[D](kk: Reagent[A,D]) 
@@ -27,14 +27,14 @@ final private case class RMessage[A,B,C](
     type Cache = Retry
     def useCache = false
     def tryReact(c: C, rx: Reaction, cache: Cache): Any = {
-      Ref.rxWithCAS(rx, waiter.status, 
-		    Waiter.Waiting, c.asInstanceOf[AnyRef], kk) match {
-	case (rx: Reaction) if waiter.blocking =>
-	  kk.tryReact(m, rx.withPostCommit((_:Unit) => waiter.wake), null)
-	case (rx: Reaction) =>
-	  kk.tryReact(m, rx, null)
-	case ow => ow
-      }
+      val newRX = Ref.rxWithCAS(rx, waiter.status, 
+				Waiter.Waiting, c.asInstanceOf[AnyRef], kk)
+      if (newRX == null) 
+	RetryUncached
+      else if (waiter.blocking)
+	kk.tryReact(m, newRX.withPostCommit((_:Unit) => waiter.wake), null)
+      else
+	kk.tryReact(m, newRX, null)
     }
     def makeOfferI(c: C, offer: Offer[D]) = throw Util.Impossible
     def composeI[E](next: Reagent[D,E]): Reagent[C,E] =
@@ -44,8 +44,7 @@ final private case class RMessage[A,B,C](
     def snoop(c: C) = waiter.isActive && kk.snoop(m)
   }
 
-  def exchange[D](kk: Reagent[A,D]): Reagent[B, D] =
-    k >=> CompleteExchange(kk)
+  val exchange: Reagent[B, A] = k >=> CompleteExchange(Commit[A]())
   def isDeleted = !waiter.isActive
 }
 
@@ -61,7 +60,7 @@ private final case class Endpoint[A,B,C](
     @tailrec def tryFrom(n: incoming.Node, retry: Boolean): Any = 
       if (n == null) {
 	if (retry) RetryUncached else Blocked
-      } else n.data.exchange(k).tryReact(a, rx, null) match {
+      } else n.data.exchange.compose(k).tryReact(a, rx, null) match {
 	case (_: Retry) => tryFrom(n.next, true)
 	case Blocked    => tryFrom(n.next, retry)
 	case ans        => ans
@@ -71,7 +70,7 @@ private final case class Endpoint[A,B,C](
   def snoop(a: A): Boolean = incoming.snoop
   def makeOfferI(a: A, offer: Offer[C]) {
     offer match { 
-      case (w: Waiter[_]) => outgoing.put(RMessage(a, k, w))
+      case (w: Waiter[_]) => outgoing.put(new RMessage(a, k, w))
       // todo: catalysts
     }
     
@@ -85,8 +84,8 @@ private final case class Endpoint[A,B,C](
 }
 object SwapChan {
   @inline def apply[A,B](): (Reagent[A,B], Reagent[B,A]) = {
-    val p1 = new Pool[Message[A,B]]
-    val p2 = new Pool[Message[B,A]]
+    val p1 = new CircularPool[Message[A,B]]
+    val p2 = new CircularPool[Message[B,A]]
     (Endpoint(p1,p2,Commit[B]()), Endpoint(p2,p1,Commit[A]()))
   }
 }

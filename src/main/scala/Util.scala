@@ -88,7 +88,7 @@ private final class Random(var seed: Long = 1) {
     Random.scale(seed, max)
   }
 
-  def fuzz(around: Int, percent: Int = 10): Int = {
+  def fuzz(around: Int, percent: Int = 50): Int = {
     val max = (around * percent) / 100
     math.max(around + next(max) - (max >> 1), 0)
   }

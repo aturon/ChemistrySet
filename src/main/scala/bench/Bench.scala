@@ -23,6 +23,7 @@ private object config {
   val startup = new Date
   val startupString = fmt.format(startup)
 
+  var workList: List[Int] = List()
   var trialsMin = 5
   var trialsMax = 25
   var doTP: Boolean = false
@@ -241,8 +242,17 @@ object Bench extends App {
     case "--tmin"::n::more => config.trialsMin = n.toInt; procArgs(more)
     case "--tmax"::n::more => config.trialsMax = n.toInt; procArgs(more)
     case "--quiet"::more => config.verbose = false; procArgs(more)
+    case "-w"::n::more => config.workList = n.toInt :: config.workList; procArgs(more)
   }
   procArgs(args.toList)
+
+  if (config.workList.length == 0) config.workList = 
+//    List(200)
+//    List(100, 250, 500)
+//    List(0) ++ (for (i <- 0 to 15) yield pow(10, 1+i.toDouble * 0.25).toInt)
+//    (0 to 600 by 50)
+    (50 to 550 by 100).toList
+  else config.workList = config.workList.reverse
 
   log("Beginning benchmark")
   log("  cores: %d-%d".format(config.minCores, config.maxCores))
@@ -254,11 +264,7 @@ object Bench extends App {
   private val concBenches = for {
 //    b <- List(PushPop, EnqDeq, IncDec)
     b <- List(PushPop)
-//    w <- List(100, 250, 500)
-//    w <- List(0) ++ (for (i <- 0 to 15) yield pow(10, 1+i.toDouble * 0.25).toInt)
-    w <- (0 to 600 by 50)
-//    w <- List(200)
-//    w <- (0 to 600 by 100)
+    w <- config.workList
   } yield (b, w, config.minCores, config.maxCores)
 
 //  val benches = if (seqOnly) seqBenches else seqBenches ++ concBenches

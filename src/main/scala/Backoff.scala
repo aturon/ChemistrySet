@@ -4,13 +4,18 @@ package chemistry
 
 import scala.util._
 
+private object Backoff {
+  val maxCount: Int = 14
+}
 final class Backoff {
+  import Backoff._
+
 //  private val rand = new Random(Thread.currentThread.getId)
   var seed: Long = Thread.currentThread.getId
   var count = 0
 
   def once() {
-    if (count < 10) count += 1
+    if (count < maxCount) count += 1
     seed = Random.nextSeed(seed)
     Util.noop(Random.scale(seed, (Chemistry.procs-1) << (count + 2)))
   }
@@ -20,10 +25,12 @@ final class Backoff {
     seed % n == 0
   }
 
-  @inline def once(until: => Boolean) {
-    if (count < 20) count += 1
+  @inline def once(until: => Boolean, mult: Int) {
+    if (count < maxCount) count += 1
     seed = Random.nextSeed(seed)
-    var spins = Random.scale(seed, (Chemistry.procs-1) << (count + 5))
+    val max = (Chemistry.procs-1) << (count + mult)
+//    var spins = max
+    var spins = Random.scale(seed, max)
 //    var spins = (Chemistry.procs-1) << (count + 4)
     while (!until && spins > 0) spins -= 1
   }

@@ -66,52 +66,30 @@ abstract class Reagent[-A, +B] {
 */
     
     def withBackoff(cache: Cache): B = {
-//	val boff = new Backoff
+      val backoff = new Backoff
       val doOffer = maySync
-      var waiter: Waiter[B] = null
+      var waiter: Waiter[B] = null      
 
-      var boff: Int = 0
-      var seed: Long = Thread.currentThread.getId
-      //var retryrx: Reaction = null
-
-      Util.noop(Random.scale(seed, Chemistry.procs - 1) << 3)
-
-      // scalac can't do @tailrec here, due to exception handling
-      while (true) {
-	boff += 1
-	seed = Random.nextSeed(seed)
-	var spins = 
-	  Random.scale(seed, (Chemistry.procs - 1) << (boff + 2))
-//	      (Chemistry.procs - 1) << (boff + (if (doOffer) 2 else 2)))
+      @tailrec def loop: B = {
+	if (doOffer) {
+	  if (waiter == null) {	      
+	    waiter = new Waiter[B](false) 
+	    makeOffer(a, waiter)
+	  } else waiter.reset
+	  backoff.once(waiter.isActive && !snoop(a), 2)
+	  waiter.abort match {
+	    case Some(b) => return b.asInstanceOf[B] 
+	    case None => {}
+	  }
+	} else backoff.once
 
 	tryReact(a, Inert, cache) match {
-	  case (_: Retry) if doOffer && boff > 1 => {
-	    if (waiter == null) waiter = new Waiter[B](false) 
-	    waiter.reset
-	    makeOffer(a, waiter)
-
-//	      spins = (spins + 1) << 3
-	    while (waiter.isActive && spins > 0) spins -= 1
-//	      while (waiter.isActive && spins > 0) spins -= 1
-	    //boff.once(waiter.isActive)
-
-	    waiter.abort match {
-	      case Some(b) => return b.asInstanceOf[B]
-	      case None => {}
-	    }
-	  }
-	  case (_: Retry) => 
-	    if (doOffer) {
-	      while (spins > 0 && !snoop(a)) {
-		Util.noop(10)
-		spins -= 20
-	      }
-	    } else Util.noop(spins)
-	  case Blocked    => return block
-	  case ans        => return ans.asInstanceOf[B]
+	  case (_: Retry) => loop
+	  case Blocked    => block
+	  case ans        => ans.asInstanceOf[B]
 	}
       }
-      throw Util.Impossible
+      loop
     }
 
     tryReact(a, Inert, null) match {
@@ -197,8 +175,10 @@ object ret {
 private final case class Commit[A]() extends Reagent[A,A] {
   type Cache = Retry
   def useCache = false
-  def tryReact(a: A, rx: Reaction, cache: Cache): Any = 
+  def tryReact(a: A, rx: Reaction, cache: Cache): Any = {
+    if (a == null) println("commit null")
     if (rx.tryCommit) a else RetryUncached
+  }
   def snoop(a: A) = true
   def makeOfferI(a: A, offer: Offer[A]) {}
   def composeI[B](next: Reagent[A,B]) = next
@@ -258,17 +238,19 @@ object choice {
 		else if (!r1.useCache) r2.convCache(cache)
 		else cache.asInstanceOf[CCache].r2c
 
-      def newCache(r1c: Retry, r2c: Retry): Retry = 
-	if (!r1.useCache) r2c
-	else if (!r2.useCache) r1c
-	else CCache(r1.convCache(r1c), r2.convCache(r2c))
+      def newCache(r1c: Retry, r2c: Retry): Retry = {
+	val c = if (!r1.useCache) r2c
+		else if (!r2.useCache) r1c
+		else CCache(r1.convCache(r1c), r2.convCache(r2c))
+        if (c == null) RetryUncached else c
+      }
 
       r1.tryReact(a, rx, r1c) match {
 	case (r1c: Retry) => 
 	  r2.tryReact(a, rx, r2c) match {
 	    case (r2c: Retry) => newCache(r1c, r2c)
 	    case Blocked      => newCache(r1c, r2c)  // retry since r1 could
-	      case ans        => ans
+	    case ans          => ans
 	  }
 	case Blocked => 
 	  r2.tryReact(a, rx, r2c) match {

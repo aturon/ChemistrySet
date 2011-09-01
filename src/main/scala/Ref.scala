@@ -220,9 +220,9 @@ object Ref {
   @inline private[chemistry] def rxWithCAS[A, B](
     rx: Reaction, ref: AtomicReference[AnyRef], 
     ov: AnyRef, nv: AnyRef, k: Reagent[A,B]
-  ): Any = 
+  ): Reaction = 
     if (rx.casCount == 0 && k.alwaysCommits) {
-      if (ref.compareAndSet(ov, nv)) rx else RetryUncached
+      if (ref.compareAndSet(ov, nv)) rx else null
     } else {
       rx.withCAS(ref, ov, nv)
     }    

@@ -10,6 +10,16 @@ trait DeletionFlag {
   def isDeleted: Boolean
 }
 
+trait Pool[A <: DeletionFlag] {
+  type Node <: {
+    def data: A
+    def next: Node
+  }
+  def cursor: Node
+  def put(a: A): Unit
+  def snoop: Boolean
+}
+
 /*
 final class Pool[A <: DeletionFlag] {
   final case class Node(data: A, next: Cursor) 
@@ -95,7 +105,7 @@ final class ArrayPool[A >: Null <: DeletionFlag] {
     if (cursor + 1 < size) get(cursor+1) else null
 }
 
-final class Pool[A <: DeletionFlag] {
+final class CircularPool[A <: DeletionFlag] extends Pool[A] {
   @tailrec private final def findNext(start: AbsNode): Node = start match {
     case (n: Node) => 
       if (n.data.isDeleted) findNext(n.nextVar) else n
@@ -106,13 +116,13 @@ final class Pool[A <: DeletionFlag] {
   abstract class AbsNode {
     def next: Node
   }
-  final class Node private[Pool](val data: A) extends AbsNode {
-    private[Pool] var nextVar: AbsNode = null
+  final class Node private[CircularPool](val data: A) extends AbsNode {
+    private[CircularPool] var nextVar: AbsNode = null
     def next = findNext(nextVar)
   }
   private final class LinkNode extends AbsNode {
-    private[Pool] val nextRef = new AtomicReference[AbsNode](null)
-    def next = findNext(this)
+    private[CircularPool] val nextRef = new PaddedAtomicReference[AbsNode](null)
+    def next = findNext(nextRef.get)
     def nextInLane: AbsNode = {
       @tailrec def findNext(cur: AbsNode): AbsNode = cur match {
 	case null => null
@@ -124,7 +134,7 @@ final class Pool[A <: DeletionFlag] {
     }
   }
 
-  private def size = math.max(1,Chemistry.procs/2)
+  private def size = math.max(1,Chemistry.procs)
   private val cursors = new Array[LinkNode](size)
   for (i <- 0 to size-1) cursors(i) = new LinkNode
   for (i <- 0 to size-1) cursors(i).nextRef.set(cursors((i+1) % size))
