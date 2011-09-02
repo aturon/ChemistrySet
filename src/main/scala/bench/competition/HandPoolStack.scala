@@ -1,5 +1,3 @@
-/*
-
 package chemistry.bench.competition
 
 import chemistry._
@@ -94,52 +92,44 @@ class HandPoolStack[A >: Null] {
   }
 */
 
-  private val pushPool = new Pool[Offer[A]]
-  private val popPool = new Pool[Offer[A]]
+  private val pushPool = new CircularPool[Offer[A]]
+  private val popPool = new CircularPool[Offer[A]]
 
   def push(x: A) {
     val n = new Node(x, null)
-    var backoff = 1
+    val backoff = new Backoff
     var offer: Offer[A] = null
     while (true) {
       n.next = head.get
       if (head.compareAndSet(n.next, n)) return
 
-      // offer.reset
-      // pushPool.put(offer)
-
-      val node = popPool.cursor.get 
-      node match {
-	case null => {}
-	case popPool.Node(theirOffer, _) => {
-//	  if (offer.isDeleted || !offer.tryConsume) return
-	  if (theirOffer.tryConsume) {
-	    theirOffer.data = x
-	    return 
-	  } 
-	  // offer.reset
-	  // pushPool.put(offer)
-	}
+      val node = popPool.cursor
+      if (node != null) {
+	val theirOffer = node.data
+	if (theirOffer.tryConsume) {
+	  theirOffer.data = x
+	  return 
+	} 
       }
 
-//      if (offer eq null) offer = new Offer(x)
-      offer = new Offer(x)
-//      offer.reset
+      if (offer eq null) offer = new Offer(x)
+      offer.reset
       pushPool.put(offer)
 
-      val timeout = 128 << backoff
-      val t = System.nanoTime
-      while (!offer.isDeleted && System.nanoTime - t < timeout) {}
+      backoff.once(!offer.isDeleted && !popPool.snoop, 2)
+//      backoff.once(!offer.isDeleted && popPool.cursor == null, 2)
 
-      if (offer.isDeleted) return 
-      else if (!offer.tryConsume) return 
-      backoff += 1
+      // val timeout = 128 << backoff
+      // val t = System.nanoTime
+      // while (!offer.isDeleted && System.nanoTime - t < timeout) {}
+
+      if (offer.isDeleted || !offer.tryConsume) return 
     }
     throw Util.Impossible
   }
 
   def tryPop(): Option[A] = {
-    var backoff = 1
+    val backoff = new Backoff
     var offer: Offer[A] = null
     while (true) {
       val h = head.get
@@ -148,20 +138,12 @@ class HandPoolStack[A >: Null] {
       else if (head compareAndSet (h, h.next)) 
 	return Some(h.data) 
 
-      // offer.reset
-      // popPool.put(offer)
-
-      val node = pushPool.cursor.get       
-      node match {
-	case null => {}
-	case pushPool.Node(theirOffer, _) => {
-	  // if (offer.isDeleted || !offer.tryConsume) {
-	  //   while (offer.data == null) {}
-	  //   return Some(offer.data)
-	  // }
-	  if (theirOffer.tryConsume) return Some(theirOffer.data)
-	  // offer.reset
-	  // popPool.put(offer)
+      val node = pushPool.cursor
+      if (node != null) { 
+	val theirOffer = node.data
+	if (theirOffer.tryConsume) {
+	  while (theirOffer.data == null) {}
+	  return Some(theirOffer.data)
 	}
       }
 
@@ -169,19 +151,17 @@ class HandPoolStack[A >: Null] {
       offer.reset
       popPool.put(offer)
 
-      val timeout = 128 << backoff
-      val t = System.nanoTime
-      while (!offer.isDeleted && System.nanoTime - t < timeout) {}
+      // val timeout = 128 << backoff
+      // val t = System.nanoTime
+      // while (!offer.isDeleted && System.nanoTime - t < timeout) {}
+
+      backoff.once(!offer.isDeleted && !pushPool.snoop, 2)
 
       if (offer.isDeleted || !offer.tryConsume) {
 	while (offer.data == null) {}
 	return Some(offer.data)
       }
-      backoff += 1
     }
-    throw new Exception("Impossible")
+    throw Util.Impossible
   }
 }
-
-
-*/

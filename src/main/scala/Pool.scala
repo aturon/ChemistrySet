@@ -143,6 +143,7 @@ final class CircularPool[A <: DeletionFlag] extends Pool[A] {
 
   def cursor: Node = cursors(myStart).next
 
+/*
   private final def snoop(n: Int): Boolean = cursors(n).nextRef.get match {    
     case (n: Node) => !n.data.isDeleted
     case _ => false
@@ -156,6 +157,8 @@ final class CircularPool[A <: DeletionFlag] extends Pool[A] {
     }
     false
   }
+*/
+  @inline final def snoop: Boolean = cursor != null
 
   def put(a: A) {
     val link = cursors(myStart)

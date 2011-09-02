@@ -241,7 +241,7 @@ object choice {
 		else if (!r2.useCache) r1c
 		else CCache(r1.convCache(r1c), r2.convCache(r2c))
         if (c == null) RetryUncached else c
-      }
+    }
 
       r1.tryReact(a, rx, r1c) match {
 	case (r1c: Retry) => 

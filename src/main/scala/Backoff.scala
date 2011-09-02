@@ -33,7 +33,7 @@ final class Backoff {
 //    if (count == 0) 
 //      count = 1
 //    else {
-      seed = Random.nextSeed(seed)
+//      seed = Random.nextSeed(seed)
       val max = (Chemistry.procs-1) << (count + mult)
       var spins = max
 //      var spins = Random.scale(seed, max)
