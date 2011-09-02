@@ -29,10 +29,13 @@ private final class PaddedAtomicReference[A](init:A)
 final class Ref[A <: AnyRef](init: A) {
 //  private val waiters = new MSQueue[]()
 
+  //  private[chemistry] val data = new PaddedAtomicReference[AnyRef](init)
   // really, the type of data should belong to Reaction
+//  private[chemistry] val data = new AtomicReference[AnyRef](init)
+//  @inline private def get: A = Reaction.read(data).asInstanceOf[A]
   private[chemistry] val data = new AtomicReference[AnyRef](init)
-//  private[chemistry] val data = new PaddedAtomicReference[AnyRef](init)
-  private def get: A = Reaction.read(data).asInstanceOf[A]
+  // ultimately, Reaction.read(data)
+  @inline private def get = data.get.asInstanceOf[A]
 
   @inline def read: Reagent[Unit,A] = new AutoCont[Unit,A] {
     def retValue(u: Unit): Any = Reaction.read(data)
@@ -43,11 +46,14 @@ final class Ref[A <: AnyRef](init: A) {
     type Cache = k.Cache
     def useCache = k.useCache
     def tryReact(u: Unit, rx: Reaction, cache: Cache): Any = 
+      throw Util.Impossible
+/*
       Ref.rxWithCAS(rx, data, expect, update, k) match {
 	case (newRx: Reaction) =>
 	  k.tryReact((), newRx, cache)
 	case ow => ow
       }
+*/
     def makeOfferI(u: Unit, offer: Offer[B]) =
       k.makeOffer(u, offer)
     def snoop(u: Unit) = false
@@ -84,7 +90,17 @@ final class Ref[A <: AnyRef](init: A) {
 	   extends Reagent[B, D] {
     type Cache = k.Cache
     def useCache = k.useCache
-    def tryReact(b: B, rx: Reaction, cache: Cache): Any = {
+
+    @inline final def fastReact(b: B): C = {
+      while (true) {
+	val ov = get
+	val nv = newValue(ov, b)
+	if (data.compareAndSet(ov, nv)) return retValue(ov, b)
+      }
+      throw Util.Impossible
+    }
+
+    @inline final def tryReact(b: B, rx: Reaction, cache: Cache): Any = {
       if (rx.casCount == 0 && k.alwaysCommits) {
 	val ov = get
 	val nv = newValue(ov, b)
@@ -120,7 +136,17 @@ final class Ref[A <: AnyRef](init: A) {
     def useCache = true
     def snoop(c: C) = false
 
-    def tryReact(c: C, rx: Reaction, cache: Cache): Any = {
+    @inline final def fastReact(c: C): D = {
+      val cached = initCache
+      while (true) {
+	val ov = get
+	val nv = newValue(ov, cached, c)
+	if (data.compareAndSet(ov, nv)) return retValue(ov, c)
+      }
+      throw Util.Impossible
+    }
+
+    @inline final def tryReact(c: C, rx: Reaction, cache: Cache): Any = {
       val cached: Cache = if (cache == null) initCache else cache
 
       val ret: Any = 

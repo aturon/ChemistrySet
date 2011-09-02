@@ -36,8 +36,7 @@ abstract class Reagent[-A, +B] {
     case _ => composeI(next)
   }
 
-  final def !(a: A): B = {
-    def block: B = {
+  def block: B = {
 /*
       val waiter = new Waiter[B](true)
       val initRX = waiter.rxForConsume
@@ -52,8 +51,6 @@ abstract class Reagent[-A, +B] {
 	}
       }
 */ 
-      throw Util.Impossible
-    }
 
 /*
 	      case ShouldBlock => 
@@ -64,39 +61,40 @@ abstract class Reagent[-A, +B] {
 		  case Some(_) => return slowPath(true)
 		}
 */
-    
-    def withBackoff(cache: Cache): B = {
-      val backoff = new Backoff
-      val doOffer = maySync
-      var waiter: Waiter[B] = null      
+    throw Util.Impossible
+  }
 
-      @tailrec def loop: B = {
-	if (doOffer) {
-	  if (waiter == null) {	      
-	    waiter = new Waiter[B](false) 
-	    makeOffer(a, waiter)
-	  } else waiter.reset
-	  backoff.once(waiter.isActive && !snoop(a), 2)
-	  waiter.abort match {
-	    case Some(b) => return b.asInstanceOf[B] 
-	    case None => {}
-	  }
-	} else backoff.once
+  private[chemistry] final def withBackoff(a: A, cache: Cache): B = {
+    val backoff = new Backoff
+    val doOffer = maySync
+    var waiter: Waiter[B] = null      
 
-	tryReact(a, Inert, cache) match {
-	  case (_: Retry) => loop
-	  case Blocked    => block
-	  case ans        => ans.asInstanceOf[B]
+    @tailrec def loop: B = {
+      if (doOffer) {
+	if (waiter == null) {	      
+	  waiter = new Waiter[B](false) 
+	  makeOffer(a, waiter)
+	} else waiter.reset
+	backoff.once(waiter.isActive && !snoop(a), 2)
+	waiter.abort match {
+	  case Some(b) => return b.asInstanceOf[B] 
+	  case None => {}
 	}
+      } else backoff.once
+      
+      tryReact(a, Inert, cache) match {
+	case (_: Retry) => loop
+	case Blocked    => block
+	case ans        => ans.asInstanceOf[B]
       }
-      loop
     }
+    loop
+  }
 
-    tryReact(a, Inert, null) match {
-      case (r: Retry) => withBackoff(convCache(r))
-      case Blocked    => block
-      case ans        => ans.asInstanceOf[B]
-    }
+  final def !(a: A): B = tryReact(a, Inert, null) match {
+    case (r: Retry) => withBackoff(a, convCache(r))
+    case Blocked    => block
+    case ans        => ans.asInstanceOf[B]
   }
 
   @inline final def !?(a:A) : Option[B] = {

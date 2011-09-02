@@ -38,9 +38,10 @@ final class TreiberStack[A >: Null] {
 */
 
   case class Node(var data: A, var next: Node) extends Retry
-  private val head = Ref[Node](null)
+  val head = Ref[Node](null)
 
-  val push: Reagent[A,Unit] = new head.CachedUpd[A,Unit] {
+  // Reagent[A,Unit]
+  val push = new head.CachedUpd[A,Unit] {
     type Cache = Node
     @inline final def initCache: Node = Node(null, null)
     @inline final def newValue(cur: Node, cache: Node, a: A): Node = {
@@ -51,7 +52,8 @@ final class TreiberStack[A >: Null] {
     @inline final def retValue(cur: Node, a: A): Unit = ()
   }
 
-  val tryPop: Reagent[Unit,Option[A]] = new head.FastUpd[Unit,Option[A]] {
+  // Reagent[Unit,Option[A]]
+  val tryPop = new head.FastUpd[Unit,Option[A]] {
     @inline final def newValue(cur: Node, u: Unit): Node = cur match { 
       case null   => null
       case Node(x,xs) => xs

@@ -167,6 +167,22 @@ final class CircularPool[A <: DeletionFlag] extends Pool[A] {
       if (ref.compareAndSet(oldHead, node)) return
     }
   }
+
+/*
+  def put(a: A) {
+    val node = new Node(a)
+    var i: Int = myStart
+    while (true) {
+      val link = cursors(i)
+      val ref = link.nextRef
+
+      val oldHead = ref.get
+      node.nextVar = link.nextInLane
+      if (ref.compareAndSet(oldHead, node)) return
+      i = (i + 1) % size
+    }
+  }
+*/
 }
 
 private object BoundPool {
