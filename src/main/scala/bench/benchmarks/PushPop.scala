@@ -115,6 +115,13 @@ object PushPop extends Benchmark {
     def push(s: S, x: AnyRef) = s.push(x)
     def tryPop(s: S): Option[AnyRef]  = s.tryPop
   } 
+  private object handAloc extends Entry with Generic{
+    def name = "handAloc"
+    type S = HandStackAloc[AnyRef]
+    def setup = new HandStackAloc()
+    def push(s: S, x: AnyRef) = s.push(x)
+    def tryPop(s: S): Option[AnyRef]  = s.tryPop
+  } 
   private object rTreiber extends Entry with Generic {
     def name = "rTreiber"
     type S = TreiberStack[AnyRef]
@@ -136,6 +143,7 @@ private object rTreiberFast extends Entry with Generic {
     def push(s: S, x: AnyRef) = s.push ! x
     def tryPop(s: S): Option[AnyRef] =  s.tryPop ! ()    
   }
+/*
   private object rElimStat extends Entry with GenericCounting {
     def name = "rElimStat"
     type S = EliminationStack[AnyRef]
@@ -143,6 +151,7 @@ private object rTreiberFast extends Entry with Generic {
     def push(s: S, x: AnyRef): Int = s.dpush ! x
     def tryPop(s: S): Int =  s.dtryPop ! ()    
   }
+*/
 /*
   private object ebstack extends Entry {
     def name = "ebstack"
@@ -169,6 +178,5 @@ private object rTreiberFast extends Entry with Generic {
 //  def entries = List(rTreiber, rElim, hand)
 //  def entries = List(rElim, rTreiber, handElim, hand, handPool)
 //  def entries: List[Entry] = List(rElim, handPool, handElim)
-  def entries: List[Entry] = List(rTreiber, rTreiberFast, rElim, 
-				  hand, handPool, handElim)
+  def entries: List[Entry] = List(handAloc, hand)
 }

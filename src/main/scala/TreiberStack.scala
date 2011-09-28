@@ -37,6 +37,7 @@ final class TreiberStack[A >: Null] {
   }
 */
 
+/*
   case class Node(var data: A, var next: Node) extends Retry
   val head = Ref[Node](null)
 
@@ -67,33 +68,64 @@ final class TreiberStack[A >: Null] {
   def pop: Reagent[Unit,A] = head.upd[A] {
     case Node(x,xs) => (xs, x)
   }
+*/
 
-/*
-  private val headX = new AtomicReference[List[A]](List())
+  case class Node(var data: A, var next: Node) extends Retry
+  val head = new AtomicReference[Node](null)
 
   object push extends Reagent[A,Unit] {
-    def tryReact(x:A, rx: Reaction): Any = {
-      val xs = headX.get
-      if (headX.compareAndSet(xs,x::xs)) () else ShouldRetry
+    type Cache = Node
+    def useCache = true
+    def tryReact(x:A, rx: Reaction, cache: Node): Any = {
+      val cached: Node = if (cache == null) Node(x, null) else cache
+      cached.next = head.get
+      if (head.compareAndSet(cached.next,cached)) () 
+      else cached
     }
     def makeOfferI(x:A, offer: Offer[Unit]) {}
     def composeI[B](next: Reagent[Unit,B]) = throw Util.Impossible
     def maySync = false
     def alwaysCommits = false
+    @inline def fastReact(x: A): Unit = {
+      val cached = Node(x, null)
+      while (true) {
+	cached.next = head.get
+	if (head.compareAndSet(cached.next, cached)) return ()
+      }
+      throw Util.Impossible      
+    }
+    def snoop(a: A) = false
   }
 
   object tryPop extends Reagent[Unit,Option[A]] {
-    def tryReact(u:Unit, rx: Reaction): Any = headX.get match {
-      case (ov@(x::xs)) => 
-	if (headX.compareAndSet(ov,xs)) Some(x) else ShouldRetry
-      case emp     => None
+    type Cache = Retry
+    def useCache = false
+    @inline def tryReact(u:Unit, rx: Reaction, cache: Retry): Any = 
+      head.get match {
+	case null => None
+	case n@Node(x, xs) =>
+	  if (head.compareAndSet(n,xs)) Some(x) else RetryUncached
+	case emp     => None
+      }
+    @inline def fastReact(u: Unit): Option[A] = {
+      while (true) {
+	tryReact(u, Inert, null) match {
+	  case RetryUncached => {}
+	  case ans => return ans.asInstanceOf[Option[A]]
+	}
+      }
+      throw Util.Impossible
     }
     def makeOfferI(u:Unit, offer: Offer[Option[A]]) {}
     def composeI[B](next: Reagent[Option[A],B]) = throw Util.Impossible
     def maySync = false
     def alwaysCommits = false
+    def snoop(a: Unit) = false
   }
 
+  def pop: Reagent[Unit,A] = throw Util.Impossible
+
+/*
   object pop extends Reagent[Unit,A] {
     @tailrec def tryReact(u:Unit, rx: Reaction): Any = headX.get match {
       case (ov@(x::xs)) => 
@@ -106,6 +138,7 @@ final class TreiberStack[A >: Null] {
     def alwaysCommits = false
   }
 */
+
 /*
   private val headX = Ref[List[A]](List())
 

@@ -33,27 +33,21 @@ final class Ref[A <: AnyRef](init: A) {
   // really, the type of data should belong to Reaction
 //  private[chemistry] val data = new AtomicReference[AnyRef](init)
 //  @inline private def get: A = Reaction.read(data).asInstanceOf[A]
-  private[chemistry] val data = new AtomicReference[AnyRef](init)
+  private[chemistry] val data = new AtomicReference[A](init)
   // ultimately, Reaction.read(data)
-  @inline private def get = data.get.asInstanceOf[A]
+  @inline private def get = data.get // .asInstanceOf[A]
 
   @inline def read: Reagent[Unit,A] = new AutoCont[Unit,A] {
-    def retValue(u: Unit): Any = Reaction.read(data)
+    def retValue(u: Unit): Any = get //Reaction.read(data)
   }   
 
   private final case class CAS[B](expect: A, update: A, k: Reagent[Unit,B]) 
 		extends Reagent[Unit, B] {
-    type Cache = k.Cache
-    def useCache = k.useCache
-    def tryReact(u: Unit, rx: Reaction, cache: Cache): Any = 
-      throw Util.Impossible
-/*
+    def tryReact(u: Unit, rx: Reaction): Any = 
       Ref.rxWithCAS(rx, data, expect, update, k) match {
-	case (newRx: Reaction) =>
-	  k.tryReact((), newRx, cache)
-	case ow => ow
+	case null  => Retry
+	case newRx => k.tryReact((), newRx)
       }
-*/
     def makeOfferI(u: Unit, offer: Offer[B]) =
       k.makeOffer(u, offer)
     def snoop(u: Unit) = false
@@ -101,17 +95,19 @@ final class Ref[A <: AnyRef](init: A) {
     }
 
     @inline final def tryReact(b: B, rx: Reaction, cache: Cache): Any = {
-      if (rx.casCount == 0 && k.alwaysCommits) {
+//      if (rx.casCount == 0 && k.alwaysCommits) {
 	val ov = get
 	val nv = newValue(ov, b)
 	if (data.compareAndSet(ov, nv))
 	  return k.tryReact(retValue(ov, b), rx, cache)
 	RetryUncached
+/*
       } else {
 	val ov = get
 	val nv = newValue(ov, b)
 	k.tryReact(retValue(ov, b), rx.withCAS(data, ov, nv), cache)
       }
+*/
     }
     def snoop(b: B) = false
     def makeOfferI(b: B, offer: Offer[D]): Unit =
@@ -149,8 +145,8 @@ final class Ref[A <: AnyRef](init: A) {
     @inline final def tryReact(c: C, rx: Reaction, cache: Cache): Any = {
       val cached: Cache = if (cache == null) initCache else cache
 
-      val ret: Any = 
-	if (rx.casCount == 0 && k.alwaysCommits) {
+      val ret: Any = {
+//	if (rx.casCount == 0 && k.alwaysCommits) {
 	  // pushed inside if to keep close to CAS	
 //	  var tries = 20
 //	  while (true) {
@@ -162,12 +158,14 @@ final class Ref[A <: AnyRef](init: A) {
 //	  }
 //	  println("> 20")
 	  RetryUncached
+/*
 	} else {
 	  val ov = get
 	  val nv = newValue(ov, cached, c)
 	  k.tryReact(retValue(ov, c), rx.withCAS(data, ov, nv), null)
 	}
-
+*/
+      }
       ret match {
 	case (_: Retry) => cached
 	case _ => ret
@@ -251,5 +249,5 @@ object Ref {
       if (ref.compareAndSet(ov, nv)) rx else null
     } else {
       rx.withCAS(ref, ov, nv)
-    }    
+    }
 }

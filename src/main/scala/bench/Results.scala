@@ -11,8 +11,8 @@ case class Measurement(
   trials: Int,
   cores: Int
 ) {
-  def format = " %8.2f |".format(throughput)
-  def formatR = " %8.2f |".format(rawThroughput)
+  def format = " %4.1f |".format(throughput)
+  def formatR = " %4.1f |".format(rawThroughput)
   def formatN(compTo: Double) = 
     " %8.2f |".format(rawThroughput / compTo)
 }
@@ -31,9 +31,9 @@ case class EntryResult(name: String, ms: Seq[Measurement]) {
   def formatN(compTo: Double) = 
     "%16.16s |".format(name ++ "(N)") ++
     ms.map(_.formatN(compTo)).mkString ++
-    "  max cov: %5.2f  avg cov: %5.2f\n".format(
-      ms.map(_.coeffOfVar).max,
-      ms.map(_.coeffOfVar).sum / ms.length
+    " mcov: %5.2f\n".format(
+      ms.map(_.coeffOfVar).max
+//      ms.map(_.coeffOfVar).sum / ms.length
     )
 }
 
@@ -45,13 +45,13 @@ case class BenchResult(name: String, work: Int, es: Seq[EntryResult]) {
   val columns = es(0).ms.length
 
   private def hrule {
-    println("-" * (18 + columns * 11))
+    println("-" * (18 + columns * 7))
   }
   def display {
     // header
     hrule
     print("%10.10s %5d |".format(name, work))
-    (1 to columns).map(i => print(" %8d |".format(i)))
+    (1 to columns).map(i => print(" %4d |".format(i)))
     println("")    
     hrule
 
