@@ -11,6 +11,11 @@ private abstract sealed class Reaction {
 
   def casCount: Int
 
+  // is it safe to do a CAS *while creating the reaction*?  generally, this is
+  // fine as long as the whole reaction is guaranteed to be a 1-cas.
+  def canCASImmediate[A,B](k: Reagent[A,B]): Boolean = 
+    casCount == 0 && k.alwaysCommits
+
   def withPostCommit(postCommit: Unit => Unit): Reaction =
     PostCommit(postCommit, this)
   def withCAS(ref: AtomicReference[AnyRef], ov: AnyRef, nv: AnyRef): Reaction =

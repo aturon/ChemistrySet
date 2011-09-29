@@ -75,22 +75,22 @@ abstract class Reagent[-A, +B] {
       } else backoff.once
       
       tryReact(a, Inert) match {
-	case (_: Retry) => loop
-	case Blocked    => block
-	case ans        => ans.asInstanceOf[B]
+	case Retry => loop
+	case Block => block
+	case ans   => ans.asInstanceOf[B]
       }
     }
     loop
   }
 
-  final def !(a: A): B = tryReact(a, Inert, null) match {
+  final def !(a: A): B = tryReact(a, Inert) match {
     case Retry => withBackoff(a)
     case Block => block
     case ans   => ans.asInstanceOf[B]
   }
 
   @inline final def !?(a:A) : Option[B] = {
-    tryReact(a, Inert, null) match {
+    tryReact(a, Inert) match {
       case Retry => None // should we actually retry here?  if we do, more
 			 // informative: a failed attempt entails a
 			 // linearization where no match was possible.  but
@@ -200,7 +200,7 @@ object computed {
 object lift {
   @inline def apply[A,B](f: PartialFunction[A,B]): Reagent[A,B] = 
     new AutoCont[A,B] {
-      def retValue(a: A): Any = if (f.isDefinedAt(a)) f(a) else Blocked
+      def retValue(a: A): Any = if (f.isDefinedAt(a)) f(a) else Block
     }
 }
 

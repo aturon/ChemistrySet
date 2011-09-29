@@ -24,17 +24,20 @@ final private class RMessage[A,B,C](
 ) extends Message[A,B] {
   private case class CompleteExchange[D](kk: Reagent[A,D]) 
 	       extends Reagent[C,D] {
-    type Cache = Retry
-    def useCache = false
-    def tryReact(c: C, rx: Reaction, cache: Cache): Any = {
+    def tryReact(c: C, rx: Reaction): Any = {
+      if (rx.canCASImmediate(kk)) {
+	if (
+      } else {
+      }
+
       val newRX = Ref.rxWithCAS(rx, waiter.status, 
 				Waiter.Waiting, c.asInstanceOf[AnyRef], kk)
       if (newRX == null) 
-	RetryUncached
+	Retry
       else if (waiter.blocking)
-	kk.tryReact(m, newRX.withPostCommit((_:Unit) => waiter.wake), null)
+	kk.tryReact(m, newRX.withPostCommit((_:Unit) => waiter.wake))
       else
-	kk.tryReact(m, newRX, null)
+	kk.tryReact(m, newRX)
     }
     def makeOfferI(c: C, offer: Offer[D]) = throw Util.Impossible
     def composeI[E](next: Reagent[D,E]): Reagent[C,E] =
@@ -53,17 +56,14 @@ private final case class Endpoint[A,B,C](
   incoming: Pool[Message[B,A]],
   k: Reagent[B,C]
 ) extends Reagent[A,C] {
-  type Cache = Retry
-  def useCache = false
-
-  def tryReact(a: A, rx: Reaction, cache: Cache): Any = {
+  def tryReact(a: A, rx: Reaction): Any = {
     @tailrec def tryFrom(n: incoming.Node, retry: Boolean): Any = 
       if (n == null) {
-	if (retry) RetryUncached else Blocked
-      } else n.data.exchange.compose(k).tryReact(a, rx, null) match {
-	case (_: Retry) => tryFrom(n.next, true)
-	case Blocked    => tryFrom(n.next, retry)
-	case ans        => ans
+	if (retry) Retry else Block
+      } else n.data.exchange.compose(k).tryReact(a, rx) match {
+	case Retry => tryFrom(n.next, true)
+	case Block => tryFrom(n.next, retry)
+	case ans   => ans
       }
     tryFrom(incoming.cursor, false)
   }
