@@ -25,16 +25,17 @@ final private class RMessage[A,B,C](
   private case class CompleteExchange[D](kk: Reagent[A,D]) 
 	       extends Reagent[C,D] {
     def tryReact(c: C, rx: Reaction): Any = {
-      if (rx.canCASImmediate(kk)) {
-	if (
-      } else {
-      }
+      val ov = Waiter.Waiting
+      val nv = c.asInstanceOf[AnyRef]
 
-      val newRX = Ref.rxWithCAS(rx, waiter.status, 
-				Waiter.Waiting, c.asInstanceOf[AnyRef], kk)
-      if (newRX == null) 
-	Retry
-      else if (waiter.blocking)
+      val newRX = 
+	if (rx.canCASImmediate(kk)) {
+	  if (!waiter.status.compareAndSet(ov, nv)) // attempt early
+	    return Retry			    // escape early
+	  else rx				    
+	} else rx.withCAS(waiter.status, ov, nv)
+
+      if (waiter.blocking)
 	kk.tryReact(m, newRX.withPostCommit((_:Unit) => waiter.wake))
       else
 	kk.tryReact(m, newRX)

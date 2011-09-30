@@ -33,9 +33,6 @@ final class Ref[A <: AnyRef](init: A) {
 //  private[chemistry] val data = new PaddedAtomicReference[AnyRef](init)
   private def get: A = Reaction.read(data).asInstanceOf[A]
 
-  @inline private def cas(ov: A, nv: A): Boolean =
-    data.compareAndSet(ov, nv)
-
   @inline def read: Reagent[Unit,A] = new AutoCont[Unit,A] {
     def retValue(u: Unit): Any = get
   }
@@ -43,7 +40,12 @@ final class Ref[A <: AnyRef](init: A) {
   private final case class CAS[B](expect: A, update: A, k: Reagent[Unit,B]) 
 		extends Reagent[Unit, B] {
     def tryReact(u: Unit, rx: Reaction): Any = 
-      Ref.continueWithCAS(data, rx, (), k, expect, update)
+      if (rx.canCASImmediate(k)) {
+	if (data.compareAndSet(expect, update))
+	  k.tryReact((), rx)
+	else Retry
+      } else k.tryReact((), rx.withCAS(data, expect, update))
+
     def makeOfferI(u: Unit, offer: Offer[B]) =
       k.makeOffer(u, offer)
     def composeI[C](next: Reagent[B,C]) = CAS(expect, update, k.compose(next))
@@ -61,7 +63,9 @@ final class Ref[A <: AnyRef](init: A) {
 	// to the read as possible, to decrease chance of interference.
 	val ov = get
 	val (nv, ret) = f(ov, b)
-	if (cas(ov, nv)) k.tryReact(ret, rx) else Retry
+	if (data.compareAndSet(ov, nv)) 
+	  k.tryReact(ret, rx) 
+	else Retry
       } else {
 	val ov = get
 	val (nv, ret) = f(ov, b)
@@ -117,17 +121,18 @@ final class Ref[A <: AnyRef](init: A) {
     def retValue(a: A, b: B): C
     def retryValue(cur: A, lastAttempt: A, b: B): A = newValue(cur, b)
   }
-  abstract class FastUpd[B,C] extends InnerFastUpd[B,C,C](Commit[C]()) 
+  abstract class FastUpd[B,C] extends InnerFastUpd[B,C,C](Commit[C]())
+
+  
+ 
 }
 object upd {
   @inline def apply[A <: AnyRef,B,C](r: Ref[A])(f: (A,B) => (A,C)) = 
     r.upd(f)
+/*
   @inline def apply[A <: AnyRef,B](r: Ref[A])(f: PartialFunction[A, (A,B)]) = 
     r.upd(f)
-}
-object updIn {
-  @inline def apply[A <: AnyRef,B](r: Ref[A])(f: (A,B) => A) = 
-    r.updIn(f)
+*/
 }
 object Ref {
   @inline def apply[A <: AnyRef](init: A): Ref[A] = new Ref(init)
