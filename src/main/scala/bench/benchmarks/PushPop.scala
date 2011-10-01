@@ -129,6 +129,7 @@ object PushPop extends Benchmark {
     def push(s: S, x: AnyRef) = s.push ! x
     def tryPop(s: S): Option[AnyRef]  = s.tryPop ! ()
   }
+/*
 private object rTreiberFast extends Entry with Generic {
     def name = "rTreiberFast"
     type S = TreiberStack[AnyRef]
@@ -136,6 +137,7 @@ private object rTreiberFast extends Entry with Generic {
     def push(s: S, x: AnyRef) = s.push.fastReact(x)
     def tryPop(s: S): Option[AnyRef]  = s.tryPop.fastReact()
   }
+*/
   private object rElim extends Entry with Generic {
     def name = "rElim"
     type S = EliminationStack[AnyRef]

@@ -37,24 +37,17 @@ final class TreiberStack[A >: Null] {
   }
 */
 
-/*
-  case class Node(var data: A, var next: Node) extends Retry
-  val head = Ref[Node](null)
 
-  // Reagent[A,Unit]
-  val push = new head.CachedUpd[A,Unit] {
-    type Cache = Node
-    @inline final def initCache: Node = Node(null, null)
-    @inline final def newValue(cur: Node, cache: Node, a: A): Node = {
-      cache.data = a
-      cache.next = cur
-      cache
-    } 
+  private case class Node(var data: A, var next: Node) 
+  private val head = Ref[Node](null)
+
+  val push: Reagent[A,Unit] = new head.Upd[A,Unit] {
+    @inline final def newValue(cur: Node, a: A): Node = 
+      Node(null, null)
     @inline final def retValue(cur: Node, a: A): Unit = ()
   }
 
-  // Reagent[Unit,Option[A]]
-  val tryPop = new head.FastUpd[Unit,Option[A]] {
+  val tryPop: Reagent[Unit,Option[A]] = new head.Upd[Unit,Option[A]] {
     @inline final def newValue(cur: Node, u: Unit): Node = cur match { 
       case null   => null
       case Node(x,xs) => xs
@@ -68,8 +61,8 @@ final class TreiberStack[A >: Null] {
   def pop: Reagent[Unit,A] = head.upd[A] {
     case Node(x,xs) => (xs, x)
   }
-*/
 
+/*
   case class Node(var data: A, var next: Node) extends Retry
   val head = new AtomicReference[Node](null)
 
@@ -124,7 +117,7 @@ final class TreiberStack[A >: Null] {
   }
 
   def pop: Reagent[Unit,A] = throw Util.Impossible
-
+*/
 /*
   object pop extends Reagent[Unit,A] {
     @tailrec def tryReact(u:Unit, rx: Reaction): Any = headX.get match {

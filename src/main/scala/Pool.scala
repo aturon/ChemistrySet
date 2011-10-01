@@ -188,6 +188,7 @@ final class CircularPool[A <: DeletionFlag] extends Pool[A] {
 */
 }
 
+/*
 private object BoundPool {
   val capacity = 32
   val full = math.max(0, math.min(capacity, Chemistry.procs / 2) - 1)
@@ -268,3 +269,4 @@ final class BoundPool[A <: DeletionFlag] {
     return null
   }
 }
+*/

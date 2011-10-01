@@ -55,43 +55,14 @@ final class Ref[A <: AnyRef](init: A) {
   }
   @inline def cas(ov:A,nv:A): Reagent[Unit,Unit] = CAS(ov,nv,Commit[Unit]()) 
 
-  private final case class Upd[B,C,D](f: (A,B) => (A,C), k: Reagent[C,D]) 
-		     extends Reagent[B, D] {
-    def tryReact(b: B, rx: Reaction): Any = {
-      if (rx.canCASImmediate(k)) {
-	// this bit is repeated: we want the actual CAS to be as close
-	// to the read as possible, to decrease chance of interference.
-	val ov = get
-	val (nv, ret) = f(ov, b)
-	if (data.compareAndSet(ov, nv)) 
-	  k.tryReact(ret, rx) 
-	else Retry
-      } else {
-	val ov = get
-	val (nv, ret) = f(ov, b)
-	k.tryReact(ret, rx.withCAS(data, ov, nv))
-      }
-    }
-    def makeOfferI(b: B, offer: Offer[D]): Unit = {
-      val ov = get
-      val (_, ret) = f(ov, b)
-      k.makeOffer(ret, offer)
-    }
-    def composeI[E](next: Reagent[D,E]) = Upd(f, k.compose(next))
-    def maySync = k.maySync
-    def alwaysCommits = false
-    def snoop(b: B) = false
-  }
-  @inline def upd[B,C](f: (A,B) => (A,C)): Reagent[B, C] = 
-    Upd(f, Commit[C]())
-
-  abstract class InnerFastUpd[B,C,D] private[chemistry] (k: Reagent[C,D])
+  abstract class InnerUpd[B,C,D] private[chemistry] (k: Reagent[C,D])
 	   extends Reagent[B, D] {
     def tryReact(b: B, rx: Reaction): Any = {
       if (rx.canCASImmediate(k)) {
 	var tries = 3
 	while (tries > 0) {
 	  val ov = get
+	  if (!valid(ov,b)) return Retry
 	  val nv = newValue(ov, b)
 	  if (data.compareAndSet(ov, nv))
 	    return k.tryReact(retValue(ov, b), rx)
@@ -100,6 +71,7 @@ final class Ref[A <: AnyRef](init: A) {
 	Retry
       } else {
 	val ov = get
+	if (!valid(ov,b)) return Retry
 	val nv = newValue(ov, b)
 	k.tryReact(retValue(ov, b), rx.withCAS(data, ov, nv))
       }
@@ -109,30 +81,40 @@ final class Ref[A <: AnyRef](init: A) {
       k.makeOffer(retValue(ov, b), offer)
     }
     def composeI[E](next: Reagent[D,E]) = 
-      new InnerFastUpd[B,C,E](k.compose(next)) {
-	final def newValue(a: A, b: B): A = InnerFastUpd.this.newValue(a, b)
-	final def retValue(a: A, b: B): C = InnerFastUpd.this.retValue(a, b)
+      new InnerUpd[B,C,E](k.compose(next)) {
+	final def newValue(a: A, b: B): A = InnerUpd.this.newValue(a, b)
+	final def retValue(a: A, b: B): C = InnerUpd.this.retValue(a, b)
       }
     def maySync = k.maySync
     def alwaysCommits = false
     def snoop(b: B) = false
 
+    def valid(a: A, b: B): Boolean = true
     def newValue(a: A, b: B): A
     def retValue(a: A, b: B): C
     def retryValue(cur: A, lastAttempt: A, b: B): A = newValue(cur, b)
   }
-  abstract class FastUpd[B,C] extends InnerFastUpd[B,C,C](Commit[C]())
+  abstract class Upd[B,C] extends InnerUpd[B,C,C](Commit[C]())
 
-  
+  @inline def upd[B,C](f: (A,B) => (A,C)): Reagent[B, C] = 
+    new Upd[B,C] {
+      @inline def newValue(a: A, b: B): A = f(a,b)._1
+      @inline def retValue(a: A, b: B): C = f(a,b)._2
+    }
+
+  @inline def upd[B](f: PartialFunction[A,(A,B)]): Reagent[Unit, B] =
+    new Upd[Unit,B] {
+      @inline override def valid(a: A, u: Unit): Boolean = f.isDefinedAt(a)
+      @inline def newValue(a: A, u: Unit): A = f(a)._1
+      @inline def retValue(a: A, u: Unit): B = f(a)._2
+    }
  
 }
 object upd {
   @inline def apply[A <: AnyRef,B,C](r: Ref[A])(f: (A,B) => (A,C)) = 
     r.upd(f)
-/*
   @inline def apply[A <: AnyRef,B](r: Ref[A])(f: PartialFunction[A, (A,B)]) = 
     r.upd(f)
-*/
 }
 object Ref {
   @inline def apply[A <: AnyRef](init: A): Ref[A] = new Ref(init)
