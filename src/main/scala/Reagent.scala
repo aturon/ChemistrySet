@@ -10,14 +10,17 @@ private[chemistry] sealed abstract class BacktrackCommand {
   // what to do when the backtracking command runs out of choices
   // (i.e., hits bottom)
   def bottom[A](waiter: Waiter[A], backoff: Backoff, snoop: => Boolean): Unit
+  def isBlock: Boolean
 }
 private[chemistry] case object Block extends BacktrackCommand {
   def bottom[A](waiter: Waiter[A], backoff: Backoff, snoop: => Boolean): Unit =
     LockSupport.park(waiter)
+  def isBlock: Boolean = true
 }
 private[chemistry] case object Retry extends BacktrackCommand {
   def bottom[A](waiter: Waiter[A], backoff: Backoff, snoop: => Boolean): Unit =
     backoff.once(waiter.isActive && !snoop, 2)
+  def isBlock: Boolean = false
 }
 
 abstract class Reagent[-A, +B] {
@@ -36,24 +39,26 @@ abstract class Reagent[-A, +B] {
   final def !(a: A): B = tryReact(a, Inert, null) match {
     case (_: BacktrackCommand) => {
       val backoff = new Backoff
-      @tailrec def retryLoop(doOffer: Boolean): B = {
+      val maySync = this.maySync // cache
+      @tailrec def retryLoop(shouldBlock: Boolean): B = {
 	// to think about: can a single waiter be reused?
-	val waiter = if (doOffer) new Waiter[B](false) else null
+	val wait = maySync || shouldBlock
+	val waiter = if (wait) new Waiter[B](shouldBlock) else null
 
 	tryReact(a, Inert, waiter) match {
-	  case (bc: BacktrackCommand) if doOffer => {
+	  case (bc: BacktrackCommand) if wait => {
 	    bc.bottom(waiter, backoff, snoop(a))
 	    waiter.abort match {
 	      case Some(ans) => ans.asInstanceOf[B] 
-	      case None => retryLoop(true)
+	      case None      => retryLoop(bc.isBlock)
 	    }
 	  }
 	  case Retry => backoff.once; retryLoop(false)
-	  case Block => backoff.once; retryLoop(true)
+	  case Block => retryLoop(true)
 	  case ans => ans.asInstanceOf[B]
 	}
       }
-      retryLoop(maySync)
+      retryLoop(false)
     }
     case ans => ans.asInstanceOf[B]
   }
