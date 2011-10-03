@@ -6,9 +6,19 @@ import scala.annotation.tailrec
 import java.util.concurrent.locks._
 import chemistry.Util.Implicits._
 
-private[chemistry] sealed abstract class BacktrackCommand
-private[chemistry] case object Block extends BacktrackCommand 
-private[chemistry] case object Retry extends BacktrackCommand 
+private[chemistry] sealed abstract class BacktrackCommand {
+  // what to do when the backtracking command runs out of choices
+  // (i.e., hits bottom)
+  def bottom[A](waiter: Waiter[A], backoff: Backoff, snoop: => Boolean): Unit
+}
+private[chemistry] case object Block extends BacktrackCommand {
+  def bottom[A](waiter: Waiter[A], backoff: Backoff, snoop: => Boolean): Unit =
+    LockSupport.park(waiter)
+}
+private[chemistry] case object Retry extends BacktrackCommand {
+  def bottom[A](waiter: Waiter[A], backoff: Backoff, snoop: => Boolean): Unit =
+    backoff.once(waiter.isActive && !snoop, 2)
+}
 
 abstract class Reagent[-A, +B] {
   // returns either a BacktrackCommand or a B
@@ -24,64 +34,28 @@ abstract class Reagent[-A, +B] {
   }
 
   final def !(a: A): B = tryReact(a, Inert, null) match {
-    case (_: BacktrackCommand) => withBackoff(a)
-    case ans => ans.asInstanceOf[B]
-  }
+    case (_: BacktrackCommand) => {
+      val backoff = new Backoff
+      @tailrec def retryLoop(doOffer: Boolean): B = {
+	// to think about: can a single waiter be reused?
+	val waiter = if (doOffer) new Waiter[B](false) else null
 
-  private[chemistry] final def withBackoff(a: A): B = {
-    val backoff = new Backoff
-    val doOffer = maySync
-
-    @tailrec def loop: B = {
-      // to think about: can a single waiter be reused?
-      val waiter = if (doOffer) new Waiter[B](false) else null
-
-      tryReact(a, Inert, waiter) match {
-	case Retry => {
-	  if (doOffer) {
-	    backoff.once(waiter.isActive && !snoop(a), 2)
+	tryReact(a, Inert, waiter) match {
+	  case (bc: BacktrackCommand) if doOffer => {
+	    bc.bottom(waiter, backoff, snoop(a))
 	    waiter.abort match {
 	      case Some(ans) => ans.asInstanceOf[B] 
-	      case None => loop
+	      case None => retryLoop(true)
 	    }
-	  } else {
-	    backoff.once
-	    loop
 	  }
+	  case Retry => backoff.once; retryLoop(false)
+	  case Block => backoff.once; retryLoop(true)
+	  case ans => ans.asInstanceOf[B]
 	}
-	case Block => block(a, waiter)
-	case ans   => ans.asInstanceOf[B]
       }
+      retryLoop(maySync)
     }
-    loop
-  }
-
-  private[chemistry] final def block(a: A, waiter: Waiter[B]): B = {
-/*
-      val waiter = new Waiter[B](true)
-      val initRX = waiter.rxForConsume
-      while (true) {
-	waiter.reset
-	makeOffer(a, waiter)
-
-	tryReact(a, initRX) match {
-	  case ShouldRetry => throw Util.Impossible
-	  case ShouldBlock => throw Util.Impossible
-	  case ans         => return ans.asInstanceOf[B]
-	}
-      }
-*/ 
-
-/*
-	      case ShouldBlock => 
-		if (blocking) 
-		  LockSupport.park(waiter) 
-		else waiter.consume !? () match {
-		  case None    => if (waiter.isActive) backoff.once()
-		  case Some(_) => return slowPath(true)
-		}
-*/
-    throw Util.Impossible
+    case ans => ans.asInstanceOf[B]
   }
 
   @inline final def !?(a:A) : Option[B] = {
