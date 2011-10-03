@@ -33,7 +33,9 @@ private final class Waiter[-A](val blocking: Boolean) extends Offer[A] {
     if (blocking) LockSupport.unpark(waiterThread)
   }
 
-//  def rxForConsume = Inert.withCAS(status, Waiting, Consumed)
+  @inline def rxWithAbort(rx: Reaction): Reaction =
+    rx.withCAS(status, Waiting, Aborted)
+
 //  def tryConsume: Boolean = status.compareAndSet(Waiting, Consumed)
   def isActive: Boolean = status.get == Waiting
 
@@ -43,7 +45,6 @@ private final class Waiter[-A](val blocking: Boolean) extends Offer[A] {
     case ans => Some(ans)
   }
   
-
   // sadly, have to use `Any` to work around variance problems
   // should only be called by original creater of the Waiter
   def abort: Option[Any] = 

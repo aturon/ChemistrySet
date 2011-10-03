@@ -20,35 +20,36 @@ final private case class CMessage[A,B](
 */
 
 final private class RMessage[A,B,C](
-  m: A, k: Reagent[B,C], waiter: Waiter[C]
+  payload: A, senderK: Reagent[B,C], waiter: Waiter[C]
 ) extends Message[A,B] {
-  private case class CompleteExchange[D](kk: Reagent[A,D]) 
+  private case class CompleteExchange[D](receiverK: Reagent[A,D]) 
 	       extends Reagent[C,D] {
-    def tryReact(c: C, rx: Reaction): Any = {
+    def tryReact(c: C, rx: Reaction, offer: Offer[D]): Any = {
       val ov = Waiter.Waiting
       val nv = c.asInstanceOf[AnyRef]
 
       val newRX = 
-	if (rx.canCASImmediate(kk)) {
+	if (rx.canCASImmediate(receiverK, offer)) {
 	  if (!waiter.status.compareAndSet(ov, nv)) // attempt early
 	    return Retry			    // escape early
 	  else rx				    
 	} else rx.withCAS(waiter.status, ov, nv)
 
       if (waiter.blocking)
-	kk.tryReact(m, newRX.withPostCommit((_:Unit) => waiter.wake))
+	receiverK.tryReact(payload, 
+			   newRX.withPostCommit((_:Unit) => waiter.wake),
+			   offer)
       else
-	kk.tryReact(m, newRX)
+	receiverK.tryReact(payload, newRX, offer)
     }
-    def makeOfferI(c: C, offer: Offer[D]) = throw Util.Impossible
     def composeI[E](next: Reagent[D,E]): Reagent[C,E] =
-      CompleteExchange(kk >=> next)
-    def maySync = kk.maySync
+      CompleteExchange(receiverK >=> next)
+    def maySync = receiverK.maySync
     def alwaysCommits = false		
-    def snoop(c: C) = waiter.isActive && kk.snoop(m)
+    def snoop(c: C) = waiter.isActive && receiverK.snoop(payload)
   }
 
-  val exchange: Reagent[B, A] = k >=> CompleteExchange(Commit[A]())
+  val exchange: Reagent[B, A] = senderK >=> CompleteExchange(Commit[A]())
   def isDeleted = !waiter.isActive
 }
 
@@ -57,29 +58,30 @@ private final case class Endpoint[A,B,C](
   incoming: Pool[Message[B,A]],
   k: Reagent[B,C]
 ) extends Reagent[A,C] {
-  def tryReact(a: A, rx: Reaction): Any = {
+  def tryReact(a: A, rx: Reaction, offer: Offer[C]): Any = {
     @tailrec def tryFrom(n: incoming.Node, retry: Boolean): Any = 
       if (n == null) {
 	if (retry) Retry else Block
-      } else n.data.exchange.compose(k).tryReact(a, rx) match {
+      } else n.data.exchange.compose(k).tryReact(a, rx, offer) match {
 	case Retry => tryFrom(n.next, true)
 	case Block => tryFrom(n.next, retry)
 	case ans   => ans
       }
-    tryFrom(incoming.cursor, false)
-  }
-  def snoop(a: A): Boolean = incoming.snoop
-  def makeOfferI(a: A, offer: Offer[C]) {
+
+    // send message if so requested.  note that we send the message
+    // *before* attempting to react with existing messages in the
+    // other direction.
     offer match { 
+      case null => {}
       case (w: Waiter[_]) => outgoing.put(new RMessage(a, k, w))
       // todo: catalysts
     }
-    
-    // todo: make offers enabled by outstanding messages
-//    var cursor = incoming.cursor 
+
+    tryFrom(incoming.cursor, false)
   }
+  def snoop(a: A): Boolean = incoming.snoop
   @inline def composeI[D](next: Reagent[C,D]) = 
-    Endpoint(outgoing,incoming,k.compose(next))
+    Endpoint(outgoing, incoming, k.compose(next))
   @inline def maySync = true
   @inline def alwaysCommits = false
 }

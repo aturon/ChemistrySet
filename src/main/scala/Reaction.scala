@@ -13,13 +13,22 @@ private abstract sealed class Reaction {
 
   // is it safe to do a CAS *while creating the reaction*?  generally, this is
   // fine as long as the whole reaction is guaranteed to be a 1-cas.
-  def canCASImmediate[A,B](k: Reagent[A,B]): Boolean = 
-    casCount == 0 && k.alwaysCommits
+  def canCASImmediate[A,B](k: Reagent[A,B], offer: Offer[B]): Boolean = 
+    casCount == 0 && k.alwaysCommits && (offer match {
+      case null => true
+      case Catalyst => true
+      case (_: Waiter[_]) => false
+    })
 
   def withPostCommit(postCommit: Unit => Unit): Reaction =
     PostCommit(postCommit, this)
   def withCAS(ref: AtomicReference[AnyRef], ov: AnyRef, nv: AnyRef): Reaction =
     CAS(ref, ov, nv, this)
+  def withAbortOffer[A](offer: Offer[A]): Reaction = offer match {
+    case null     => this
+    case Catalyst => this // this case will probably never arise
+    case (w: Waiter[_]) => w.rxWithAbort(this)
+  }
 
   def tryCommit: Boolean = {
     val success: Boolean = casCount match {

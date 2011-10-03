@@ -39,15 +39,13 @@ final class Ref[A <: AnyRef](init: A) {
 
   private final case class CAS[B](expect: A, update: A, k: Reagent[Unit,B]) 
 		extends Reagent[Unit, B] {
-    def tryReact(u: Unit, rx: Reaction): Any = 
-      if (rx.canCASImmediate(k)) {
+    def tryReact(u: Unit, rx: Reaction, offer: Offer[B]): Any = 
+      if (rx.canCASImmediate(k, offer)) {
 	if (data.compareAndSet(expect, update))
-	  k.tryReact((), rx)
+	  k.tryReact((), rx, offer)
 	else Retry
-      } else k.tryReact((), rx.withCAS(data, expect, update))
+      } else k.tryReact((), rx.withCAS(data, expect, update), offer)
 
-    def makeOfferI(u: Unit, offer: Offer[B]) =
-      k.makeOffer(u, offer)
     def composeI[C](next: Reagent[B,C]) = CAS(expect, update, k.compose(next))
     def maySync = k.maySync
     def alwaysCommits = false
@@ -57,15 +55,15 @@ final class Ref[A <: AnyRef](init: A) {
 
   abstract class InnerUpd[B,C,D] private[chemistry] (k: Reagent[C,D])
 	   extends Reagent[B, D] {
-    def tryReact(b: B, rx: Reaction): Any = {
-      if (rx.canCASImmediate(k)) {
+    def tryReact(b: B, rx: Reaction, offer: Offer[D]): Any = {
+      if (rx.canCASImmediate(k, offer)) {
 	var tries = 3
 	while (tries > 0) {
 	  val ov = get
 	  if (!valid(ov,b)) return Retry
 	  val nv = newValue(ov, b)
 	  if (data.compareAndSet(ov, nv))
-	    return k.tryReact(retValue(ov, b), rx)
+	    return k.tryReact(retValue(ov, b), rx, offer)
 	  tries -= 1
 	}
 	Retry
@@ -73,12 +71,8 @@ final class Ref[A <: AnyRef](init: A) {
 	val ov = get
 	if (!valid(ov,b)) return Retry
 	val nv = newValue(ov, b)
-	k.tryReact(retValue(ov, b), rx.withCAS(data, ov, nv))
+	k.tryReact(retValue(ov, b), rx.withCAS(data, ov, nv), offer)
       }
-    }
-    def makeOfferI(b: B, offer: Offer[D]): Unit = {
-      val ov = get
-      k.makeOffer(retValue(ov, b), offer)
     }
     def composeI[E](next: Reagent[D,E]) = 
       new InnerUpd[B,C,E](k.compose(next)) {
