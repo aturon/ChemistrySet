@@ -19,21 +19,27 @@ final private case class CMessage[A,B](
 }
 */
 
+// ****************************************************************
+// ***** NOTE
+//   NEED TO STORE PARTIAL REACTION IN MESSAGE,
+//   AND SUPPORT CONCATENATION OF REACTIONS
+// ****************************************************************
+
 final private class RMessage[A,B,C](
-  payload: A, senderK: Reagent[B,C], waiter: Waiter[C]
+  payload: A,		 // the actual content of the message
+  senderRx: Reaction,	 // the checkpointed reaction of the sender
+  senderK: Reagent[B,C], // the sender's reagent continuation
+  waiter: Waiter[C]	 // the sender's waiter
 ) extends Message[A,B] {
   private case class CompleteExchange[D](receiverK: Reagent[A,D]) 
 	       extends Reagent[C,D] {
     def tryReact(c: C, rx: Reaction, offer: Offer[D]): Any = {
-      val ov = Waiter.Waiting
-      val nv = c.asInstanceOf[AnyRef]
-
       val newRX = 
 	if (rx.canCASImmediate(receiverK, offer)) {
-	  if (!waiter.status.compareAndSet(ov, nv)) // attempt early
-	    return Retry			    // escape early
-	  else rx				    
-	} else rx.withCAS(waiter.status, ov, nv)
+	  if (!waiter.tryComplete(c)) // attempt early, and
+	    return Retry	      // retry early on failure
+	  else rx		      
+	} else waiter.rxWithCompletion(rx, c)
 
       if (waiter.blocking)
 	receiverK.tryReact(payload, 

@@ -21,7 +21,8 @@ private object Waiter {
   object Waiting extends WaiterStatus
   object Aborted extends WaiterStatus
 }
-private final class Waiter[-A](val blocking: Boolean) extends Offer[A] {
+private final class Waiter[-A](val blocking: Boolean) 
+	      extends Offer[A] with DeletionFlag {
   import Waiter._
 
   private[chemistry] val status: AtomicReference[AnyRef] = 
@@ -32,27 +33,29 @@ private final class Waiter[-A](val blocking: Boolean) extends Offer[A] {
   def wake {
     if (blocking) LockSupport.unpark(waiterThread)
   }
+  
+  @inline def isActive: Boolean = status.get == Waiting
+  def isDeleted = !isActive // for use in pools
 
-  @inline def rxWithAbort(rx: Reaction): Reaction =
-    rx.withCAS(status, Waiting, Aborted)
-
-//  def tryConsume: Boolean = status.compareAndSet(Waiting, Consumed)
-  def isActive: Boolean = status.get == Waiting
-
+  // Poll current waiter value:
+  //   - None if Waiting or Aborted
+  //   - Some(ans) if completed with ans
   // sadly, have to use `Any` to work around variance problems
-  def poll: Option[Any] = status.get match {
+  @inline def poll: Option[Any] = status.get match {
     case (_:WaiterStatus) => None
     case ans => Some(ans)
   }
   
-  // sadly, have to use `Any` to work around variance problems
-  // should only be called by original creater of the Waiter
-  def abort: Option[Any] = 
-    if (isActive && status.compareAndSet(Waiting, Aborted)) None
-    else Some(status.get)
+  // Attempt to abort, returning true iff successful
+  @inline def tryAbort = status.compareAndSet(Waiting, Aborted)
+  @inline def rxWithAbort(rx: Reaction): Reaction =
+    rx.withCAS(status, Waiting, Aborted)
 
-  def reset {
-    status.set(Waiting)
-  }
+  @inline def tryComplete(a: A) = 
+    status.compareAndSet(Waiting, a.asInstanceOf[AnyRef])
+  @inline def rxWithCompletion(rx: Reaction, a: A): Reaction = 
+    rx.withCAS(status, Waiting, a.asInstanceOf[AnyRef])
+
+  // def reset { status.set(Waiting) }
 }
 

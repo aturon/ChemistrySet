@@ -26,7 +26,7 @@ private final class PaddedAtomicReference[A](init:A)
 */
 
 final class Ref[A <: AnyRef](init: A) {
-//  private val waiters = new MSQueue[]()
+  private val waiters = new CircularPool[Waiter[_]]
 
   // really, the type of data should belong to Reaction
   private[chemistry] val data = new AtomicReference[AnyRef](init)

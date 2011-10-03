@@ -48,7 +48,8 @@ abstract class Reagent[-A, +B] {
 	tryReact(a, Inert, waiter) match {
 	  case (bc: BacktrackCommand) if wait => {
 	    bc.bottom(waiter, backoff, snoop(a))
-	    waiter.abort match {
+	    waiter.tryAbort	// rescind waiter,
+	    waiter.poll match { // but check if already completed
 	      case Some(ans) => ans.asInstanceOf[B] 
 	      case None      => retryLoop(bc.isBlock)
 	    }

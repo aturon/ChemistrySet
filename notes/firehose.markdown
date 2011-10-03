@@ -1,7 +1,6 @@
 Need to read:
 
  - asynchronous events
- - more on lightweight threading (good blog fodder)
  - F# async workflows
 
 To try coding:
@@ -12,18 +11,23 @@ To try coding:
  - other classic join calculus examples
  - classic CML examples
  - hand-over-hand set
+
+Done(ish)
+
+ - kcas
+ - channels
+ - blocking (for channels)
+ - elimination backoff stack
+ - choice
+ - guards/never
+ - bags
+ - synchronization examples from Scalable Joins (using Refs)
  
 Todo:
 
- ~ kcas
+ - blocking (for refs)
+ - synchronization examples from Scalable Joins (using chans)
  - lazy set
- ~ channels 
- - blocking
- x elimination backoff stack
- ~ synchronization examples from Scalable Joins
- x choice
- x guards/never
- ~ bags
  - skiplist
  - condition variables
  - asynchronous channels (via simple queues)
@@ -36,6 +40,10 @@ Todo:
  - framework for collecting stats
  
  - comparison to STM
+
+## 10/3/2011
+
+Reaction probably forms a commutative monad.
 
 ## 8/5/2011
 
