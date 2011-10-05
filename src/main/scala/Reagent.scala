@@ -36,7 +36,7 @@ abstract class Reagent[-A, +B] {
     case _ => composeI(next)
   }
 
-  final def !(a: A): B = tryReact(a, Inert, null) match {
+  final def !(a: A): B = tryReact(a, Reaction.inert, null) match {
     case (_: BacktrackCommand) => {
       val backoff = new Backoff
       val maySync = this.maySync // cache
@@ -45,7 +45,7 @@ abstract class Reagent[-A, +B] {
 	val wait = maySync || shouldBlock
 	val waiter = if (wait) new Waiter[B](shouldBlock) else null
 
-	tryReact(a, Inert, waiter) match {
+	tryReact(a, Reaction.inert, waiter) match {
 	  case (bc: BacktrackCommand) if wait => {
 	    bc.bottom(waiter, backoff, snoop(a))
 	    waiter.tryAbort	// rescind waiter,
@@ -65,7 +65,7 @@ abstract class Reagent[-A, +B] {
   }
 
   @inline final def !?(a:A) : Option[B] = {
-    tryReact(a, Inert, null) match {
+    tryReact(a, Reaction.inert, null) match {
       case Retry => None // should we actually retry here?  if we do, more
 			 // informative: a failed attempt entails a
 			 // linearization where no match was possible.  but

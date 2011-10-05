@@ -15,7 +15,9 @@ final private class Message[A,B,C](
   private case class CompleteExchange[D](receiverK: Reagent[A,D]) 
 	       extends Reagent[C,D] {
     def tryReact(c: C, rx: Reaction, enclosingOffer: Offer[D]): Any =
-      offer.consumeAndContinue(c, payload, rx, receiverK, enclosingOffer)
+      offer.consumeAndContinue(
+	c, payload, rx ++ senderRx, receiverK, enclosingOffer
+      )
     def composeI[E](next: Reagent[D,E]): Reagent[C,E] =
       CompleteExchange(receiverK >=> next)
     def maySync = receiverK.maySync

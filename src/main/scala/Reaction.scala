@@ -6,10 +6,12 @@ package chemistry
 import scala.annotation.tailrec
 import java.util.concurrent.atomic._
 
-private abstract sealed class Reaction {
+private sealed class Reaction private (
+  val casList: List[Reaction.CAS], 
+  val pcList: List[Unit => Unit]) {
   import Reaction._
-
-  def casCount: Int
+  
+  def casCount: Int = casList.size
 
   // is it safe to do a CAS *while creating the reaction*?  generally, this is
   // fine as long as the whole reaction is guaranteed to be a 1-cas.
@@ -21,55 +23,48 @@ private abstract sealed class Reaction {
     })
 
   def withPostCommit(postCommit: Unit => Unit): Reaction =
-    PostCommit(postCommit, this)
+    new Reaction(casList, postCommit +: pcList)
   def withCAS(ref: AtomicReference[AnyRef], ov: AnyRef, nv: AnyRef): Reaction =
-    CAS(ref, ov, nv, this)
+    new Reaction(CAS(ref, ov, nv) +: casList, pcList)
   def withAbortOffer[A](offer: Offer[A]): Reaction = offer match {
     case null     => this
     case Catalyst => this // this case will probably never arise
     case (w: Waiter[_]) => w.rxWithAbort(this)
   }
+  def ++(rx: Reaction): Reaction = 
+    new Reaction(casList ++ rx.casList, pcList ++ rx.pcList)
 
   def tryCommit: Boolean = {
     val success: Boolean = casCount match {
       case 0 => true
-      case 1 => {
-	@tailrec def findAndTryCAS(rx: Reaction): Boolean = rx match {
-	  case Inert => throw Util.Impossible
-	  case PostCommit(_, rest)    => findAndTryCAS(rest)
-	  case CAS(ref, ov, nv, rest) => ref.compareAndSet(ov, nv) 
-	}
-	findAndTryCAS(this)
-      }
+      case 1 => casList.head.execAsSingle
       case _ => {
-	val kcas = new KCAS(this)
+	val kcas = new KCAS(casList)
 
 	// attempt to place KCAS record in each CASed reference.  returns null
-	// if successful, and otherwise the point in the reaction to rollback
+	// if successful, and otherwise the point in the CAS list to rollback
 	// from.
-	@tailrec def acquire(rx: Reaction): Reaction = 
-	  if (!kcas.isPending) rx
-	  else rx match {
-	    case Inert => null
-	    case PostCommit(_, rest)    => acquire(rest)
-	    case CAS(ref, ov, nv, rest) => ref.get match {
-	      case (owner: KCAS) => rx // blocking version
+	@tailrec def acquire(casList: List[CAS]): List[CAS] = 
+	  if (!kcas.isPending) casList
+	  else casList match {
+	    case Nil => null
+	    case CAS(ref, ov, nv) :: rest => ref.get match {
+	      case (owner: KCAS) => casList // blocking version
 		// if (owner.curVal(ref) == ov) {
 		//   if (ref.compareAndSet(owner, kcas)) acquire(rest)
 		//   else false
 		// } else false
 	      case curVal if (curVal == ov) => 
 		if (ref.compareAndSet(ov, kcas)) acquire(rest)
-		else rx
-	      case _ => rx
+		else casList
+	      case _ => casList
 	    }
 	  }
 
-	@tailrec def rollBackBetween(start: Reaction, end: Reaction) { 
+	@tailrec def rollBackBetween(start: List[CAS], end: List[CAS]) { 
 	  if (start != end) start match {
-	    case Inert => throw Util.Impossible // somehow went past the `end`
-	    case PostCommit(_, rest) => rollBackBetween(rest, end)
-	    case CAS(ref, ov, nv, rest) => {
+	    case Nil => throw Util.Impossible // somehow went past the `end`
+	    case CAS(ref, ov, nv) :: rest => {
 	      ref.compareAndSet(kcas, ov) // roll back to old value
 	      rollBackBetween(rest, end)
 	    }
@@ -82,46 +77,32 @@ private abstract sealed class Reaction {
 	// coherence concerns, which suggest that we currently own the cache
 	// lines for the CASed refs.
 
-	@tailrec def rollForward(rx: Reaction): Unit = rx match {
-	  case Inert => {}
-	  case PostCommit(_, rest) => rollForward(rest)
-	  case CAS(ref, ov, nv, rest) => {
+	@tailrec def rollForward(casList: List[CAS]): Unit = casList match {
+	  case Nil => {}
+	  case CAS(ref, ov, nv) :: rest => {
 	    ref.compareAndSet(kcas, nv) // roll forward to new value
 	    rollForward(rest)
 	  }
 	}    
 
-	acquire(this) match {
+	acquire(casList) match {
 	  case null => 
-	    if (kcas.complete) { rollForward(this); true }
-	    else	       { rollBackBetween(this, Inert); false }
-	  case rx =>           { rollBackBetween(this, rx); false }
+	    if (kcas.complete) { rollForward(casList); true }
+	    else	       { rollBackBetween(casList, Nil); false }
+	  case end =>          { rollBackBetween(casList, end); false }
 	}
       }
     }
 
-    @tailrec def postCommits(rx: Reaction): Unit = rx match {
-      case Inert => {}
-      case PostCommit(pc, rest)   => pc(); postCommits(rest)
-      case CAS(ref, ov, nv, rest) => postCommits(rest)
-    }
-
-    if (success) postCommits(this)
+    if (success) pcList.foreach(_.apply())
     success
   }
 }
-
-private object Reaction {
-  private final case class PostCommit(
-    action: Unit => Unit, rest: Reaction
-  ) extends Reaction {
-    def casCount = rest.casCount
-  }
-
-  private final case class CAS(
-    ref: AtomicReference[AnyRef], ov: AnyRef, nv: AnyRef, rest: Reaction
-  ) extends Reaction {
-    def casCount = rest.casCount + 1
+private object Reaction { 
+  final case class CAS(
+    ref: AtomicReference[AnyRef], ov: AnyRef, nv: AnyRef
+  ) {
+    def execAsSingle: Boolean = ref.compareAndSet(ov, nv)
   }
 
   private object KCAS {
@@ -130,7 +111,7 @@ private object Reaction {
     private final case object Complete extends Status
     private final case object Aborted extends Status
   }
-  private final class KCAS(val rx: Reaction) {
+  private final class KCAS(val casList: List[CAS]) {
     private val status = new AtomicReference[KCAS.Status](KCAS.Pending)
     def complete: Boolean = status.compareAndSet(KCAS.Pending,
 						 KCAS.Complete)
@@ -139,15 +120,11 @@ private object Reaction {
     def isPending: Boolean = status.get == KCAS.Pending
 
     def curVal(ref: AtomicReference[AnyRef]): AnyRef = {
-      @tailrec def seek(rx: Reaction): AnyRef = rx match {
-	case Inert => throw Util.Impossible // only happens if there's a bug
-	case PostCommit(_, rest) => seek(rest)
-	case CAS(casRef, ov, nv, rest) =>
-	  if (ref == casRef) {
-	    if (status.get == KCAS.Complete) nv else ov
-	  } else seek(rest)
+      casList find (_.ref == ref) match {
+	case None => throw Util.Impossible // only happens if there's a bug
+	case Some(CAS(_, ov, nv)) =>
+	  if (status.get == KCAS.Complete) nv else ov
       }
-      seek(rx)
     }
   }
 
@@ -155,8 +132,6 @@ private object Reaction {
     case (owner: KCAS) => owner.curVal(ref)
     case v => v
   }
-}
 
-private case object Inert extends Reaction {
-  def casCount = 0
+  val inert = new Reaction(Nil, Nil)
 }
