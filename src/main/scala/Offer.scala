@@ -9,12 +9,25 @@ import java.util.concurrent.locks._
 import java.util.concurrent.atomic._
 
 private abstract class Offer[-A] extends DeletionFlag {
+  // is the Offer still available?
   def isActive: Boolean
+
+  // consume the Offer within the current reaction, and continue on with the
+  // rest of a reagent
   def consumeAndContinue[B,C](
-    completeWith: A, continueWith: B, 
-    rx: Reaction, k: Reagent[B, C], enclosingOffer: Offer[C]
+    completeWith: A,		// the value yielded to the Offerer
+    continueWith: B,		// the value yielded to the continuation
+    rx: Reaction,		// the reaction so far
+    k: Reagent[B, C],		// the continuation
+    enclosingOffer: Offer[C]	// the offer, if any, that the enclosing
+				// reagent is making
   ): Any
-  def isDeleted = !isActive // for use in pools
+
+  // an alias used for Offers appearing in Pools
+  def isDeleted = !isActive 
+
+  // used only when the Offer is enrolled in a Ref, and the value of the Ref
+  // changes
   def abortAndWake: Unit
 }
 
