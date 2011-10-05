@@ -10,10 +10,19 @@ import java.util.concurrent.atomic._
 
 private abstract class Offer[-A] {
   def isActive: Boolean
+  def consumeAndContinue[B,C](
+    completeWith: A, continueWith: B, 
+    rx: Reaction, k: Reagent[B, C], enclosingOffer: Offer[C]
+  ): Any
 }
 
 private object Catalyst extends Offer[Unit] {
   val isActive = true
+  def consumeAndContinue[B,C](
+    completeWith: Unit, continueWith: B, 
+    rx: Reaction, k: Reagent[B, C], enclosingOffer: Offer[C]
+  ): Any = 
+    k.tryReact(continueWith, rx, enclosingOffer)
 }
 
 private object Waiter {
@@ -30,7 +39,7 @@ private final class Waiter[-A](val blocking: Boolean)
 
   // the thread that *created* the Waiter
   private val waiterThread = Thread.currentThread() 
-  def wake {
+  private def wake(u: Unit) {
     if (blocking) LockSupport.unpark(waiterThread)
   }
   
@@ -55,6 +64,23 @@ private final class Waiter[-A](val blocking: Boolean)
     status.compareAndSet(Waiting, a.asInstanceOf[AnyRef])
   @inline def rxWithCompletion(rx: Reaction, a: A): Reaction = 
     rx.withCAS(status, Waiting, a.asInstanceOf[AnyRef])
+
+  def consumeAndContinue[B,C](
+    completeWith: A, continueWith: B, 
+    rx: Reaction, k: Reagent[B, C], enclosingOffer: Offer[C]
+  ): Any = {
+    val newRX = 
+      if (rx.canCASImmediate(k, enclosingOffer)) {
+	if (!tryComplete(completeWith)) // attempt early, and
+	  return Retry	                // retry early on failure
+	else rx		      
+      } else rxWithCompletion(rx, completeWith)
+
+    if (blocking)
+      k.tryReact(continueWith, newRX.withPostCommit(wake), enclosingOffer)
+    else
+      k.tryReact(continueWith, newRX, enclosingOffer)    
+  }
 
   // def reset { status.set(Waiting) }
 }
