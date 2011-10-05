@@ -58,6 +58,7 @@ private final case class Endpoint[A,B,C](
   @inline def maySync = true
   @inline def alwaysCommits = false
 }
+
 object SwapChan {
   @inline def apply[A,B](): (Reagent[A,B], Reagent[B,A]) = {
     val p1 = new CircularPool[Message[A,B,_]]
@@ -65,6 +66,7 @@ object SwapChan {
     (Endpoint(p1,p2,Commit[B]()), Endpoint(p2,p1,Commit[A]()))
   }
 }
+
 object Chan {
   @inline def apply[A](): (Reagent[Unit,A], Reagent[A,Unit]) =
     SwapChan[Unit,A]()

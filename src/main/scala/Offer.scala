@@ -8,21 +8,30 @@ package chemistry
 import java.util.concurrent.locks._
 import java.util.concurrent.atomic._
 
-private abstract class Offer[-A] {
+private abstract class Offer[-A] extends DeletionFlag {
   def isActive: Boolean
   def consumeAndContinue[B,C](
     completeWith: A, continueWith: B, 
     rx: Reaction, k: Reagent[B, C], enclosingOffer: Offer[C]
   ): Any
+  def isDeleted = !isActive // for use in pools
+  def abortAndWake: Unit
 }
 
-private object Catalyst extends Offer[Unit] {
-  val isActive = true
+private class Catalyst[-A](dissolvent: Reagent[Unit,A]) extends Offer[A] {
+  private val alive = new AtomicReference[Boolean](true)
+
+  def isActive = alive.get
   def consumeAndContinue[B,C](
-    completeWith: Unit, continueWith: B, 
+    completeWith: A, continueWith: B, 
     rx: Reaction, k: Reagent[B, C], enclosingOffer: Offer[C]
   ): Any = 
     k.tryReact(continueWith, rx, enclosingOffer)
+
+  def abortAndWake {
+    if (alive.compareAndSet(true, false)) 
+      Reagent.dissolve(dissolvent) // reinstate the catalyst
+  }
 }
 
 private object Waiter {
@@ -44,7 +53,6 @@ private final class Waiter[-A](val blocking: Boolean)
   }
   
   @inline def isActive: Boolean = status.get == Waiting
-  def isDeleted = !isActive // for use in pools
 
   // Poll current waiter value:
   //   - None if Waiting or Aborted
@@ -59,6 +67,8 @@ private final class Waiter[-A](val blocking: Boolean)
   @inline def tryAbort = status.compareAndSet(Waiting, Aborted)
   @inline def rxWithAbort(rx: Reaction): Reaction =
     rx.withCAS(status, Waiting, Aborted)
+
+  def abortAndWake = if (tryAbort) wake()
 
   @inline def tryComplete(a: A) = 
     status.compareAndSet(Waiting, a.asInstanceOf[AnyRef])
@@ -79,7 +89,7 @@ private final class Waiter[-A](val blocking: Boolean)
     if (blocking)
       k.tryReact(continueWith, newRX.withPostCommit(wake), enclosingOffer)
     else
-      k.tryReact(continueWith, newRX, enclosingOffer)    
+      k.tryReact(continueWith, newRX, enclosingOffer)
   }
 
   // def reset { status.set(Waiting) }

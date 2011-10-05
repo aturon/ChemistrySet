@@ -18,7 +18,7 @@ private sealed class Reaction private (
   def canCASImmediate[A,B](k: Reagent[A,B], offer: Offer[B]): Boolean = 
     casCount == 0 && k.alwaysCommits && (offer match {
       case null => true
-      case Catalyst => true
+      case (_: Catalyst[_]) => true
       case (_: Waiter[_]) => false
     })
 
@@ -26,11 +26,7 @@ private sealed class Reaction private (
     new Reaction(casList, postCommit +: pcList)
   def withCAS(ref: AtomicReference[AnyRef], ov: AnyRef, nv: AnyRef): Reaction =
     new Reaction(CAS(ref, ov, nv) +: casList, pcList)
-  def withAbortOffer[A](offer: Offer[A]): Reaction = offer match {
-    case null     => this
-    case Catalyst => this // this case will probably never arise
-    case (w: Waiter[_]) => w.rxWithAbort(this)
-  }
+
   def ++(rx: Reaction): Reaction = 
     new Reaction(casList ++ rx.casList, pcList ++ rx.pcList)
 
@@ -71,19 +67,9 @@ private sealed class Reaction private (
 	  }
 	}
 
-	// We roll forward the KCAS and perform the postCommits in two
-	// separate passes, because we want to roll forward as quickly as
-	// possible after acquisition.  That desire is motivated by cache
-	// coherence concerns, which suggest that we currently own the cache
-	// lines for the CASed refs.
-
-	@tailrec def rollForward(casList: List[CAS]): Unit = casList match {
-	  case Nil => {}
-	  case CAS(ref, ov, nv) :: rest => {
-	    ref.compareAndSet(kcas, nv) // roll forward to new value
-	    rollForward(rest)
-	  }
-	}    
+	def rollForward(casList: List[CAS]): Unit = casList.foreach {
+	  case CAS(ref, _, nv) => ref.compareAndSet(kcas, nv)
+	}
 
 	acquire(casList) match {
 	  case null => 
@@ -94,7 +80,10 @@ private sealed class Reaction private (
       }
     }
 
-    if (success) pcList.foreach(_.apply())
+    if (success) {
+      pcList.foreach(_.apply())  // perform the post-commit actions
+    }
+
     success
   }
 }

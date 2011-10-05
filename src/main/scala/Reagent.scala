@@ -75,9 +75,7 @@ abstract class Reagent[-A, +B] {
     }
   }
 
-  final def dissolve(a: A) {
-    // todo
-  }
+  @inline final def dissolve(a:A) = Reagent.dissolve(ret(a) >=> this)
 
   @inline final def flatMap[C](k: B => Reagent[Unit,C]): Reagent[A,C] = 
     compose(computed(k))
@@ -94,11 +92,21 @@ abstract class Reagent[-A, +B] {
   @inline final def >=>[C](k: Reagent[B,C]): Reagent[A,C] =
     compose(k)
 }
+private object Reagent {
+  def dissolve[A](reagent: Reagent[Unit, A]) {
+    val cata = new Catalyst(reagent)
+    reagent.tryReact((), Reaction.inert, cata) match {
+      case Block => return
+      case _ => throw Util.Impossible // something has gone awry...
+    }
+  }
+}
 
 private abstract class AutoContImpl[A,B,C](val k: Reagent[B, C]) 
 		 extends Reagent[A,C] {
   def retValue(a: A): Any // BacktrackCommand or B
   def newRx(a: A, rx: Reaction): Reaction = rx
+
   final def snoop(a: A) = retValue(a) match {
     case (_: BacktrackCommand) => false
     case b => k.snoop(b.asInstanceOf[B])
@@ -134,7 +142,15 @@ object ret {
 
 private final case class Commit[A]() extends Reagent[A,A] {
   def tryReact(a: A, rx: Reaction, offer: Offer[A]): Any = {
-    if (rx.withAbortOffer(offer).tryCommit) a else Retry
+    offer match {
+      case null => if (rx.tryCommit) a else Retry
+      case (w: Waiter[_]) =>
+	if (w.rxWithAbort(rx).tryCommit) a else Retry
+      case (_: Catalyst[_]) => {
+	rx.tryCommit
+	Block
+      }	
+    }
   }
   def snoop(a: A) = true
   def makeOfferI(a: A, offer: Offer[A]) {}
