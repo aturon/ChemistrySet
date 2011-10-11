@@ -4,8 +4,10 @@
 package chemistry
 
 private sealed class Reaction private (
-  val casList: List[CAS[_]], 
-  val pcList: List[Unit => Unit]) {
+  val casList: List[CAS[_]],		// k-cas built up so far
+  val pcList: List[Unit => Unit],	// post-commit actions
+  val msgSet: HashSet[Message[_,_,_]]   // messages intended for consumption
+) {
   import Reaction._
   
   def casCount: Int = casList.size

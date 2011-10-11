@@ -123,7 +123,7 @@ private abstract class AutoContImpl[A,B,C](val k: Reagent[B, C])
       override def newRx(a: A, rx: Reaction): Reaction = 
 	AutoContImpl.this.newRx(a, rx)
     }
-  final def alwaysCommits = k.alwaysCommits
+  final def alwaysCommits = k.alwaysCommits // this needs to be overridable!
   final def maySync = k.maySync
 }
 private abstract class AutoCont[A,B] extends AutoContImpl[A,B,B](Commit[B]())
@@ -183,6 +183,7 @@ object computed {
 }
 
 object lift {
+  // this is WRONG -- does NOT always commit
   @inline def apply[A,B](f: PartialFunction[A,B]): Reagent[A,B] = 
     new AutoCont[A,B] {
       def retValue(a: A): Any = if (f.isDefinedAt(a)) f(a) else Block

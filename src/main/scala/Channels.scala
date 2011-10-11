@@ -35,6 +35,7 @@ private final case class Endpoint[A,B,C](
   k: Reagent[B,C]
 ) extends Reagent[A,C] {
   def tryReact(a: A, rx: Reaction, offer: Offer[C]): Any = {
+    // todo: avoid attempts of claiming the same message twice
     @tailrec def tryFrom(n: incoming.Node, retry: Boolean): Any = 
       if (n == null) {
 	if (retry) Retry else Block
@@ -50,7 +51,10 @@ private final case class Endpoint[A,B,C](
     if (offer != null) outgoing.put(new Message(a, rx, k, offer))
 
     // now attempt an immediate reaction
-    tryFrom(incoming.cursor, false)
+    tryFrom(incoming.cursor, false) match {
+      case Block => Block // todo: fall back on "multithreaded" reagents
+      case ow => ow
+    }
   }
   def snoop(a: A): Boolean = incoming.snoop
   @inline def composeI[D](next: Reagent[C,D]) = 
@@ -71,3 +75,6 @@ object Chan {
   @inline def apply[A](): (Reagent[Unit,A], Reagent[A,Unit]) =
     SwapChan[Unit,A]()
 }
+
+// is there a possibility of building the exchanger directly here?
+// also, can the endpoint logic be decomposed/parameterized more?
