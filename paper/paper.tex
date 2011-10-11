@@ -1,16 +1,112 @@
 \documentclass[preprint]{sigplanconf}
 
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{mathpartir}
+
+\newcommand{\ra}{\rightarrow}
+\newcommand{\gives}{\vdash}
+\newcommand{\proves}{\vdash}
+\newcommand{\GA}{\ |\ }
+\newcommand{\kw}[1]{\textsf{#1}}
+\newcommand{\ty}[1]{\textrm{#1}\ }
+\newcommand{\bind}{\mbox{\ \scriptsize$>\!\!>\!=$\ }}
+\newcommand{\letrec}[2]{\kw{letrec}\ #1\ \kw{in}\ #2}
+\newcommand{\LET}[4]{\kw{let}_{#1}\ #2 = #3\ \kw{in}\ #4}
+
 \begin{document}
 
 \authorinfo{}{}{}
-\title{Reagents}
+% yikes!
+\title{Reagents: expressing and composing patterns of fine-grained concurrency}
 \maketitle
 
 \begin{abstract}
+blah blah
 \end{abstract}
+
+``Programs are what happens between cache misses.''
+
+As with most ..., concurrency only exacerbates performance problems
+with the memory hierarchy.
+
+ahmdahl's law -- even if you parallelize the big chunks, the
+fine-grained stuff will get you in the end
+
+%\section{Reagent semantics}
+
+%\begin{verbatim}
+  
+%\end{verbatim}
+
 
 \bibliographystyle{abbrvnat}
 
-
-
 \end{document}
+
+# General notes
+
+Imposes no cache-coherence overhead on isolated data structures
+
+Can argue that transactional-event-style liveness properties are
+important if you want general way of composing fine-grained concurrent
+algorithms with message-passing
+
+To what extent do reagents encompass STM?  who are we competing with?
+
+multiparadim, expressive, fast -- all that's great, but sales pitch
+needs to be oriented around a customer with specific needs.  any
+reason not to use the pitch of extensible, composable j.u.c.?
+
+# Contributions
+
+  - make it easier to express fine-grained concurrent algorithms,
+  including blocking operations etc.  make it possible to build them
+  compositionally, which already happens in the literature but is
+  largely unremarked upon.
+
+  - we capture exponential backoff, elimination backoff, and other
+  such patterns once and for all
+
+  - can use flat combining as illustration of capturing very general
+  concurrency abstraction
+
+  - smooth blend of message-passing and shared-state concurrency
+  isolation for shared state, coherent communication through messages,
+  uniform blocking/synchronization
+
+  - operational semantics
+
+  - yields completely lock-free implementation of core CML
+
+  - generalizes join calculus implementation, allowing dissolution
+  even for existing channels
+
+  - generalizes transactions events, but with much better
+  implementation
+
+# To do
+
+  - benchmark against STM (possibly Akka Transactors?)
+
+  - benchmark queues, including flat combining and buckets
+
+# Outline
+
+2.5 Title, abstract, intro, library overview 
+1.5 Semantics 
+2.5 Implementation/algorithms 
+1.0 Performance results
+1.5 Related work
+1.0 Conclusion and bib
+
+How much time should we spend covering scalable concurrency
+background?  This is perhaps tied to strategies for introducing the
+library constructs: the primitives can be shown by-need for examples.
+Should consult good papers like Ryan's and Jesse's for examples here.
+
+# Semantics
+
+Need to nail down story for overlapping state access.  In particular,
+when (if ever) is an error flagged?  Unfortunately, talking about heap
+unsplittability is rather more complicated than splittability.
