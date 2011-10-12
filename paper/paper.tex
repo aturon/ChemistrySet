@@ -32,37 +32,80 @@ blah blah
 
 \subsection*{The problem}
 
-Ahmdahl's law tells us that sequential bottlenecks fundamentally limit
-profit from parallelism~\cite{?}.  In practice, the effect is made
-fatal by a silent killer: interprocessor communication, often in the
-form of cache coherence.  When one thread waits on another, the
-program pays the cost of lost parallelism \emph{and} an extra cache
-miss.  Extra misses can easily add up to parallel \emph{slowdown},
-more than negating the benefits of the remaining parallelism.  Cache,
-as ever, is king.
+Ahmdahl's law tells us that sequential bottlenecks fundamentally limit our
+profit from parallelism~\cite{?}.  In practice, the effect is amplified by
+another factor: interprocessor communication, often in the form of cache
+coherence.  When one thread waits on another, the program pays the cost of
+lost parallelism \emph{and} an extra cache miss.  The extra misses can easily
+yield parallel \emph{slowdown}, more than negating the benefits of the
+remaining parallelism.  
 
-The easy answer is: avoid communication.  In other words, parallelize
-at a coarse grain, giving threads large chunks of independent work.
-That strategy only goes so far.  Some work doesn't easily factor into
-large chunks, or equal size chunks.  Fine-grained parallelism is
-easier to find, and easier to sprinkle throughout existing sequential
-code.  With increasing pressure to parallelize, fine-grained
-parallelism will only become more common.
+Cache, as ever, is king.
 
-In the past two decades,\footnote{Herlihy/Wing, Mellor-Crummey/Scott}
-an enormous literature has emerged 
+The easy answer is: avoid communication.  In other words, parallelize at a
+coarse grain, giving threads large chunks of independent work.  But some work
+doesn't easily factor into large chunks, or equal-size chunks.  Fine-grained
+parallelism is easier to find, and easier to sprinkle throughout existing
+sequential code.
+%With increasing pressure to parallelize, fine-grained parallelism will only
+%become more common.
+
+Another answer is: communicate efficiently.  The past two
+decades\footnote{Herlihy/Wing, Mellor-Crummey/Scott} have produced a sizable
+collection of algorithms for synchronization, communication, and shared
+storage which minimize the use of memory bandwidth and avoid unnecessary
+waiting.  This research effort has led to industrial-strength
+libraries---\texttt{java.util.concurrent} (JUC) the most prominent---offering
+a wide range of concurrency primitives appropriate for fine-grained
+parallelism.
+
+Such libraries are an enormous undertaking---and one that must be repeated for
+new platforms.  They tend to be conservative, implementing only those data
+structures and primitives likely to fulfill common needs.  In addition, it is
+generally not possible to safely combine the facilities of the library.  For
+example, JUC provides queues, sets and maps, but not stacks or bags.  Its
+queues come in both blocking and nonblocking forms, while its sets and maps
+are nonblocking only.  Although the queues provide atomic (thread-safe)
+dequeuing and sets provide atomic insertion, it is not possible to combine
+these into a single atomic operation.  
+
+In short, libraries for fine-grained concurrency are indispensable, but hard
+to write, hard to extend by composition, and hard to tailor to the exact needs
+of a particular user.
 
 \subsection*{Our contribution}
 
+We have developed a core library of \emph{composable} primitives for
+fine-grained concurrency.
+
+by no means a silver bullet.
+
+why is this different from STM
+
 \section{Reagents}
+\label{sec:reagents}
+
+
 
 \section{Semantics}
+\label{sec:semantics}
 
-\section{Implemention}
+
+
+\section{Implementation}
+\label{sec:implementation}
+
+
 
 \section{Performance}
+\label{sec:performance}
+
+
 
 \section{Related work}
+\label{sec:related}
+
+
 
 \bibliographystyle{abbrvnat}
 
