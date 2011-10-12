@@ -25,24 +25,64 @@
 blah blah
 \end{abstract}
 
-``Programs are what happens between cache misses.''
+\section{Introduction}
 
-As with most ..., concurrency only exacerbates performance problems
-with the memory hierarchy.
+\hspace{\stretch{1}}\emph{Programs are what happens between cache
+  misses}.\footnote{Folklore; origin unknown.}
 
-ahmdahl's law -- even if you parallelize the big chunks, the
-fine-grained stuff will get you in the end
+\subsection*{The problem}
 
-%\section{Reagent semantics}
+Ahmdahl's law tells us that sequential bottlenecks fundamentally limit
+profit from parallelism~\cite{?}.  In practice, the effect is made
+fatal by a silent killer: interprocessor communication, often in the
+form of cache coherence.  When one thread waits on another, the
+program pays the cost of lost parallelism \emph{and} an extra cache
+miss.  Extra misses can easily add up to parallel \emph{slowdown},
+more than negating the benefits of the remaining parallelism.  Cache,
+as ever, is king.
 
-%\begin{verbatim}
-  
-%\end{verbatim}
+The easy answer is: avoid communication.  In other words, parallelize
+at a coarse grain, giving threads large chunks of independent work.
+That strategy only goes so far.  Some work doesn't easily factor into
+large chunks, or equal size chunks.  Fine-grained parallelism is
+easier to find, and easier to sprinkle throughout existing sequential
+code.  With increasing pressure to parallelize, fine-grained
+parallelism will only become more common.
 
+In the past two decades,\footnote{Herlihy/Wing, Mellor-Crummey/Scott}
+an enormous literature has emerged 
+
+\subsection*{Our contribution}
+
+\section{Reagents}
+
+\section{Semantics}
+
+\section{Implemention}
+
+\section{Performance}
+
+\section{Related work}
 
 \bibliographystyle{abbrvnat}
 
 \end{document}
+
+# Intro notes
+
+What do we want to accomplish?
+
+ - motivate libraries like j.u.c
+ - downsides of such libraries
+   - huge research & impl effort
+   - not easily extensible
+   - internal structure has repeated, but unabstracted patterns
+ - our contribution
+   - a new way of expressing scalable algorithms that
+     - doesn't lose much performance 
+     - allows composition
+     - is much nicer than direct programming
+     - also incorporates blocking behavior
 
 # General notes
 
