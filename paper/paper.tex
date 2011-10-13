@@ -1,27 +1,23 @@
 \documentclass[preprint]{sigplanconf}
 
-\usepackage{amsmath}
-\usepackage{amsfonts}
-\usepackage{mathpartir}
+\newcommand{\elide}[1]{}
 
-\newcommand{\ra}{\rightarrow}
-\newcommand{\gives}{\vdash}
-\newcommand{\proves}{\vdash}
-\newcommand{\GA}{\ |\ }
-\newcommand{\kw}[1]{\textsf{#1}}
-\newcommand{\ty}[1]{\textrm{#1}\ }
-\newcommand{\bind}{\mbox{\ \scriptsize$>\!\!>\!=$\ }}
-\newcommand{\letrec}[2]{\kw{letrec}\ #1\ \kw{in}\ #2}
-\newcommand{\LET}[4]{\kw{let}_{#1}\ #2 = #3\ \kw{in}\ #4}
+\input{packages}
 
 \begin{document}
 
 \authorinfo{}{}{}
 % yikes!
-\title{Reagents: expressing and composing patterns of fine-grained concurrency}
+%\title{Reagents: expressing and composing patterns of fine-grained concurrency}
+\title{Reagents: expressing and composing fine-grained concurrency}
 \maketitle
 
 \begin{abstract}
+blah blah\\
+blah blah\\
+blah blah\\
+blah blah\\
+blah blah\\
 blah blah
 \end{abstract}
 
@@ -67,30 +63,180 @@ example, JUC provides queues, sets and maps, but not stacks or bags.  Its
 queues come in both blocking and nonblocking forms, while its sets and maps
 are nonblocking only.  Although the queues provide atomic (thread-safe)
 dequeuing and sets provide atomic insertion, it is not possible to combine
-these into a single atomic operation.  
+these into a single atomic operation that moves an element from a queue into a
+set.
 
 In short, libraries for fine-grained concurrency are indispensable, but hard
-to write, hard to extend by composition, and hard to tailor to the exact needs
-of a particular user.
+to write, hard to extend by composition, and hard to tailor to the needs of
+particular users.
 
 \subsection*{Our contribution}
 
-We have developed a core library of \emph{composable} primitives for
-fine-grained concurrency.
+% first class synchronous operations
+
+%% We have developed a small set of primitives for fine-grained concurrency that
+%% are \emph{expressive} and \emph{composable}:
+
+%% We have developed \emph{reagents}, a new abstraction for fine-grained
+%% concurrency that is \emph{expressive} and \emph{composable}:
+
+%% We have developed \emph{reagents}, which are first-class representations of
+%% fine-grained concurrency primitives.  Reagents are \emph{expressive} and
+%% \emph{composable}:
+
+We have developed \emph{reagents}, which abstractly represent fine-grained
+concurrent operations.  Reagents are \emph{expressive} and \emph{composable},
+but retain the scalability and performance of existing algorithms:
+
+%We have developed \emph{reagents}, 
+
+%% compositional primitives for fine-grained concurrency
+
+%% a small set of primitives for fine-grained concurrency that
+%% are \emph{expressive} and \emph{composable}:
+
+\paragraph{Expressive}  .
+
+\paragraph{Composable} .
+
+We see this work as serving the needs of two distinct groups: concurrency
+experts and concurrency users.  Using reagents, experts can write algorithms
+more easily, because common patterns are expressible as abstractions and many
+are built-in.  Users can compose, extend, and tailor the library without
+detailed knowledge of the algorithms involved.
+
+blend shared-state and message-passing concurrency
+
+
+\elide{
+# Contributions
+
+  - make it easier to express fine-grained concurrent algorithms,
+  including blocking operations etc.  make it possible to build them
+  compositionally, which already happens in the literature but is
+  largely unremarked upon.
+
+  - we capture exponential backoff, elimination backoff, and other
+  such patterns once and for all
+
+  - can use flat combining as illustration of capturing very general
+  concurrency abstraction
+
+  - smooth blend of message-passing and shared-state concurrency
+  isolation for shared state, coherent communication through messages,
+  uniform blocking/synchronization
+
+  - operational semantics
+
+  - yields completely lock-free implementation of core CML
+
+  - generalizes join calculus implementation, allowing dissolution
+  even for existing channels
+
+  - generalizes transactional events, but with more specialized
+  implementation (doesn't need an underlying STM)
 
 by no means a silver bullet.
 
 why is this different from STM
+}
+
+\section{Background}
+
+Reagents are directly motivated by 
+
+Before introducing reagents, it will be helpful to 
+
+readers familiar with these algorithms can safely jump to sec:reagents
+
+also background on Scala
+
+traditional code for Treiber stack (with exp. backoff), 
+
+\begin{lstlisting}
+class TreiberStack[A] {
+  private val head = new AtomicReference[List[A]](Nil)
+  def push(a: A) {
+    val backoff = new Backoff
+    while (true) {
+      val cur = head.get()
+      if (head.cas(cur, a :: cur)) return
+      backoff.once()
+    }
+  }
+  def tryPop(): Option[A] = {
+    val backoff = new Backoff
+    while (true) {
+      val cur = head.get() 
+      cur match {
+        case Nil     => return None
+        case a::tail => if (head.cas(cur, tail)) return a
+      }
+      backoff.once()
+    }
+  }
+}
+\end{lstlisting}
+
+need to explain pattern matching and PartialFunction
+
+talk about elimination backoff and blocking versions but don't show code.
+
+discuss the insight behind MCS locks
 
 \section{Reagents}
 \label{sec:reagents}
 
+First we give an overview of the library, and then we illustrate its
+expressiveness and composability by showing how to implement several 
+ 
+chemistry metaphor
 
+lack of isolation needed to express many lock-free algorithms.
+message-passing turns out to be a good way to understand what's going on.
+
+\begin{lstlisting}
+class TreiberStack[A] {
+  private val head = new Ref[List[A]](Nil)
+  val push: Reagent[A, Unit] = head.upd {
+    (xs, x) => (x:xs, ())
+  }
+  val tryPop: Reagent[Unit, Option[A]] = head.upd {
+    case (x::xs, ()) => (xs, Some(x))
+    case (Nil,   ()) => (Nil, None)
+  }
+}
+\end{lstlisting}
+
+Examples:
+
+\begin{itemize}
+\item TreiberStack
+\item with blocking
+\item with elimination backoff
+\item MSQueue
+\item with blocking
+\item with buckets?
+\item Counter -> semaphore
+\item RWLocks
+\item Tree barriers
+\item Dining philosophers(ish)
+\item Flat combining
+\end{itemize}
 
 \section{Semantics}
 \label{sec:semantics}
 
+\newcommand{\ra}{\rightarrow}
+\newcommand{\gives}{\vdash}
+\newcommand{\proves}{\vdash}
 \newcommand{\kw}[1]{\textsf{#1}}
+\newcommand{\GA}{\ |\ }
+\newcommand{\step}{\longrightarrow}
+\newcommand{\cstep}[1]{\stackrel{#1}{\Longrightarrow}}
+
+\newcommand{\evalCtx}{\mathbb{E}}
+\newcommand{\procCtx}{\mathbb{P}}
 
 \newcommand{\ret}[1]{\kw{ret}(#1)}
 \newcommand{\never}{\kw{never}}
@@ -100,18 +246,50 @@ why is this different from STM
 \newcommand{\lift}[1]{\kw{lift}(#1)}
 \newcommand{\send}[1]{#1}
 \newcommand{\cas}[3]{\kw{cas}(#1,#2,#3)}
-\newcommand{\read}[1]{\kw{read}(#1)}
+\newcommand{\rd}[1]{\kw{read}(#1)}
 \newcommand{\newChan}{\kw{new Chan}}
 \newcommand{\newRef}[1]{\kw{new Ref(#1)}}
 
-\newcommand{\GA}{\ |\ }
+\elide{
+\[
+\infer
+  {P_i, \sigma_i \cstep{t_i} P'_i, \sigma'_i}
+  {P_1 | \cdots | P_n,\ \sigma_1 \uplus \cdots \uplus \sigma_n\ \step\
+   P'_1 | \cdots | P'_n,\ \sigma'_1 \uplus \cdots \uplus \sigma'_n
+  }
+\]
 
+\[
+\infer
+  {r_i!v_i, \sigma_i \cstep{t_i} \ret{v'_i}, \sigma'_i}
+  {\procCtx[\prod \evalCtx_i[r_i ! v_i]],\ \biguplus \sigma_i \step
+   \procCtx[\prod \evalCtx_i[\ret{v'_i}]],\ \biguplus \sigma'_i}
+\]
+}
 
+\[
+\infer
+  {r_i!v_i, \sigma_i \cstep{t_i} \ret{v'_i}, \sigma'_i}
+  {\prod \evalCtx_i[r_i ! v_i],\ \biguplus \sigma_i \step
+   \prod \evalCtx_i[\ret{v'_i}],\ \biguplus \sigma'_i}
+\]
 
 \section{Implementation}
 \label{sec:implementation}
 
-
+\begin{lstlisting}
+def tryReact(a: A, rx: Reaction, offer: Offer[B]): Any = 
+  r1.tryReact(a, rx, offer) match {
+    case Retry => 
+      r2.tryReact(a, rx, offer) match {
+        case Retry => Retry
+        case Block => Retry // must retry r1
+        case ans   => ans
+      }
+    case Block => r2.tryReact(a, rx, offer)
+    case ans => ans
+  }
+\end{lstlisting}
 
 \section{Performance}
 \label{sec:performance}
@@ -124,6 +302,7 @@ why is this different from STM
 
 
 \bibliographystyle{abbrvnat}
+\bibliography{reagents}
 
 \end{document}
 
@@ -157,33 +336,6 @@ multiparadim, expressive, fast -- all that's great, but sales pitch
 needs to be oriented around a customer with specific needs.  any
 reason not to use the pitch of extensible, composable j.u.c.?
 
-# Contributions
-
-  - make it easier to express fine-grained concurrent algorithms,
-  including blocking operations etc.  make it possible to build them
-  compositionally, which already happens in the literature but is
-  largely unremarked upon.
-
-  - we capture exponential backoff, elimination backoff, and other
-  such patterns once and for all
-
-  - can use flat combining as illustration of capturing very general
-  concurrency abstraction
-
-  - smooth blend of message-passing and shared-state concurrency
-  isolation for shared state, coherent communication through messages,
-  uniform blocking/synchronization
-
-  - operational semantics
-
-  - yields completely lock-free implementation of core CML
-
-  - generalizes join calculus implementation, allowing dissolution
-  even for existing channels
-
-  - generalizes transactions events, but with much better
-  implementation
-
 # To do
 
   - benchmark against STM (possibly Akka Transactors?)
@@ -192,12 +344,14 @@ reason not to use the pitch of extensible, composable j.u.c.?
 
 # Outline
 
-2.5 Title, abstract, intro, library overview 
+1.2 Title, abstract, intro, 
+1.0 Background
+2.5 Library overview & examples
 1.5 Semantics 
-2.5 Implementation/algorithms 
-1.0 Performance results
-1.5 Related work
-1.0 Conclusion and bib
+1.5 Implementation/algorithms 
+0.5 Performance results
+1.0 Related work
+0.8 Bib
 
 How much time should we spend covering scalable concurrency
 background?  This is perhaps tied to strategies for introducing the

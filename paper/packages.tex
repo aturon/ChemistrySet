@@ -1,0 +1,67 @@
+\usepackage{color}
+\usepackage{listings}
+\definecolor{StringRed}{rgb}{.637,0.082,0.082}
+\definecolor{CommentGreen}{rgb}{0,0.5,0}
+\definecolor{KeywordBlue}{rgb}{0,0,0.7}
+% "define" Scala
+\lstdefinelanguage{scala}{morekeywords={class,object,trait,extends,with,new,if,while,for,def,val,var,this,case,match,private,true,false},
+otherkeywords={->,=>},
+sensitive=true,
+morecomment=[l]{//},
+morecomment=[s]{/*}{*/},
+morestring=[b]"}
+% Default settings for code listings
+\lstset{
+%frame=tb,
+language=scala,
+aboveskip=4mm,
+belowskip=4mm,
+showstringspaces=false,
+columns=flexible,
+basicstyle={\sffamily},
+commentstyle=\color{CommentGreen}\emph,
+keywordstyle=\color{KeywordBlue}\bfseries,
+literate={=>}{{$\Rightarrow$\ }}1
+}
+
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{mathpartir}
+
+
+%% from Scalable Join Patterns
+
+%% \lstdefinelanguage{threeextensions} 
+%% {morekeywords={rec,partial,var,from,select,where,orderby,yield,let,join,on,into,equals,group,by,ascending,descending,get,set},
+%% sensitive,
+%% }[keywords]%
+%% \lstdefinelanguage{fourextensions}
+%% {morekeywords={dynamic},
+%% sensitive
+%% }[keywords]
+%% \lstdefinelanguage{CSharpLatest}
+%% {language=[Sharp]{C}, %
+%% alsolanguage=threeextensions,
+%% alsolanguage=fourextensions,
+%% basicstyle=\ttfamily\small, %\small
+%% %basicstyle=\sffamily\scriptsize, %\small
+%% showstringspaces=false,
+%% keywordstyle=\color{KeywordBlue}\bfseries,
+%% %keywordstyle=\underbar,
+%% commentstyle=\color{CommentGreen}\emph,
+%% stringstyle=\color{StringRed},
+%% literate= {///}{{}}{1} {//++}{}{0} {Join<IntSet,MsgArray>}{Join}{4} {Chord<A,R>}{Chord}{5} {internal}{}{0}  {override}{}{0} {ChannelOf(myMsg)}{myMsg.Chan}{10},
+%% columns=[l]fixed,
+%% basewidth=4.5pt,
+%% firstnumber=1,
+%% %numbers=left,
+%% %numberblanklines=false,
+%% numbersep=6pt,
+%% rangebeginprefix=\#region\ ,
+%% rangeendprefix=\#endregion\ ,
+%% includerangemarker=false,
+%% frame=single,%lines
+%% frameround=tttt,
+%% mathescape=true
+%% }
+%% \lstset{language={CSharpLatest}}
