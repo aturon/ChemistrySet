@@ -90,6 +90,22 @@ why is this different from STM
 \section{Semantics}
 \label{sec:semantics}
 
+\newcommand{\kw}[1]{\textsf{#1}}
+
+\newcommand{\ret}[1]{\kw{ret}(#1)}
+\newcommand{\never}{\kw{never}}
+\newcommand{\postCommit}[1]{\kw{postCommit}(#1)}
+\newcommand{\computed}[1]{\kw{computed}(#1)}
+\newcommand{\compose}{{\small\texttt{>=>}}}
+\newcommand{\lift}[1]{\kw{lift}(#1)}
+\newcommand{\send}[1]{#1}
+\newcommand{\cas}[3]{\kw{cas}(#1,#2,#3)}
+\newcommand{\read}[1]{\kw{read}(#1)}
+\newcommand{\newChan}{\kw{new Chan}}
+\newcommand{\newRef}[1]{\kw{new Ref(#1)}}
+
+\newcommand{\GA}{\ |\ }
+
 
 
 \section{Implementation}
