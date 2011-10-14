@@ -144,16 +144,46 @@ why is this different from STM
 
 \section{Background}
 
-Reagents are directly motivated by 
+Broadly, we are interested in data structures and algorithms for
+communication, synchronization, or both.  This section gives a brief
+survey of the most important technqiues for communication and
+synchronization in a fine-grained setting---exactly the techniques
+that reagents abstract and generalize.  Readers already familiar with
+Treiber stacks~\cite{?}, elimination-backoff stacks~\cite{?}, dual
+stacks~\cite{?}, and MCS locks~\cite{?} can safely skip to
+\secref{reagents}.
 
-Before introducing reagents, it will be helpful to 
+Given our target of cache-coherent, shared-memory architectures, the
+most direct way of communicating between threads is modifying shared
+memory.  The challange is to provide both \emph{atomicity} and
+\emph{scalability}: communications must happen concurrently both
+without corruption and without clogging the limited memory bandwidth,
+even when many cores are communicating.  A simple way to provide
+atomicity is to associate a lock with each shared data structure,
+acquiring the lock before performing any operation.  The prevailing
+wisdom\footnote{With some notable exceptions, like the recent work on
+  \emph{flat combining}~\cite{?}, which we explore in \secref{?}} is
+that such \emph{coarse-grained} locking is inherently unscalable:
+\begin{itemize}
+\item It forces operations on the data structure to be serialized,
+  even when they could be performed in parallel.
+\item It adds extra cache-coherence traffic, since each core must
+  acquire the same lock's cache line in exclusive mode before
+  operating.  For fine-grained communication, that means at least one
+  cache miss per operation.
+\item It is susceptible to ... % blocking 
+\end{itemize}
 
-readers familiar with these algorithms can safely jump to sec:reagents
 
-also background on Scala
+
+%% For example, containers like
+%% stacks and queues provide communication; contructs like locks and
+%% barriers provide synchronization; and (synchronous) message channels
+%% provide both.
 
 traditional code for Treiber stack (with exp. backoff), 
 
+\begin{figure}
 \begin{lstlisting}
 class TreiberStack[A] {
   private val head = new AtomicReference[List[A]](Nil)
@@ -178,6 +208,8 @@ class TreiberStack[A] {
   }
 }
 \end{lstlisting}
+\caption{Treiber's stack}
+\end{figure}
 
 need to explain pattern matching and PartialFunction
 
