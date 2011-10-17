@@ -1,10 +1,7 @@
 \documentclass[preprint]{sigplanconf}
 
-\newcommand{\secref}[1]{\S\ref{sec:#1}}
-\newcommand{\figref}[1]{Fig.~\ref{fig:#1}}
-\newcommand{\elide}[1]{}
-
 \input{packages}
+\input{macros}
 
 \begin{document}
 
@@ -176,8 +173,6 @@ that such \emph{coarse-grained} locking is inherently unscalable:
 \item It is susceptible to ... % blocking %TODO
 \end{itemize}
 
-%% Say something about CONTENTION.
-
 To combat scalability problems, data structures employ finer-grained locking,
 or eschew locking altogether.  Fine-grained locking associates locks with
 small, independent parts of a data structure, allowing those parts to be
@@ -219,24 +214,35 @@ class TreiberStack[A] {
 \label{fig:classic-treiber}
 \end{figure}
 
-To make this discussion concrete, we give a classic example of a fine-grained
-concurrent data structure: Treiber's lock-free stack~\cite{?}, shown in
-\figref{classic-treiber}.
+\figref{classic-treiber} gives a classic example of a fine-grained
+concurrent data structure: Treiber's lock-free stack~\cite{?}.  The
+stack is represented as an \emph{immutable} linked list.  Mutation
+occurs solely through the \lstinline{head} pointer, represented here
+as an \lstinline{AtomicReference}.  The \lstinline{head} is mutated
+using \lstinline{compareAndSet} (here abbreviated as \lstinline{cas}),
+which takes an expected value and a new value, and atomically updates
+the reference
+
 %notice: changed to less desirable representation to make CAS work
 
 %Most of the Scala code in this paper should be 
 %need to explain pattern matching and PartialFunction
 
-%% For example, containers like
-%% stacks and queues provide communication; contructs like locks and
-%% barriers provide synchronization; and (synchronous) message channels
-%% provide both.
+%% Say something about CONTENTION.
 
-Treiber's stack scales better than a lock-based stack mainly because it
-decreases the amount of shared data that must be updated per operation:
-instead of acquiring a shared lock, altering a shared stack pointer, and
-releasing the shared lock, Treiber's stack does a single CAS to update the
-shared pointer directly.  Scalability can be further improved by 
+Treiber's stack scales better than a lock-based stack mainly because
+it decreases the amount of shared data that must be updated per
+operation: instead of acquiring a shared lock, altering a shared stack
+pointer, and releasing the shared lock, Treiber's stack does a single
+CAS to update the shared pointer directly.  But the head pointer of
+the stack is still a centralized source of contention.  Spreading out
+the contention requires parallelizing stack operations---but how,
+given that they all involve modifying the top of the stack?
+
+Parallelization requires a change of perspective.  Normally, we view
+concurrent operations on the same part of a data structure as
+competing to atomically update that data structure; we want the
+operations to be isolated.  But if 
 
 %talk about elimination backoff and blocking versions but don't show code.
 
@@ -245,13 +251,34 @@ discuss the insight behind MCS locks
 \section{Reagents}
 \label{sec:reagents}
 
-First we give an overview of the library, and then we illustrate its
-expressiveness and composability by showing how to implement several 
+In the last section, we saw a range of strategies for communication
+and synchronizion at a fine grain:
+\begin{itemize}
+\item using CAS to make direct, atomic updates;
+\item using exponential backoff to ease contention; 
+\item using side-channel communication to increase parallelism; 
+\item using disjoint spinwaiting to eliminate useless cache traffic; 
+\item using dual data structures to incorporate blocking.
+\end{itemize}
+Reagents unify these disparate techniques into a single framework for
+writing concurrent algorithms.  Some of the techniques are built into
+the framework, while others are expressible as reusable abstractions.
+% extensibility and composability
+
+\subsection{The main idea}
+
+%% The aim of reagents is to make it easy to express these and other
+%% patterns, while providing compositionality blah blah
+
+%% First we give an overview of the library, and then we illustrate its
+%% expressiveness and composability by showing how to implement several 
  
 chemistry metaphor
 
 lack of isolation needed to express many lock-free algorithms.
 message-passing turns out to be a good way to understand what's going on.
+
+\subsection{Expressiveness by example}
 
 \begin{lstlisting}
 class TreiberStack[A] {
@@ -279,34 +306,51 @@ Examples:
 \item RWLocks
 \item Tree barriers
 \item Dining philosophers(ish)
-\item Flat combining
+\item Flat combining - doesn't work if commit is two-phase process.
+  probably too much to bring into scope for this paper, anyway
 \end{itemize}
+
+\begin{lstlisting}
+class MSQueue[A] {
+  private final case class Node(
+    data: A, next: Ref[Node] = Ref(null)
+  )
+  private val head = Ref(Node(null))
+  private val tail = Ref(head.read!())
+
+  val enq: Reagent[A, Unit] = computed { (x:A) =>
+    @tailrec def search: Reagent[Unit,Unit] = 
+      tail.read ! () match {
+        case    Node(_, r@Ref(null)) => 
+          r.cas(null, Node(x))
+        case ov@Node(_, Ref(nv)) => 
+          tail.cas(ov,nv) !? (); search
+      }
+    search
+  }
+  val tryDeq: Reagent[Unit, Option[A]] = head.upd {
+    case Node(_, Ref(n@Node(x, _))) => (n, Some(x))
+    case emp => (emp, None)
+  }
+}
+\end{lstlisting}
 
 \section{Semantics}
 \label{sec:semantics}
 
-\newcommand{\ra}{\rightarrow}
-\newcommand{\gives}{\vdash}
-\newcommand{\proves}{\vdash}
-\newcommand{\kw}[1]{\textsf{#1}}
-\newcommand{\GA}{\ |\ }
-\newcommand{\step}{\longrightarrow}
-\newcommand{\cstep}[1]{\stackrel{#1}{\Longrightarrow}}
+Try to keep this minimal for the sake of space
 
-\newcommand{\evalCtx}{\mathbb{E}}
-\newcommand{\procCtx}{\mathbb{P}}
+Purpose of the semantics is mainly to clarify the relationship between
+the shared-state and message-passing aspects of reagents.
 
-\newcommand{\ret}[1]{\kw{ret}(#1)}
-\newcommand{\never}{\kw{never}}
-\newcommand{\postCommit}[1]{\kw{postCommit}(#1)}
-\newcommand{\computed}[1]{\kw{computed}(#1)}
-\newcommand{\compose}{{\small\texttt{>=>}}}
-\newcommand{\lift}[1]{\kw{lift}(#1)}
-\newcommand{\send}[1]{#1}
-\newcommand{\cas}[3]{\kw{cas}(#1,#2,#3)}
-\newcommand{\rd}[1]{\kw{read}(#1)}
-\newcommand{\newChan}{\kw{new Chan}}
-\newcommand{\newRef}[1]{\kw{new Ref(#1)}}
+\begin{itemize}
+  \item read, cas
+  \item send
+  \item choice
+  \item react
+  \item bind and ret
+  \item computed?
+\end{itemize}
 
 \elide{
 \[
@@ -399,6 +443,11 @@ reason not to use the pitch of extensible, composable j.u.c.?
   - benchmark against STM (possibly Akka Transactors?)
 
   - benchmark queues, including flat combining and buckets
+
+  - somewhere say that: we examine fairly simple examples in the
+  paper, due to size constraints.  but we can handle more complex
+  cases like sets/maps represented via skip lists, basket queues, 
+  and are exploring flat combining.
 
 # Outline
 
