@@ -32,8 +32,8 @@ profit from parallelism~\cite{?}.  In practice, the effect is amplified by
 another factor: interprocessor communication, often in the form of cache
 coherence.  When one thread waits on another, the program pays the cost of
 lost parallelism \emph{and} an extra cache miss.  The extra misses can easily
-yield parallel \emph{slowdown}, more than negating the benefits of the
-remaining parallelism.  
+accumulate to yield parallel \emph{slowdown}, more than negating the benefits
+of the remaining parallelism.
 
 Cache, as ever, is king.
 
@@ -107,6 +107,7 @@ detailed knowledge of the algorithms involved.
 
 blend shared-state and message-passing concurrency
 
+implemented a Scala library
 
 \elide{
 # Contributions
@@ -260,12 +261,20 @@ and synchronizion at a fine grain:
 \item using disjoint spinwaiting to eliminate useless cache traffic; 
 \item using dual data structures to incorporate blocking.
 \end{itemize}
-Reagents unify these disparate techniques into a single framework for
-writing concurrent algorithms.  Some of the techniques are built into
-the framework, while others are expressible as reusable abstractions.
+Reagents incorporate these disparate techniques into a uniform framework for
+writing concurrent algorithms.  Some of the techniques are built into the
+framework, while others are expressible as reusable abstractions.
+
+more easily and concisely
 % extensibility and composability
 
 \subsection{The main idea}
+
+Reagents are a new instance of an old idea: computations can be usefully
+represented as data.
+
+% no reason not to present this as an ADT
+
 
 %% The aim of reagents is to make it easy to express these and other
 %% patterns, while providing compositionality blah blah
@@ -312,22 +321,18 @@ Examples:
 
 \begin{lstlisting}
 class MSQueue[A] {
-  private final case class Node(
-    data: A, next: Ref[Node] = Ref(null)
-  )
+  private case class Node(data: A, next: Ref[Node])
   private val head = Ref(Node(null))
   private val tail = Ref(head.read!())
 
-  val enq: Reagent[A, Unit] = computed { (x:A) =>
-    @tailrec def search: Reagent[Unit,Unit] = 
-      tail.read ! () match {
-        case    Node(_, r@Ref(null)) => 
-          r.cas(null, Node(x))
-        case ov@Node(_, Ref(nv)) => 
-          tail.cas(ov,nv) !? (); search
-      }
-    search
-  }
+  @tailrec private def search(x:A): Reagent[Unit,Unit] = 
+    tail.read ! () match {
+      case Node(_, r@Ref(null)) => 
+        r.cas(null, Node(x, new Ref(null)))
+      case ov@Node(_, Ref(nv)) => 
+        tail.cas(ov,nv) !? (); search(x)
+    }
+  val enq: Reagent[A, Unit] = computed search
   val tryDeq: Reagent[Unit, Option[A]] = head.upd {
     case Node(_, Ref(n@Node(x, _))) => (n, Some(x))
     case emp => (emp, None)
@@ -342,6 +347,8 @@ Try to keep this minimal for the sake of space
 
 Purpose of the semantics is mainly to clarify the relationship between
 the shared-state and message-passing aspects of reagents.
+
+(fractional?) permissions model
 
 \begin{itemize}
   \item read, cas
@@ -401,7 +408,13 @@ def tryReact(a: A, rx: Reaction, offer: Offer[B]): Any =
 \section{Related work}
 \label{sec:related}
 
+We believe it is crucial to have XX, YY together
 
+STM, Communicating transactions and company, elastic transactions and company
+
+CML, Transactional events, join calculus
+
+Paper on composing lock-free data structure operations
 
 \bibliographystyle{abbrvnat}
 \bibliography{reagents}
