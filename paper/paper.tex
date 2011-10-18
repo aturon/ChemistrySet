@@ -143,6 +143,7 @@ why is this different from STM
 }
 
 \section{Background}
+\label{sec:background}
 
 Broadly, we are interested in data structures and algorithms for
 communication, synchronization, or both.  This section gives a brief
@@ -224,6 +225,8 @@ using \lstinline{compareAndSet} (here abbreviated as \lstinline{cas}),
 which takes an expected value and a new value, and atomically updates
 the reference
 
+% OPTIMISTIC CONCURRENCY
+
 %notice: changed to less desirable representation to make CAS work
 
 %Most of the Scala code in this paper should be 
@@ -231,19 +234,19 @@ the reference
 
 %% Say something about CONTENTION.
 
-Treiber's stack scales better than a lock-based stack mainly because
-it decreases the amount of shared data that must be updated per
-operation: instead of acquiring a shared lock, altering a shared stack
-pointer, and releasing the shared lock, Treiber's stack does a single
-CAS to update the shared pointer directly.  But the head pointer of
-the stack is still a centralized source of contention.  Spreading out
-the contention requires parallelizing stack operations---but how,
-given that they all involve modifying the top of the stack?
+Treiber's stack scales better than a lock-based stack mainly because it
+decreases the amount of shared data that must be updated per operation:
+instead of acquiring a shared lock, altering a shared stack pointer, and
+releasing the shared lock, Treiber's stack does a single CAS to update the
+shared pointer directly.  But the head pointer of the stack is still a
+centralized source of contention.  Spreading out the contention requires
+parallelizing stack operations---but how, given that they all involve
+modifying the top of the stack?
 
 Parallelization requires a change of perspective.  Normally, we view
-concurrent operations on the same part of a data structure as
-competing to atomically update that data structure; we want the
-operations to be isolated.  But if 
+concurrent operations on the same part of a data structure as competing to
+atomically update that data structure; we want the operations to be isolated.
+But if
 
 %talk about elimination backoff and blocking versions but don't show code.
 
@@ -252,57 +255,152 @@ discuss the insight behind MCS locks
 \section{Reagents}
 \label{sec:reagents}
 
-Reagents are a new instance of an old idea: representing computations
-as data.  In this case, the computations being represented are
-fine-grained concurrent operations
+Reagents are a new instance of an old idea: representing computations as data.
+The computations being represented are fine-grained concurrent operations, so
+a value of type \reagent{A}{B} represents a function from \lstinline{A} to
+\lstinline{B} that internally interacts with a concurrent data structure
+through mutation, synchronization, or both.
 
+Unlike $\lambda$-abstractions, which encompass arbitrary code and treat that
+code opaquely, reagents are built up from a limited set of \emph{combinators}
+that are known to the implementation.  Existing reagents---for example, those
+built by a concurrency expert---can be composed or tailored by library users
+by applying additional combinators, without knowledge of the internal
+implementation.  At any point a user can invoke a reagent, either as a
+\emph{reactant} or a \emph{catalyst}---a distinction explained in
+\secref{easy-examples}.
 
-In the last section, we saw a range of strategies for communication
-and synchronizion at a fine grain:
-\begin{itemize}
-\item using CAS to make direct, atomic updates;
-\item using exponential backoff to ease contention; 
-\item using side-channel communication to increase parallelism; 
-\item using disjoint spinwaiting to eliminate useless cache traffic; 
-\item using dual data structures to incorporate blocking.
-\end{itemize}
-Reagents incorporate these disparate techniques into a uniform framework for
-writing concurrent algorithms.  Some of the techniques are built into the
-framework, while others are expressible as reusable abstractions.
+Reagents are patterned after Concurrent ML~\cite{?} and Haskell's STM
+monad~\cite{?}, which represent (respectively) synchronous and atomic
+operations as first-class values; we discuss the relationship in
+\secref{related}.
+%
+Our contribution is giving a set of combinators appropriate for expressing and
+composing fine-grained concurrent algorithms (\secref{easy-examples}) with a
+clear semantics (\secref{semantics}), ... %TODO
 
-\subsection{Reagents by example}
-
-more easily and concisely
+%more easily and concisely
 % extensibility and composability
-
-% no reason not to present this as an ADT
-
 
 %% The aim of reagents is to make it easy to express these and other
 %% patterns, while providing compositionality blah blah
 
 %% First we give an overview of the library, and then we illustrate its
 %% expressiveness and composability by showing how to implement several 
- 
-chemistry metaphor
 
-lack of isolation needed to express many lock-free algorithms.
-message-passing turns out to be a good way to understand what's going on.
 
-\subsection{More complex examples}
+
+\subsection{Basic reagents: updates, messages, and choice}
+\label{sec:easy-examples}
+
+In \secref{background}, we saw a range of strategies for communication and
+synchronizion at a fine grain:
+\begin{itemize}
+\item using CAS to make direct, optimistic, and atomic updates;
+\item using exponential backoff to ease contention; 
+\item using side-channel communication to increase parallelism; 
+\item using disjoint spinwaiting to eliminate useless cache traffic; 
+\item using dual data structures to incorporate blocking.
+\end{itemize}
+Reagents incorporate these disparate techniques into a uniform set of
+combinators for writing concurrent algorithms.  Some of the techniques are
+built into the combinators themselves, while others are expressible as
+reusable abstractions.
 
 \begin{lstlisting}
 class TreiberStack[A] {
   private val head = new Ref[List[A]](Nil)
-  val push: Reagent[A, Unit] = head.upd {
-    (xs, x) => (x:xs, ())
+  val push: Reagent[A, Unit] = upd(head) {
+    case (xs, x) => (x:xs, ())
   }
-  val tryPop: Reagent[Unit, Option[A]] = head.upd {
+  val tryPop: Reagent[Unit, Option[A]] = upd(head) {
     case (x::xs, ()) => (xs, Some(x))
     case (Nil,   ()) => (Nil, None)
   }
 }
 \end{lstlisting}
+
+The first two techniques are built into the combinators.  We introduce a new
+type \lstinline{Ref[A]} for atomically updatable references holding data of
+type \lstinline{A}.  Unlike Scala's (and Java's) \lstinline{AtomicReference},
+\lstinline{Ref} values can only be accessed through the following reagent
+combinators:
+\begin{lstlisting}[mathescape=true]
+read: Ref[A] => Reagent[Unit, A]
+cas:  Ref[A] * A * A => Reagent[Unit, Unit]
+upd:  Ref[A] => PartialFunction[(A,B), (A,C)] 
+             => Reagent[B, C]
+\end{lstlisting}
+By restricting access to the combinators, ... %TODO
+
+% Freedom to change kcas implementations
+
+The \lstinline{read} combinator has a straightforward signature: if
+\lstinline{r} has type \lstinline{Ref[A]}, then \lstinline{read(r)} is a
+\emph{value} of type \lstinline{Reagent[Unit, A]} which, when invoked, takes a
+unit\footnote{\lstinline{Unit} in Scala is akin to \lstinline{void}: it is a
+  type with a single member, written \lstinline{()}.} argument and yields an
+\lstinline{A} result.
+
+The \lstinline{cas} combinator takes two additional \lstinline{A} arguments,
+giving the expected and updated values, respectively.  Unlike its counterpart
+for \lstinline{AtomicReference}, a \lstinline{cas} reagent does \emph{not}
+yield a boolean result.  Instead, the reagent library builds in handling of
+failed CASes, including an optimistic retry loop and exponential backoff.  The
+failure mechanics depend on which other combinators are involved, so we delay
+a complete discussion until \secref{failure}.
+
+The \lstinline{upd} combinator 
+
+%% THIS SEEMS MORE CONFUSING THAN HELPFUL
+%% For now, it suffices to know that
+%% invoking a \lstinline{cas} will complete and return \lstinline{()} only when
+%% the CAS has successfully completed.
+
+%% \begin{lstlisting}[mathescape=true]
+%% def upd[A,B,C](r: Ref[A], f: (A,B) $\rightharpoonup$ (A,C)): Reagent[B,C] 
+%%   = computed { 
+%%       (b: B) =>       
+%% \end{lstlisting}
+ 
+chemistry metaphor.  note that catalysts increase parallelism and remove need
+for devoted thread
+
+lack of isolation needed to express many lock-free algorithms.
+message-passing turns out to be a good way to understand what's going on.
+
+key point: traditional lock-free algorithms that use a single cas do not pay
+any penalty for composability/kcas potential
+
+show how, for counter, tryDec and dec are inter-expressible
+
+% TODO: fix types for cases below
+\begin{lstlisting}
+class Counter {
+  private val state = new Ref[Int](0)
+  val get = upd(state) { case i => (i, i) }
+  val inc = upd(state) { case i => (i+1, i) }
+  val dec = upd(state) { case i if (i > 0) => (i-1, i) }
+  val tryDec = upd(state) {
+     case i if (i == 0) => (0,   None)
+     case i              => (i-1, Some(i))
+  }
+}
+\end{lstlisting}
+
+% nice catalysts: zip and unzip
+
+\subsection{Failure is an \textsf{Option}}
+\label{sec:failure}
+
+blocking failure versus retryable failure
+
+\begin{lstlisting}
+  val tryDec = 
+\end{lstlisting}
+
+\subsection{Advanced reagents: CAS, computed, and composed}
+\label{sec:hard-examples}
 
 Examples:
 
@@ -324,23 +422,26 @@ Examples:
 \begin{lstlisting}
 class MSQueue[A] {
   private case class Node(data: A, next: Ref[Node])
-  private val head = Ref(Node(null))
-  private val tail = Ref(head.read!())
+  private val head = new Ref(Node(null))
+  private val tail = new Ref(head.read!())
 
   @tailrec private def search(x:A): Reagent[Unit,Unit] = 
-    tail.read ! () match {
+    read(tail) ! () match {
       case Node(_, r@Ref(null)) => 
-        r.cas(null, Node(x, new Ref(null)))
+        cas(r, null, Node(x, new Ref(null)))
       case ov@Node(_, Ref(nv)) => 
-        tail.cas(ov,nv) !? (); search(x)
+        cas(tail, ov, nv) !? (); 
+        search(x)
     }
   val enq: Reagent[A, Unit] = computed search
-  val tryDeq: Reagent[Unit, Option[A]] = head.upd {
+  val tryDeq: Reagent[Unit, Option[A]] = upd(head) {
     case Node(_, Ref(n@Node(x, _))) => (n, Some(x))
     case emp => (emp, None)
   }
 }
 \end{lstlisting}
+
+post-commit action for catching up tail?
 
 \section{Semantics}
 \label{sec:semantics}
@@ -389,6 +490,36 @@ the shared-state and message-passing aspects of reagents.
 \label{sec:implementation}
 
 \begin{lstlisting}
+def !(a: A): B = tryReact(a, Reaction.inert, null) match {
+  case (_: BacktrackCommand) => {
+    val backoff = new Backoff
+    val maySync = this.maySync // cache
+    @tailrec def retryLoop(shouldBlock: Boolean): B = {
+      val wait = maySync || shouldBlock
+      val waiter = if (wait) new Waiter[B](shouldBlock) 
+                   else null
+
+      tryReact(a, Reaction.inert, waiter) match {
+        case (bc: BacktrackCommand) if wait => {
+          bc.bottom(waiter, backoff, snoop(a))
+          waiter.tryAbort      // rescind waiter,
+          waiter.poll match { // but check if completed
+            case Some(ans) => ans.asInstanceOf[B] 
+            case None       => retryLoop(bc.isBlock)
+          }
+        }
+        case Retry => backoff.once; retryLoop(false)
+        case Block => retryLoop(true)
+        case ans   => ans.asInstanceOf[B]
+      }
+    }
+    retryLoop(false)
+  }
+  case ans => ans.asInstanceOf[B]
+}
+\end{lstlisting}
+
+\begin{lstlisting}
 def tryReact(a: A, rx: Reaction, offer: Offer[B]): Any = 
   r1.tryReact(a, rx, offer) match {
     case Retry => 
@@ -400,6 +531,15 @@ def tryReact(a: A, rx: Reaction, offer: Offer[B]): Any =
     case Block => r2.tryReact(a, rx, offer)
     case ans => ans
   }
+\end{lstlisting}
+
+\begin{lstlisting}
+  def tryReact(u: Unit, rx: Reaction, offer: Offer[B]): Any = 
+    if (rx.canCASImmediate(k, offer)) {
+      if (casI(expect, update))
+        k.tryReact((), rx, offer)
+      else Retry
+    } else k.tryReact((), rx.withCAS(Ref.this, expect, update), offer)
 \end{lstlisting}
 
 \section{Performance}
@@ -414,7 +554,7 @@ We believe it is crucial to have XX, YY together
 
 STM, Communicating transactions and company, elastic transactions and company
 
-CML, Transactional events, join calculus
+CML, Transactional events, async CML, join calculus
 
 Paper on composing lock-free data structure operations
 
