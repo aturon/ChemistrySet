@@ -252,6 +252,11 @@ discuss the insight behind MCS locks
 \section{Reagents}
 \label{sec:reagents}
 
+Reagents are a new instance of an old idea: representing computations
+as data.  In this case, the computations being represented are
+fine-grained concurrent operations
+
+
 In the last section, we saw a range of strategies for communication
 and synchronizion at a fine grain:
 \begin{itemize}
@@ -265,13 +270,10 @@ Reagents incorporate these disparate techniques into a uniform framework for
 writing concurrent algorithms.  Some of the techniques are built into the
 framework, while others are expressible as reusable abstractions.
 
+\subsection{Reagents by example}
+
 more easily and concisely
 % extensibility and composability
-
-\subsection{The main idea}
-
-Reagents are a new instance of an old idea: computations can be usefully
-represented as data.
 
 % no reason not to present this as an ADT
 
@@ -287,7 +289,7 @@ chemistry metaphor
 lack of isolation needed to express many lock-free algorithms.
 message-passing turns out to be a good way to understand what's going on.
 
-\subsection{Expressiveness by example}
+\subsection{More complex examples}
 
 \begin{lstlisting}
 class TreiberStack[A] {
