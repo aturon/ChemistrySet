@@ -252,6 +252,20 @@ But if
 
 discuss the insight behind MCS locks
 
+In \secref{background}, we saw a range of strategies for communication and
+synchronizion at a fine grain:
+\begin{itemize}
+\item using CAS to make direct, optimistic, and atomic updates;
+\item using exponential backoff to ease contention; 
+\item using side-channel communication to increase parallelism; 
+\item using disjoint spinwaiting to eliminate useless cache traffic; 
+\item using dual data structures to incorporate blocking.
+\end{itemize}
+Reagents incorporate these disparate techniques into a uniform set of
+combinators for writing concurrent algorithms.  Some of the techniques are
+built into the combinators themselves, while others are expressible as
+reusable abstractions.
+
 \section{Reagents}
 \label{sec:reagents}
 
@@ -288,24 +302,23 @@ clear semantics (\secref{semantics}), ... %TODO
 %% First we give an overview of the library, and then we illustrate its
 %% expressiveness and composability by showing how to implement several 
 
-
+\elide{
+  upd
+    nonblocking: 
+      Treiber
+    blocking: 
+      Treiber
+      Counter/semaphore
+  composition
+    Treiber & counter?
+  messages and choice
+    elimination Treiber
+  computed
+    msqueue
+}
 
 \subsection{Basic reagents: updates, messages, and choice}
 \label{sec:easy-examples}
-
-In \secref{background}, we saw a range of strategies for communication and
-synchronizion at a fine grain:
-\begin{itemize}
-\item using CAS to make direct, optimistic, and atomic updates;
-\item using exponential backoff to ease contention; 
-\item using side-channel communication to increase parallelism; 
-\item using disjoint spinwaiting to eliminate useless cache traffic; 
-\item using dual data structures to incorporate blocking.
-\end{itemize}
-Reagents incorporate these disparate techniques into a uniform set of
-combinators for writing concurrent algorithms.  Some of the techniques are
-built into the combinators themselves, while others are expressible as
-reusable abstractions.
 
 \begin{lstlisting}
 class TreiberStack[A] {
