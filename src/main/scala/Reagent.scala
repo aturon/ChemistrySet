@@ -166,7 +166,7 @@ object never extends Reagent[Any, Nothing] {
   def alwaysCommits = false
   def maySync = false
 }
-
+/*
 object computed {
   private final case class Computed[A,B,C](c: A => Reagent[Unit,B], 
 					   k: Reagent[B,C]) 
@@ -180,6 +180,20 @@ object computed {
   }
   @inline def apply[A,B](c: A => Reagent[Unit,B]): Reagent[A,B] = 
     Computed(c, Commit[B]())
+}
+*/
+object computed {
+  private final case class Computed[A,B](c: A => Reagent[Unit,B]) 
+		     extends Reagent[A,B] {
+    def snoop(a: A) = false
+    def tryReact(a: A, rx: Reaction, offer: Offer[B]): Any = 
+      c(a).tryReact((), rx, offer)
+    def composeI[C](next: Reagent[B,C]) = throw Util.Impossible
+    def alwaysCommits = false
+    def maySync = true
+  }
+  @inline def apply[A,B](c: A => Reagent[Unit,B]): Reagent[A,B] = 
+    Computed(c)
 }
 
 object lift {

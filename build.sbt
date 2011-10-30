@@ -8,6 +8,12 @@ scalacOptions += "-unchecked"
 
 scalacOptions += "-optimize"
 
+scalacOptions += "-Yinline"
+
+//scalacOptions += "-Ydebug"
+
+//scalacOptions += "-Ylog:inliner"
+
 parallelExecution in Test := false
 
 // disable publishing of main docs
@@ -20,6 +26,7 @@ resolvers += "repo.codahale.com" at "http://repo.codahale.com"
 libraryDependencies ++= Seq(
 //  "com.codahale" % "simplespec_2.9.0-1" % "0.3.4"
   "com.codahale" % "simplespec_2.9.0-1" % "0.4.1"
+//  "se.scalablesolutions.akka" %% "akka-sbt-plugin" % "2.0-SNAPSHOT" 
 )
 
 fork := true

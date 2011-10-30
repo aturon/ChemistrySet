@@ -5,10 +5,11 @@ package chemistry
 import scala.annotation.tailrec
 import java.util.concurrent.atomic._
 
-final class Ref[A <: AnyRef](init: A) extends KCASRef[A](init) {
-  private val offers = new CircularPool[Offer[_]]
+final class Ref[A <: AnyRef](init: A) {
+  private[chemistry] val data = new AtomicReference(init)
+  private[chemistry] val offers = new CircularPool[Offer[_]]
 
-  override def afterCAS {
+  private[chemistry] def afterCAS {
     @tailrec def wakeFrom(n: offers.Node): Unit = if (n != null) {
       n.data.abortAndWake
       wakeFrom(n.next)
@@ -19,12 +20,18 @@ final class Ref[A <: AnyRef](init: A) extends KCASRef[A](init) {
   private final case class Read[B](k: Reagent[A,B]) extends Reagent[Unit, B] {
     def tryReact(u: Unit, rx: Reaction, offer: Offer[B]): Any = {
       if (offer != null) offers.put(offer)
-      getI
+      data.get match {
+	case null => Retry
+	case ans => ans
+      }
     }
     def composeI[C](next: Reagent[B,C]) = Read(k >=> next)
     def maySync = k.maySync
     def alwaysCommits = k.alwaysCommits
-    def snoop(u: Unit) = k.snoop(getI)
+    def snoop(u: Unit) = data.get match {
+      case null => false
+      case ans => k.snoop(ans)
+    }
   }
   @inline def read: Reagent[Unit,A] = Read(Commit[A]())
 
@@ -34,7 +41,7 @@ final class Ref[A <: AnyRef](init: A) extends KCASRef[A](init) {
     // ref cell to the continuation k.
     def tryReact(u: Unit, rx: Reaction, offer: Offer[B]): Any = 
       if (rx.canCASImmediate(k, offer)) {
-	if (casI(expect, update))
+	if (data.compareAndSet(expect, update))
 	  k.tryReact((), rx, offer)
 	else Retry
       } else k.tryReact((), rx.withCAS(Ref.this, expect, update), offer)
@@ -53,21 +60,17 @@ final class Ref[A <: AnyRef](init: A) extends KCASRef[A](init) {
 	// no need to store offer here, as we will either succeed or retry
 	// (never block)
 
-	var tries = 3
-	while (tries > 0) {
-	  val ov = getI
-	  if (!valid(ov,b)) return Retry
-	  val nv = newValue(ov, b)
-	  if (casI(ov, nv))
-	    return k.tryReact(retValue(ov, b), rx, offer)
-	  tries -= 1
-	}
-	Retry
+	val ov = data.get
+	if ((ov eq null) || !valid(ov,b)) return Retry
+	val nv = newValue(ov, b)
+	if (data.compareAndSet(ov, nv))
+	  k.tryReact(retValue(ov, b), rx, offer)
+	else Retry
       } else {
 	if (offer != null) offers.put(offer) 
 
-	val ov = getI
-	if (!valid(ov,b)) return Retry
+	val ov = data.get
+	if ((ov eq null) || !valid(ov,b)) return Retry
 	val nv = newValue(ov, b)
 	k.tryReact(retValue(ov, b), rx.withCAS(Ref.this, ov, nv), offer)
       }
@@ -104,7 +107,13 @@ final class Ref[A <: AnyRef](init: A) extends KCASRef[A](init) {
 }
 object Ref {
   @inline def apply[A <: AnyRef](init: A): Ref[A] = new Ref(init)
-  @inline def unapply[A <: AnyRef](r: Ref[A]): Option[A] = Some(r.getI) 
+  @inline def unapply[A <: AnyRef](r: Ref[A]): Option[A] = {
+    while (true) r.data.get match {
+      case null => {}
+      case ans => return Some(ans)
+    }
+    throw Util.Impossible
+  }
 }
 
 object upd {
@@ -112,4 +121,36 @@ object upd {
     r.upd(f)
   @inline def apply[A <: AnyRef,B](r: Ref[A])(f: PartialFunction[A, (A,B)]) = 
     r.upd(f)
+
+/*
+  @inline def fast[A <: AnyRef,B,C](r: Ref[A],f: (A,B) => (A,C)) = 
+    new Reagent[B,C] {
+      private val k = Commit[C]()
+      def tryReact(b: B, rx: Reaction, offer: Offer[C]): Any = {
+	if (rx.canCASImmediate(k, offer)) {
+	  // no need to store offer here, as we will either succeed or retry
+	  // (never block)
+
+	  val ov = r.getI
+	  val (nv, retVal) = f(ov, b)
+	  if (r.casI(ov, nv)) retVal
+	  else Retry
+	} else {
+	  if (offer != null) r.offers.put(offer) 
+
+	  val ov = r.getI
+	  val (nv, retVal) = f(ov, b)
+	  k.tryReact(retVal, rx.withCAS(r, ov, nv), offer)
+	}
+      }
+      def composeI[D](next: Reagent[C,D]) = throw Util.Impossible/*
+	new r.InnerUpd[B,C,D](next) {
+	  @inline def newValue(a: A, b: B): A = f(a,b)._1
+	  @inline def retValue(a: A, b: B): C = f(a,b)._2
+	}*/
+      def maySync = false
+      def alwaysCommits = false
+      def snoop(b: B) = false
+    }
+*/
 }

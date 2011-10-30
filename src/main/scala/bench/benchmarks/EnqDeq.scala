@@ -31,10 +31,38 @@ object EnqDeq extends Benchmark {
       }
     }
   } 
+  private object stm extends Entry {
+    def name = "stm"
+    type S = STMQueue[AnyRef]
+    def setup = new STMQueue()
+    def run(q: S, work: Int, iters: Int) {
+      val r = new Random
+      for (_ <- 1 to iters) {
+	q.enq(SomeData)
+	Util.noop(r.fuzz(work))
+	untilSome {q.tryDeq}
+	Util.noop(r.fuzz(work))
+      }
+    }
+  } 
   private object reagent extends Entry {
     def name = "reagent"
     type S = MSQueue[AnyRef]
     def setup = new MSQueue()
+    def run(q: S, work: Int, iters: Int) {
+      val r = new Random
+      for (_ <- 1 to iters) {
+	q.enq ! SomeData;
+	Util.noop(r.fuzz(work))
+	untilSome {q.tryDeq ! ()}
+	Util.noop(r.fuzz(work))
+      }
+    }
+  }
+  private object simple extends Entry {
+    def name = "simpleR"
+    type S = SimpleQueue[AnyRef]
+    def setup = new SimpleQueue()
     def run(q: S, work: Int, iters: Int) {
       val r = new Random
       for (_ <- 1 to iters) {
@@ -145,7 +173,7 @@ object EnqDeq extends Benchmark {
   }
 */
 
-  def entries = List(reagent, lagging, optimistic, hand, juc, lock)
+  def entries: List[Entry] = List(stm) //, simple, reagent, hand, juc)
   // fc livelocks
   // basket is not licensed for distribution
 }

@@ -5,8 +5,8 @@ package chemistry
 
 private sealed class Reaction private (
   val casList: List[CAS[_]],		// k-cas built up so far
-  val pcList: List[Unit => Unit],	// post-commit actions
-  val msgSet: HashSet[Message[_,_,_]]   // messages intended for consumption
+  val pcList: List[Unit => Unit]	// post-commit actions
+//  val msgSet: HashSet[Message[_,_,_]]   // messages intended for consumption
 ) {
   import Reaction._
   
@@ -23,7 +23,7 @@ private sealed class Reaction private (
 
   def withPostCommit(postCommit: Unit => Unit): Reaction =
     new Reaction(casList, postCommit +: pcList)
-  def withCAS[A <: AnyRef](ref: KCASRef[A], ov: A, nv: A): Reaction =
+  def withCAS[A <: AnyRef](ref: Ref[A], ov: A, nv: A): Reaction =
     new Reaction(CAS(ref, ov, nv) +: casList, pcList)
 
   def ++(rx: Reaction): Reaction = 
@@ -33,7 +33,7 @@ private sealed class Reaction private (
     val success: Boolean = casCount match {
       case 0 => true
       case 1 => casList.head.execAsSingle
-      case _ => new KCAS(casList).tryCommit
+      case _ => KCAS.tryCommit(casList)
     }
     if (success)
       pcList.foreach(_.apply())  // perform the post-commit actions

@@ -24,15 +24,19 @@ object PushPop extends Benchmark {
 	while (n < iters) {
 	  n += 1
 	  push(s, SomeData)
+//	  push(s, SomeData)
 	  Util.noop(r.fuzz(work))
 	  untilSome { tryPop(s) }
+//	  untilSome { tryPop(s) }
 	  Util.noop(r.fuzz(work))
 	}
       } else {
 	while (n < iters) {
 	  n += 1
 	  push(s,SomeData)
+//	  push(s,SomeData)
 	  untilSome { tryPop(s) }
+//	  untilSome { tryPop(s) }
 	}
       }
 
@@ -75,7 +79,7 @@ object PushPop extends Benchmark {
     while (n < iters) {
       n += 1
       Util.noop(r.fuzz(work))
-      Util.noop(r.fuzz(work))
+//      Util.noop(r.fuzz(work))
     }
   }
   private object handElim extends Entry with Generic {
@@ -112,6 +116,13 @@ object PushPop extends Benchmark {
     def name = "hand"
     type S = HandStack[AnyRef]
     def setup = new HandStack()
+    def push(s: S, x: AnyRef) = s.push(x)
+    def tryPop(s: S): Option[AnyRef]  = s.tryPop
+  } 
+  private object stm extends Entry with Generic{
+    def name = "stm"
+    type S = STMStack[AnyRef]
+    def setup = new STMStack()
     def push(s: S, x: AnyRef) = s.push(x)
     def tryPop(s: S): Option[AnyRef]  = s.tryPop
   } 
@@ -180,5 +191,5 @@ private object rTreiberFast extends Entry with Generic {
 //  def entries = List(rTreiber, rElim, hand)
 //  def entries = List(rElim, rTreiber, handElim, hand, handPool)
 //  def entries: List[Entry] = List(rElim, handPool, handElim)
-  def entries: List[Entry] = List(handAloc, hand)
+  def entries: List[Entry] = List(stm) //List(rTreiber, stm, hand)
 }

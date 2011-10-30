@@ -39,6 +39,13 @@ Todo:
  - framework for collecting stats
  - comparison to STM
 
+## 10/24/2011
+
+At some point, think about whether there is really a strong case for
+systematic search through message bags on blocking failure.  If this
+is dropped, channels might no longer need special treatment as
+reagents.
+
 ## 10/3/2011
 
 Reaction probably forms a commutative monad.

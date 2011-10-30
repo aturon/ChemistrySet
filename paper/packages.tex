@@ -4,8 +4,8 @@
 \definecolor{CommentGreen}{rgb}{0,0.5,0}
 \definecolor{KeywordBlue}{rgb}{0,0,0.7}
 % "define" Scala
-\lstdefinelanguage{scala}{morekeywords={class,object,trait,extends,with,new,if,while,for,def,val,var,this,case,match,private,true,false},
-otherkeywords={*,->,=>},
+\lstdefinelanguage{scala}{morekeywords={class,object,trait,extends,with,new,if,while,for,def,val,var,this,case,match,private,true,false,return},
+otherkeywords={*,->,=>,>>,|||,+},
 sensitive=true,
 morecomment=[l]{//},
 morecomment=[s]{/*}{*/},
@@ -21,10 +21,14 @@ columns=flexible,
 basicstyle={\sffamily},
 commentstyle=\color{CommentGreen}\emph,
 keywordstyle=\color{KeywordBlue}\bfseries,
-literate={=>}{{$\Rightarrow$\ }}1 {*}{{$\times$\ }}1
+literate={=>}{{$\Rightarrow$\ }}1 {*}{{$\times$\ }}1 
+{>>}{{\texttt{>>}\ }}1 
+{|||}{{\texttt{*}\ }}1
+{+}{{\texttt{+}\ }}1
 }
 
 \usepackage{amsmath}
+\usepackage{amssymb}
 \usepackage{amsfonts}
 \usepackage{mathpartir}
 

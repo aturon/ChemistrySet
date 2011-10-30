@@ -2,31 +2,34 @@ package chemistry.bench.competition
 
 import java.util.concurrent.atomic._
 import scala.annotation.tailrec
+import scala.collection.immutable._
 
 // Standard lock-free stack, due to Treiber.  Doesn't yet perform
 // exponential backoff.
 class HandStack[A >: Null] {
-  class Node(val data: A, var next: Node) 
-
   // head always points to top of stack,
   //   from which the rest of the stack is reachable
-  private val head = new AtomicReference[Node](null)
+  private val head = new AtomicReference[List[A]](Nil)
 
   def push(x: A) {
-    val n = new Node(x, null)
+    val backoff = new chemistry.Backoff
     while (true) {
-      n.next = head.get
-      if (head compareAndSet (n.next, n)) return
+      val cur = head.get
+      val upd = x +: cur
+      if (head compareAndSet (cur, upd)) return
+      backoff.once
     } 
   }
 
   def tryPop(): Option[A] = {
+    val backoff = new chemistry.Backoff
     while (true) {
-      val h = head.get
-      if (h eq null) 
+      val cur = head.get
+      if (cur.isEmpty) 
 	return None
-      else if (head compareAndSet (h, h.next)) 
-	return Some(h.data) 
+      else if (head.compareAndSet(cur,cur.tail)) 
+	return Some(cur.head)      
+      backoff.once
     }
     throw new Exception("Impossible")
   } 

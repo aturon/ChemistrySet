@@ -56,7 +56,7 @@ private final class Waiter[-A](val blocking: Boolean)
 	      extends Offer[A] with DeletionFlag {
   import Waiter._
 
-  private[chemistry] val status = new KCASRef[AnyRef](Waiting)
+  private[chemistry] val status = new Ref[AnyRef](Waiting)
 
   // the thread that *created* the Waiter
   private val waiterThread = Thread.currentThread() 
@@ -64,26 +64,27 @@ private final class Waiter[-A](val blocking: Boolean)
     if (blocking) LockSupport.unpark(waiterThread)
   }
   
-  @inline def isActive: Boolean = status.getI == Waiting
+  @inline def isActive: Boolean = status.data.get == Waiting
 
   // Poll current waiter value:
   //   - None if Waiting or Aborted
   //   - Some(ans) if completed with ans
   // sadly, have to use `Any` to work around variance problems
-  @inline def poll: Option[Any] = status.getI match {
+  @inline def poll: Option[Any] = status.data.get match {
+    case null => None
     case (_:WaiterStatus) => None
     case ans => Some(ans)
   }
   
   // Attempt to abort, returning true iff successful
-  @inline def tryAbort = status.casI(Waiting, Aborted)
+  @inline def tryAbort = status.data.compareAndSet(Waiting, Aborted)
   @inline def rxWithAbort(rx: Reaction): Reaction =
     rx.withCAS(status, Waiting, Aborted)
 
   def abortAndWake = if (tryAbort) wake()
 
   @inline def tryComplete(a: A) = 
-    status.casI(Waiting, a.asInstanceOf[AnyRef])
+    status.data.compareAndSet(Waiting, a.asInstanceOf[AnyRef])
   @inline def rxWithCompletion(rx: Reaction, a: A): Reaction = 
     rx.withCAS(status, Waiting, a.asInstanceOf[AnyRef])
 

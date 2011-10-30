@@ -109,6 +109,8 @@ blend shared-state and message-passing concurrency
 
 implemented a Scala library
 
+CLEAR COST MODEL
+
 \elide{
 # Contributions
 
@@ -252,6 +254,7 @@ But if
 
 discuss the insight behind MCS locks
 
+\elide{
 In \secref{background}, we saw a range of strategies for communication and
 synchronizion at a fine grain:
 \begin{itemize}
@@ -265,9 +268,38 @@ Reagents incorporate these disparate techniques into a uniform set of
 combinators for writing concurrent algorithms.  Some of the techniques are
 built into the combinators themselves, while others are expressible as
 reusable abstractions.
+}
+
+The goal of reagents is to systematize the expression of these
+disparate techniques into a uniform set of combinators
 
 \section{Reagents}
 \label{sec:reagents}
+
+\begin{figure}
+\begin{lstlisting}[mathescape=true,frame=single]
+// combinators for shared state
+upd:  Ref[A] => PartialFunction[(A,B), (A,C)] 
+             => Reagent[B,C]
+read: Ref[A] => Reagent[Unit, A]
+cas:  Ref[A] * A * A => Reagent[Unit, Unit]
+
+// combinators for message passing
+swap: Endpoint[A,B] => Reagent[A,B]
+
+// combinators for composition
++  : Reagent[A,B] * Reagent[A,B] => Reagent[A,B]
+>> : Reagent[A,B] * Reagent[B,C] => Reagent[A,C]
+|||  : Reagent[A,B] * Reagent[A,C] => Reageng[A,(B,C)]  
+
+// combinators for computation
+ret: A => Reagent[Unit, A]
+computed: PartialFunction[A, Reagent[Unit, B]]
+          => Reagent[A,B]
+postCommit: (A => Unit) => Reagent[A,A]
+\end{lstlisting}
+\label{fig:combinators}
+\end{figure}
 
 Reagents are a new instance of an old idea: representing computations as data.
 The computations being represented are fine-grained concurrent operations, so
@@ -303,6 +335,19 @@ clear semantics (\secref{semantics}), ... %TODO
 %% expressiveness and composability by showing how to implement several 
 
 \elide{
+want to talk about blocking versus retryable failure
+  - probably can wait until CAS introduced, toward end
+  - on the other hand, need to be clear about how this works 
+    for upd.  maybe introducing the distinction early on makes 
+    sense.
+
+where should we introduce react versus catalyze?
+  - want to talk about react early; perhaps introduce them 
+    separately?
+
+diagram(s) of reaction?
+  - we'll see if there's space...
+
   upd
     nonblocking: 
       Treiber
@@ -311,17 +356,25 @@ clear semantics (\secref{semantics}), ... %TODO
       Counter/semaphore
   composition
     Treiber & counter?
+    Treiber & lift => blocking
   messages and choice
-    elimination Treiber
-  computed
+    elimination Treiber (& counter!  implications for semaphores?)
+    blocking
+  catalysts
+    zip and unzip, tree barriers
+  computed, read, and cas - retryable failure, postCommit?
     msqueue
+  parallel composition?
+  timeouts?  TODO
 }
 
-\subsection{Basic reagents: updates, messages, and choice}
-\label{sec:easy-examples}
+\subsection{Atomic updates on \lstinline{Ref}s}
 
-\begin{lstlisting}
-class TreiberStack[A] {
+Memory is shared between reagents using the type \lstinline{Ref[A]} of
+atomically-updatable references.  These references are only accessible
+through reagent combinators, which allows them to provide
+functionality beyond the built-in \lstinline{AtomicReference[A]} type,
+as we will see.class TreiberStack[A] {
   private val head = new Ref[List[A]](Nil)
   val push: Reagent[A, Unit] = upd(head) {
     case (xs, x) => (x:xs, ())
@@ -332,21 +385,311 @@ class TreiberStack[A] {
   }
 }
 \end{lstlisting}
+In Scala, anonymous partial functions are written as a series of cases
+enclosed in braces.  For \lstinline{push} and \lstinline{tryPop}, the
+case analyses are exhaustive, so the functions are in fact total.
 
-The first two techniques are built into the combinators.  We introduce a new
-type \lstinline{Ref[A]} for atomically updatable references holding data of
-type \lstinline{A}.  Unlike Scala's (and Java's) \lstinline{AtomicReference},
-\lstinline{Ref} values can only be accessed through the following reagent
-combinators:
-\begin{lstlisting}[mathescape=true]
-read: Ref[A] => Reagent[Unit, A]
-cas:  Ref[A] * A * A => Reagent[Unit, Unit]
-upd:  Ref[A] => PartialFunction[(A,B), (A,C)] 
-             => Reagent[B, C]
+Being reagents, \lstinline{push} and \lstinline{tryPop} are inert
+values.  They can be invoked using the \lstinline{!} method provided
+by reagents; for a \lstinline{Reagent[A,B]} the \lstinline{!} method
+takes an \lstinline{A} and returns a \lstinline{B}.  Scala permits
+infix notation for methods, so we can use a \lstinline{TreiberStack}
+as follows:
+\begin{lstlisting}
+  var s = new TreiberStack[Int]; s.push ! 42
 \end{lstlisting}
-By restricting access to the combinators, ... %TODO
+The key point is that when we invoke these reagents, we are executing
+\emph{exactly} the same algorithms written by hand in
+\secref{background}, including the retry loop with exponential
+backoff; reagents systematize and internalize common patterns of
+fine-grained concurrency.  But by exposing \lstinline{push} and
+\lstinline{tryPop} as reagents, rather than methods, we leave the door
+open for further composition and tailoring by a user of the data
+structure, as we shall see below.
 
-% Freedom to change kcas implementations
+While \lstinline{tryPop} handles both empty and nonempty stacks, we
+can write a variant that drops the empty case:
+\begin{lstlisting}
+val pop: Reagent[Unit, A] = upd(head) {
+  case (x::xs, ()) => (xs, x)
+}
+\end{lstlisting}
+Now our update function really is partial.  An invocation
+\lstinline{s.pop ! ()} will block the calling thread unless or until
+the stack is nonempty.  Blocking and signalling are entirely handled
+by the reagent implementation, using standard
+techniques~(\secref{implementation}); there is therefore no risk of a
+lost wakeup.  %TODO: add more here?
+
+\elide{
+% What's the cost/benefit for this example?
+isomorphic to a stack of unit values
+\begin{lstlisting}
+class Counter {
+  private val c = new Ref[Int](0)
+  val inc = upd(c) { case (i, ()) => (i+1, i) }
+  val dec = upd(c) { case (i, ()) if (i > 0) => (i-1, i) }
+  val tryDec = upd(c) {
+     case (i, ()) if (i == 0) => (0,   None)
+     case (i, ())              => (i-1, Some(i))
+  }
+}
+\end{lstlisting}
+
+Roughly equivalent to the unfair JUC semaphore implementation.
+}
+
+%% THIS SEEMS MORE CONFUSING THAN HELPFUL
+%% For now, it suffices to know that
+%% invoking a \lstinline{cas} will complete and return \lstinline{()} only when
+%% the CAS has successfully completed.
+
+%% \begin{lstlisting}[mathescape=true]
+%% def upd[A,B,C](r: Ref[A], f: (A,B) $\rightharpoonup$ (A,C)): Reagent[B,C] 
+%%   = computed { 
+%%       (b: B) =>       
+%% \end{lstlisting}
+
+\subsection{Synchronization: how reagents react}
+
+%% References allow threads to communicate through atomic changes to
+%% shared state.  The atomic updates appear to happen in a sequence
+%% without overlaps: concurrent threads cannot interfere with each other
+%% or otherwise detect that they are running concurrently.  
+
+Another staple of concurrency libraries is synchronization, whereby
+threads are made mutually aware of reaching a particular state.
+Synchronization is completementary to shared state: the former
+provides concurrent interaction, while the latter (through atomic
+update) provides sequential isolation.  % TODO: make this less cryptic
+
+Reagents interact through \emph{synchronous swap channels}, which
+consist of two complementary \emph{endpoints}:
+\begin{lstlisting}
+  mkChan[A,B]: (Endpoint[A,B], Endpoint[B,A])
+\end{lstlisting}
+The combinator for communication is \lstinline{swap} (see
+\figref{combinators}), which lifts an \lstinline{Endpoint[A,B]} to a
+\lstinline{Reagent[A,B]}.  When two reagents communicate on opposite
+endpoints, they provide messages of complementary type (\lstinline{A}
+and \lstinline{B}, for example) and receive each other's value.  We
+call a successful communication a \emph{reaction} between reagents.
+On the other hand, if no complementary message is available,
+\lstinline{swap} will block until a reaction can take place.  Once
+again, the waiting and signalling protocol is managed internally by
+the reagent implementation, so lost wakeups are impossible.
+
+The \lstinline{swap} combinator alone is not powerful enough to
+express many synchronization primitives.  It becomes powerful when
+used together with other combinators, particularly \emph{choice} and
+\emph{sequence}.
+
+%% lack of isolation needed to express many lock-free algorithms.
+%% message-passing turns out to be a good way to understand what's going on.
+
+%% key point: traditional lock-free algorithms that use a single cas do not pay
+%% any penalty for composability/kcas potential
+
+\subsection{Composing reagents: choice}
+
+If \lstinline{r} and \lstinline{s} are two reagents of the same type,
+their \emph{choice} \lstinline{r + s} will behave like one of them,
+nondeterministically, when invoked.  The most straightforward use of
+choice is in the spirit of Unix's \lstinline{select}~\cite{?}: waiting
+on several signals simultaneously, while consuming only one of them.
+For example, if \lstinline{c} and \lstinline{d} are endpoints of the
+same type, \lstinline{swap(c) + swap(d)} is a reagent that will accept
+exactly one message, either from \lstinline{c} or from \lstinline{d}.
+If neither endpoint has a message available, the reagent will block
+until one of them does.  As usual, the blocking protocol is handled by
+the reagent library.
+
+A more novel use of choice is adding backoff strategies (of the kind
+described in \secref{?}).  For example, we can build an elimination
+backoff stack as follows:
+\begin{lstlisting}
+class EliminationStack[A] {
+  private val s = new TreiberStack[A]
+  private val (elimPop, elimPush) = mkChan[Unit,A]
+  val push: Reagent[A,Unit] = s.push + swap(elimPush)
+  val pop:  Reagent[Unit,A] = s.pop  + swap(elimPop)
+}
+\end{lstlisting}
+Choice is left-biased,\footnote{The left bias makes choice more
+  similar to \lstinline{orElse} in Haskell's STM than to CML's choice,
+  but there are differences from both.  See \secref{related}.  } so
+when \lstinline{push} is invoked, it will first attempt to push onto
+the underlying Treiber stack.  If the underlying push fails (due to a
+lost CAS race), \lstinline{push} will attempt to send a message along
+\lstinline{elimPush}, \emph{i.e.}, to synchronize with a concurrent
+popper.  If it succeeds, the \lstinline{push} reagent completes
+without ever having modified its underlying stack.
+
+We noted that \lstinline{s.push} can only fail due to a failed CAS.
+Such a failure is \emph{transient}: it can only be caused by active
+interference from another thread.  A reagent that has failed
+transiently should retry, rather than block, following the concurrency
+patterns laid out in \secref{background}.  On the other hand,
+\lstinline{s.pop} can fail in a \emph{permanent} way: the underlying
+stack \lstinline{s} may be empty.  This failure is permanent in the
+sense that only activity by another thread can enable the reagent to
+proceed.  When faced with a permanent failure, a reagent should block
+until signalled that the underlying state has changed.
+
+For choice, failure depends on the underlying reagents.  A choice
+reagent fails permanently only when \emph{both} of its underlying
+reagents have failed permanently.  On the other hand, if either fails
+transiently, the choice reagent has failed transiently and should
+therefore retry.  Reasoning along these lines, we deduce that
+\lstinline{push} never blocks, since the underlying \lstinline{s.push}
+can only fail transiently.  On the other hand, \lstinline{pop} can
+block because \lstinline{s.pop} can fail permanently on an empty stack
+and \lstinline{swap(elimPop)} can fail permanently if there are no
+offers from pushers.
+
+When \lstinline{push} or \lstinline{pop} retry, they follow an
+exponential backoff pattern with \emph{spinwaiting} for elimination
+offers, exactly as described in \secref{background}.  The backoff
+logic follows directly from the implementation of reagents; see
+\secref{implementation} for details.
+
+\elide{
+On each retry, \lstinline{push} will \emph{spinwait} for
+another thread to accept its message along \lstinline{elimPush}; the
+length of the wait grows exponentially, as part of the exponential
+backoff logic.  Once the waiting time is up, the communication attempt
+is cancelled, and the whole reagent is retried.  This protocol is
+elaborated in \secref{implementation}.
+}
+
+\elide{
+This example demonstrates
+
+although we have specified \lstinline{TreiberStack} here
+
+choice on messages, choice with timeout, choice with mix of reagents
+
+emphasize: combine without knowledge of implementation
+
+isolation and interaction
+}
+
+\subsection{Composing reagents: sequencing and pairing}
+
+Choice offers a kind of disjunction on reagents.  There are also two
+ways of \emph{conjoining} two reagents, so that the composed reagent
+has the effect of both underlying reagents:
+\begin{itemize} %TODO: graphical depiction?
+\item End-to-end composition, via \emph{sequencing}: if 
+  \lstinline{r: Reagent[A,B]} and \lstinline{s: Reagent[B,C]} then 
+  \lstinline{r >> s: Reagent[A,C]}.
+\item Side-by-side composition, via \emph{pairing}: if 
+  \lstinline{r: Reagent[A,B]} and \lstinline{s: Reagent[B,C]} then 
+  \lstinline{r ||| s: Reagent[A,(B,C)]}.  
+\end{itemize}
+These combinators differ only in information flow.  Each guarantees
+that the atomic actions of both underlying reagents become a single
+atomic action for the composition.  For example, if \lstinline{s1} and
+\lstinline{s2} are both stacks, then \lstinline{s1.pop >> s2.push} is
+a reagent that will atomically transfer an element from the top of one
+to the top of the other.  The reagent will block if \lstinline{s1} is
+empty.  Similarly, \lstinline{s1.pop ||| s2.pop} will pop, in one
+atomic action, the top elements of both stacks, or block if either is
+empty.
+
+Here we begin to see the benefits of the reagent abstraction.  Both of
+the example combinations work regardless of how the underlying stacks
+are implemented.  If both stacks use elimination backoff, the
+conjoined operations will potentially use elimination on both
+simultaneously.  This behavior is entirely emergent; it does not
+require any code on the part of the stack author, and it does not
+require the stack user to know anything about the implementation.
+Reagents can be composed in unanticpated ways.
+
+The double-pop reagent implicitly gives a solution to the Dining
+Philosophers problem~\cite{?}: two resources are atomically acquired.
+Internally, the reagent library ensures dead- and live-lock freedom
+for conjoined reagents.
+
+The implementation details for conjunctions are discussed
+later~(\secref{implementation}), but a key point is that the
+performance cost is \emph{pay as you go}.  Single atomic reagents like
+\lstinline{push} and \lstinline{pop} execute a single CAS---just like
+the standard nonblocking algorithms they are meant to implement---even
+though these operations can be combined into larger atomic operations.
+The cost of conjunction is only incurred when a conjoined reagent is
+actually used.  This is a crucial difference from STM, which must
+generally incur overheads regardless of the size of the atomic blocks;
+see~\secref{related} for more discussion.
+
+\elide{
+Unlike function composition, however, the
+atomicity and blocking behavior of the reagents is combined.
+
+fills a key gap in current libraries for fine-grained concurrency.
+
+KEY: pay as you go!
+
+dining philosophers
+
+pop from stack, send as message
+
+exponential search for message passing
+
+show how, for counter, tryDec and dec are inter-expressible
+}
+
+\subsection{Catalysts: persistent reagents}
+\label{sec:catalysts}
+
+In chemistry, a reagent is a participant in a reaction, and reagents
+are further subdivided into \emph{reactants}, which are consumed
+during reaction, and \emph{catalysts}, which enable reactions but are
+not consumed by them.  Invoking a reagent using the \lstinline{!}
+operator 
+
+chemistry metaphor.  note that catalysts increase parallelism and remove need
+for devoted thread
+
+nice catalysts: zip and unzip, tree barrier
+
+\elide{
+class TreeBarrier {
+  public readonly Synchronous.Channel[] Arrive;
+  private readonly Join j; // create j, init chans ...
+  public TreeBarrier(int n) {Wire(0, n-1, () => {});}
+  private void Wire(int low, int high, Action Done) {
+    if (low == high) j.When(Arrive[low]).Do(Done);
+    else if (low + 1 == high)
+      j.When(Arrive[low]).And(Arrive[high]).Do(Done);
+    else { // low + 1 < high
+      Synchronous.Channel Left, Right; // init chans       
+      j.When(Left).And(Right).Do(Done);
+      int mid = (low + high) / 2;
+      Wire(low, mid, () => Left());
+      Wire(mid + 1, high, () => Right()); 
+    }
+  }
+}
+}
+
+\begin{lstlisting}
+def zip(in1: Endpoint[Unit,  A], 
+        in2: Endpoint[Unit,  B], 
+        out: Endpoint[(A,B), Unit]) = 
+  dissolve((swap(in1) ||| swap(in2)) >> out)
+\end{lstlisting}
+
+can be made more abstract: use reagent arguments instead!
+
+\subsection{Dynamic reagents and \lstinline{cas}}
+
+The combinators introduced so far are powerful, but they impose a
+strict phase separation: reagents are constructed prior to, and
+independently from, the data that flows through them.  Phase
+separation is useful, because it allows reagent execution to be
+optimized based on complete knowledge of the computation to be
+performed (see \secref{implementation}).
 
 The \lstinline{read} combinator has a straightforward signature: if
 \lstinline{r} has type \lstinline{Ref[A]}, then \lstinline{read(r)} is a
@@ -363,75 +706,7 @@ failed CASes, including an optimistic retry loop and exponential backoff.  The
 failure mechanics depend on which other combinators are involved, so we delay
 a complete discussion until \secref{failure}.
 
-The \lstinline{upd} combinator 
-
-%% THIS SEEMS MORE CONFUSING THAN HELPFUL
-%% For now, it suffices to know that
-%% invoking a \lstinline{cas} will complete and return \lstinline{()} only when
-%% the CAS has successfully completed.
-
-%% \begin{lstlisting}[mathescape=true]
-%% def upd[A,B,C](r: Ref[A], f: (A,B) $\rightharpoonup$ (A,C)): Reagent[B,C] 
-%%   = computed { 
-%%       (b: B) =>       
-%% \end{lstlisting}
- 
-chemistry metaphor.  note that catalysts increase parallelism and remove need
-for devoted thread
-
-lack of isolation needed to express many lock-free algorithms.
-message-passing turns out to be a good way to understand what's going on.
-
-key point: traditional lock-free algorithms that use a single cas do not pay
-any penalty for composability/kcas potential
-
-show how, for counter, tryDec and dec are inter-expressible
-
-% TODO: fix types for cases below
-\begin{lstlisting}
-class Counter {
-  private val state = new Ref[Int](0)
-  val get = upd(state) { case i => (i, i) }
-  val inc = upd(state) { case i => (i+1, i) }
-  val dec = upd(state) { case i if (i > 0) => (i-1, i) }
-  val tryDec = upd(state) {
-     case i if (i == 0) => (0,   None)
-     case i              => (i-1, Some(i))
-  }
-}
-\end{lstlisting}
-
-% nice catalysts: zip and unzip
-
-\subsection{Failure is an \textsf{Option}}
-\label{sec:failure}
-
-blocking failure versus retryable failure
-
-\begin{lstlisting}
-  val tryDec = 
-\end{lstlisting}
-
-\subsection{Advanced reagents: CAS, computed, and composed}
-\label{sec:hard-examples}
-
-Examples:
-
-\begin{itemize}
-\item TreiberStack
-\item with blocking
-\item with elimination backoff
-\item MSQueue
-\item with blocking
-\item with buckets?
-\item Counter to semaphore
-\item RWLocks
-\item Tree barriers
-\item Dining philosophers(ish)
-\item Flat combining - doesn't work if commit is two-phase process.
-  probably too much to bring into scope for this paper, anyway
-\end{itemize}
-
+\begin{figure}
 \begin{lstlisting}
 class MSQueue[A] {
   private case class Node(data: A, next: Ref[Node])
@@ -453,8 +728,13 @@ class MSQueue[A] {
   }
 }
 \end{lstlisting}
+\end{figure}
+
+This is where the differences from STM really start to show.
 
 post-commit action for catching up tail?
+
+\subsection{A caveat for composition}
 
 \section{Semantics}
 \label{sec:semantics}
@@ -462,9 +742,12 @@ post-commit action for catching up tail?
 Try to keep this minimal for the sake of space
 
 Purpose of the semantics is mainly to clarify the relationship between
-the shared-state and message-passing aspects of reagents.
+the shared-state and message-passing aspects of reagents.  We have
+ruthlessly stripped out ...
 
 (fractional?) permissions model
+
+Left bias in choice operator
 
 \begin{itemize}
   \item read, cas
@@ -474,6 +757,17 @@ the shared-state and message-passing aspects of reagents.
   \item bind and ret
   \item computed?
 \end{itemize}
+
+Computed and lift cause problems: can potentially invoke a reagent
+inside another invocation.  Just drop these.  And probably ret too.
+Hmm.  This doesn't even allow us to express upd.  But upd itself is
+problematic for the same reasons.
+
+Could easily split out ``pure'' expressions.  Unsatisfying...  but
+this is essentially what Haskell's STM is doing.
+
+% NOTE: this leaves a nice opportunity later to give a full semantic
+% story
 
 \elide{
 \[
@@ -494,13 +788,15 @@ the shared-state and message-passing aspects of reagents.
 
 \[
 \infer
-  {r_i!v_i, \sigma_i \cstep{t_i} \ret{v'_i}, \sigma'_i}
+  {r_i\ \lstinline{!}\ v_i, \sigma_i \cstep{t_i} \ret{v'_i}, \sigma'_i}
   {\prod \evalCtx_i[r_i ! v_i],\ \biguplus \sigma_i \step
    \prod \evalCtx_i[\ret{v'_i}],\ \biguplus \sigma'_i}
 \]
 
 \section{Implementation}
 \label{sec:implementation}
+
+bags allow greatest degree of freedom and parallelism
 
 \begin{lstlisting}
 def !(a: A): B = tryReact(a, Reaction.inert, null) match {
@@ -563,13 +859,35 @@ def tryReact(a: A, rx: Reaction, offer: Offer[B]): Any =
 \section{Related work}
 \label{sec:related}
 
+The design of reagents builds on a foundation laid by Concurrent ML
+and extended in Haskell's STM
+
+\subsection{Concurrent ML}
+
+parallel CML's implementation of choice
+
+\subsection{Software transactional memory}
+
+STM in general
+
+Haskell's STM
+
+left-biased choice, but differently from \lstinline{orElse} in
+Haskell's STM.
+
+\subsection{Transactions that communicate}
+
+Communicating transactions and company, transactional events
+
+\subsection{Composing lock-free data structures}
+
+elastic transactions and company, Paper on composing lock-free data
+structure operations
+
+\section{Conclusion}
+
 We believe it is crucial to have XX, YY together
 
-STM, Communicating transactions and company, elastic transactions and company
-
-CML, Transactional events, async CML, join calculus
-
-Paper on composing lock-free data structure operations
 
 \bibliographystyle{abbrvnat}
 \bibliography{reagents}
@@ -638,3 +956,20 @@ Should consult good papers like Ryan's and Jesse's for examples here.
 Need to nail down story for overlapping state access.  In particular,
 when (if ever) is an error flagged?  Unfortunately, talking about heap
 unsplittability is rather more complicated than splittability.
+
+Examples:
+
+\begin{itemize}
+\item TreiberStack
+\item with blocking
+\item with elimination backoff
+\item MSQueue
+\item with blocking
+\item with buckets?
+\item Counter to semaphore
+\item RWLocks
+\item Tree barriers
+\item Dining philosophers(ish)
+\item Flat combining - doesn't work if commit is two-phase process.
+  probably too much to bring into scope for this paper, anyway
+\end{itemize}
