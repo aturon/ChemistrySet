@@ -174,7 +174,8 @@ that such \emph{coarse-grained} locking is inherently unscalable:
   acquire the same lock's cache line in exclusive mode before
   operating.  For fine-grained communication, that means at least one
   cache miss per operation.
-\item It is susceptible to ... % blocking %TODO
+\item It is susceptible to unfortunate preemptions or stalls on the part of a
+  thread holding a lock, which prevents other threads from making progress.
 \end{itemize}
 
 To combat scalability problems, data structures employ finer-grained locking,
@@ -185,7 +186,7 @@ instead perform updates directly, using hardware-level operations (like
 compare-and-set) to ensure atomicity.  Doing the updates directly means that
 there is no extra communication or contention for locks, but it also generally
 means that the entire update must consist of changing a single word of
-memory---a constraint which is often quite challenging to meet.  
+memory---a constraint which is often quite challenging to meet.
 
 \begin{figure}
 \begin{lstlisting}
@@ -371,10 +372,17 @@ diagram(s) of reaction?
 \subsection{Atomic updates on \lstinline{Ref}s}
 
 Memory is shared between reagents using the type \lstinline{Ref[A]} of
-atomically-updatable references.  These references are only accessible
-through reagent combinators, which allows them to provide
-functionality beyond the built-in \lstinline{AtomicReference[A]} type,
-as we will see.class TreiberStack[A] {
+atomically-updatable references.\footnote{ These references are only
+  accessible through reagent combinators, which allows them to provide
+  functionality beyond the built-in \lstinline{AtomicReference[A]} type, such
+  as the blocking logic we will see shortly.  }
+The \lstinline{upd} combinator~(\figref{combinators}) represents simple atomic
+updates to references.  It takes an \emph{update function}, which tells how to
+transform a snapshot of the reference cell and some input into an updated
+value for the cell and some output.  Using \lstinline{upd}, we can rewrite
+\lstinline{TreiberStack} in a more readable and concise way:
+\begin{lstlisting}
+class TreiberStack[A] {
   private val head = new Ref[List[A]](Nil)
   val push: Reagent[A, Unit] = upd(head) {
     case (xs, x) => (x:xs, ())
@@ -386,26 +394,24 @@ as we will see.class TreiberStack[A] {
 }
 \end{lstlisting}
 In Scala, anonymous partial functions are written as a series of cases
-enclosed in braces.  For \lstinline{push} and \lstinline{tryPop}, the
-case analyses are exhaustive, so the functions are in fact total.
+enclosed in braces.  For \lstinline{push} and \lstinline{tryPop}, the case
+analyses are exhaustive, so the update functions are in fact total.
 
-Being reagents, \lstinline{push} and \lstinline{tryPop} are inert
-values.  They can be invoked using the \lstinline{!} method provided
-by reagents; for a \lstinline{Reagent[A,B]} the \lstinline{!} method
-takes an \lstinline{A} and returns a \lstinline{B}.  Scala permits
-infix notation for methods, so we can use a \lstinline{TreiberStack}
-as follows:
+Being reagents, \lstinline{push} and \lstinline{tryPop} are inert values.
+They can be invoked using the \lstinline{!} method provided by reagents; for a
+\lstinline{Reagent[A,B]} the \lstinline{!} method takes an \lstinline{A} and
+returns a \lstinline{B}.  Scala permits infix notation for methods, so we can
+use a \lstinline{TreiberStack} as follows:
 \begin{lstlisting}
   var s = new TreiberStack[Int]; s.push ! 42
 \end{lstlisting}
 The key point is that when we invoke these reagents, we are executing
-\emph{exactly} the same algorithms written by hand in
-\secref{background}, including the retry loop with exponential
-backoff; reagents systematize and internalize common patterns of
-fine-grained concurrency.  But by exposing \lstinline{push} and
-\lstinline{tryPop} as reagents, rather than methods, we leave the door
-open for further composition and tailoring by a user of the data
-structure, as we shall see below.
+\emph{exactly} the same algorithms written by hand in \secref{background},
+including the retry loop with exponential backoff; reagents systematize and
+internalize common patterns of fine-grained concurrency.  But by exposing
+\lstinline{push} and \lstinline{tryPop} as reagents, rather than methods, we
+leave the door open for further composition and tailoring by a user of the
+data structure (\secref{choice}, \secref{conjunction}).
 
 While \lstinline{tryPop} handles both empty and nonempty stacks, we
 can write a variant that drops the empty case:
@@ -414,12 +420,11 @@ val pop: Reagent[Unit, A] = upd(head) {
   case (x::xs, ()) => (xs, x)
 }
 \end{lstlisting}
-Now our update function really is partial.  An invocation
-\lstinline{s.pop ! ()} will block the calling thread unless or until
-the stack is nonempty.  Blocking and signalling are entirely handled
-by the reagent implementation, using standard
-techniques~(\secref{implementation}); there is therefore no risk of a
-lost wakeup.  %TODO: add more here?
+Now our update function is partial.  An invocation \lstinline{s.pop ! ()} will
+block the calling thread unless or until the stack is nonempty.  Blocking and
+signalling are entirely handled by the reagent implementation, using standard
+techniques~(\secref{implementation}); there is therefore no risk of a lost
+wakeup.  %TODO: add more here?
 
 \elide{
 % What's the cost/benefit for this example?
@@ -459,7 +464,7 @@ Roughly equivalent to the unfair JUC semaphore implementation.
 
 Another staple of concurrency libraries is synchronization, whereby
 threads are made mutually aware of reaching a particular state.
-Synchronization is completementary to shared state: the former
+Synchronization is complementary to shared state: the former
 provides concurrent interaction, while the latter (through atomic
 update) provides sequential isolation.  % TODO: make this less cryptic
 
@@ -491,6 +496,7 @@ used together with other combinators, particularly \emph{choice} and
 %% any penalty for composability/kcas potential
 
 \subsection{Composing reagents: choice}
+\label{sec:choice}
 
 If \lstinline{r} and \lstinline{s} are two reagents of the same type,
 their \emph{choice} \lstinline{r + s} will behave like one of them,
@@ -575,6 +581,7 @@ isolation and interaction
 }
 
 \subsection{Composing reagents: sequencing and pairing}
+\label{sec:conjunction}
 
 Choice offers a kind of disjunction on reagents.  There are also two
 ways of \emph{conjoining} two reagents, so that the composed reagent
@@ -612,15 +619,14 @@ Internally, the reagent library ensures dead- and live-lock freedom
 for conjoined reagents.
 
 The implementation details for conjunctions are discussed
-later~(\secref{implementation}), but a key point is that the
-performance cost is \emph{pay as you go}.  Single atomic reagents like
-\lstinline{push} and \lstinline{pop} execute a single CAS---just like
-the standard nonblocking algorithms they are meant to implement---even
-though these operations can be combined into larger atomic operations.
-The cost of conjunction is only incurred when a conjoined reagent is
-actually used.  This is a crucial difference from STM, which must
-generally incur overheads regardless of the size of the atomic blocks;
-see~\secref{related} for more discussion.
+later~(\secref{implementation}), but a key point is that the performance cost
+is \emph{pay as you go}.  Single atomic reagents like \lstinline{push} and
+\lstinline{pop} execute a single CAS---just like the standard nonblocking
+algorithms they are meant to implement---even though these operations can be
+combined into larger atomic operations.  The cost of conjunction is only
+incurred when a conjoined reagent is actually used.  This is a crucial
+difference from STM, which generally incurs overheads regardless of the size
+of the atomic blocks; see~\secref{related} for more discussion.
 
 \elide{
 Unlike function composition, however, the
@@ -642,16 +648,46 @@ show how, for counter, tryDec and dec are inter-expressible
 \subsection{Catalysts: persistent reagents}
 \label{sec:catalysts}
 
-In chemistry, a reagent is a participant in a reaction, and reagents
-are further subdivided into \emph{reactants}, which are consumed
-during reaction, and \emph{catalysts}, which enable reactions but are
-not consumed by them.  Invoking a reagent using the \lstinline{!}
-operator 
+In chemistry, a reagent is a participant in a reaction, and reagents are
+further subdivided into \emph{reactants}, which are consumed during reaction,
+and \emph{catalysts}, which enable reactions but are not consumed by them.
 
-chemistry metaphor.  note that catalysts increase parallelism and remove need
-for devoted thread
+The \lstinline{!} operator invokes a reagent as a reactant: the invocation
+lasts for a single reaction, and any messages sent by the reagent are
+consumed.  But sometimes it is useful for reagents to persist beyond a single
+reaction, \emph{i.e.}, to act as catalysts.  For example, the following
+function creates a catalyst that merges input from two endpoints and sends the
+resulting pairs to another endpoint:
+\begin{lstlisting}
+def zip(in1: Endpoint[Unit,  A], 
+        in2: Endpoint[Unit,  B], 
+        out: Endpoint[(A,B), Unit]) = 
+  dissolve((swap(in1) ||| swap(in2)) >> swap(out))
+\end{lstlisting}
+The \lstinline{dissolve} function takes a \lstinline{Reagent[Unit, Unit]} and
+introduces it as a catalyst.\footnote{For simplicity, we have not given a way
+  to \emph{cancel} catalysts after they have been introduced, but cancellation
+  is easy to add.}  Operationally, in this example, that just means sending
+messages along \lstinline{in1} and \listinline{in2} that are marked as
+catalyzing messages, and hence are not consumed during reaction.  The upshot
+is that senders along \lstinline{in1} will see the catalyzing messages, look
+for messages along \lstinline{in2} to pair with, and ultimately send messages
+along \lstinline{out} (and similarly in the other order).
 
-nice catalysts: zip and unzip, tree barrier
+Catalysts could instead be expressed using a thread that repeatedly invokes a
+reagent as a reactant.  Allowing direct expression through
+\lstinline{dissolve} is more efficient (since it does not tie up a thread) and
+allows greater parallelism (since, as with the \lstinline{zip} example above,
+multiple reagents can react with it in parallel).
+
+Catalysts are not limited to message passing.  The \lstinline{zip} example
+above could be rephrased to take reagents, rather than endpoints, as
+arguments.  
+
+%TODO: barrier?
+%TODO: explain Unit -> Unit?
+
+% nice catalysts: zip and unzip, tree barrier
 
 \elide{
 class TreeBarrier {
@@ -672,25 +708,49 @@ class TreeBarrier {
   }
 }
 }
-
-\begin{lstlisting}
-def zip(in1: Endpoint[Unit,  A], 
-        in2: Endpoint[Unit,  B], 
-        out: Endpoint[(A,B), Unit]) = 
-  dissolve((swap(in1) ||| swap(in2)) >> out)
-\end{lstlisting}
-
-can be made more abstract: use reagent arguments instead!
-
 \subsection{Dynamic reagents and \lstinline{cas}}
 
-The combinators introduced so far are powerful, but they impose a
-strict phase separation: reagents are constructed prior to, and
-independently from, the data that flows through them.  Phase
-separation is useful, because it allows reagent execution to be
-optimized based on complete knowledge of the computation to be
-performed (see \secref{implementation}).
+The combinators introduced so far are powerful, but they impose a strict phase
+separation: reagents are constructed prior to, and independently from, the
+data that flows through them.  Phase separation is useful, because it allows
+reagent execution to be optimized based on complete knowledge of the
+computation to be performed (see \secref{implementation}).  But in many cases
+the structure of the computation to be performed depends on the input or other
+dynamic data.
 
+\begin{figure}
+\begin{lstlisting}
+class MSQueue[A] {
+  private case class Node(data: A, next: Ref[Node])
+  private val head = new Ref(Node(null))
+  private val tail = new Ref(head.read ! ())
+  val tryDeq: Reagent[Unit, Option[A]] = upd(head) {
+    case (Node(_, Ref(n@Node(x, _))), ()) => (n, Some(x))
+    case (emp,                        ()) => (emp, None)
+  }
+  private def findAndEnq(n: Node): Reagent[Unit,Unit] = 
+    read(tail) ! () match {
+      case ov@Node(_, r@Ref(null)) => 
+        cas(r, null, n) >>
+        postCommit { _ => cas(tail, ov, n) !? () }
+      case ov@Node(_, Ref(nv)) => 
+        cas(tail, ov, nv) !? (); 
+        findAndEnq(n)
+    }
+  val enq: Reagent[A, Unit] = computed { 
+    (x: A) => findAndEnq(Node(x, new Ref(null)))
+  }
+}
+\end{lstlisting}
+\nocaptionrule
+\caption{The Michael-Scott queue, with reagents}
+\label{fig:msqueue}
+\end{figure}
+
+An example of this phenomenon is the classic Michael-Scott lock-free
+queue~\cite{?}. 
+
+\elide{
 The \lstinline{read} combinator has a straightforward signature: if
 \lstinline{r} has type \lstinline{Ref[A]}, then \lstinline{read(r)} is a
 \emph{value} of type \lstinline{Reagent[Unit, A]} which, when invoked, takes a
@@ -705,36 +765,15 @@ yield a boolean result.  Instead, the reagent library builds in handling of
 failed CASes, including an optimistic retry loop and exponential backoff.  The
 failure mechanics depend on which other combinators are involved, so we delay
 a complete discussion until \secref{failure}.
-
-\begin{figure}
-\begin{lstlisting}
-class MSQueue[A] {
-  private case class Node(data: A, next: Ref[Node])
-  private val head = new Ref(Node(null))
-  private val tail = new Ref(head.read!())
-
-  @tailrec private def search(x:A): Reagent[Unit,Unit] = 
-    read(tail) ! () match {
-      case Node(_, r@Ref(null)) => 
-        cas(r, null, Node(x, new Ref(null)))
-      case ov@Node(_, Ref(nv)) => 
-        cas(tail, ov, nv) !? (); 
-        search(x)
-    }
-  val enq: Reagent[A, Unit] = computed search
-  val tryDeq: Reagent[Unit, Option[A]] = upd(head) {
-    case Node(_, Ref(n@Node(x, _))) => (n, Some(x))
-    case emp => (emp, None)
-  }
 }
-\end{lstlisting}
-\end{figure}
+ 
+% tail recursive
 
 This is where the differences from STM really start to show.
 
-post-commit action for catching up tail?
+post-commit action for catching up tail
 
-\subsection{A caveat for composition}
+\paragraph{A caveat for composition}
 
 \section{Semantics}
 \label{sec:semantics}
@@ -939,10 +978,10 @@ reason not to use the pitch of extensible, composable j.u.c.?
 
 1.2 Title, abstract, intro, 
 1.0 Background
-2.5 Library overview & examples
+2.5 Library overview & examples         3.0
 1.5 Semantics 
-1.5 Implementation/algorithms 
-0.5 Performance results
+1.5 Implementation/algorithms           3.0
+0.5 Performance results                 1.0
 1.0 Related work
 0.8 Bib
 
