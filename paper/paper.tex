@@ -174,19 +174,20 @@ that such \emph{coarse-grained} locking is inherently unscalable:
   acquire the same lock's cache line in exclusive mode before
   operating.  For fine-grained communication, that means at least one
   cache miss per operation.
-\item It is susceptible to unfortunate preemptions or stalls on the part of a
+\item It is susceptible to preemptions or stalls of a
   thread holding a lock, which prevents other threads from making progress.
 \end{itemize}
 
-To combat scalability problems, data structures employ finer-grained locking,
-or eschew locking altogether.  Fine-grained locking associates locks with
-small, independent parts of a data structure, allowing those parts to be
-manipulated in parallel.  Lockless (or \emph{nonblocking}) data structures
-instead perform updates directly, using hardware-level operations (like
-compare-and-set) to ensure atomicity.  Doing the updates directly means that
-there is no extra communication or contention for locks, but it also generally
-means that the entire update must consist of changing a single word of
-memory---a constraint which is often quite challenging to meet.
+To achieve scalability, data structures employ finer-grained locking,
+or eschew locking altogether.  Fine-grained locking associates locks
+with small, independent parts of a data structure, allowing those
+parts to be manipulated in parallel.  Lockless (or \emph{nonblocking})
+data structures instead perform updates directly, using hardware-level
+operations (like compare-and-set) to ensure atomicity.  Doing the
+updates directly means that there is no extra communication or
+contention for locks, but it also generally means that the entire
+update must consist of changing a single word of memory---a constraint
+which is often quite challenging to meet.
 
 \begin{figure}
 \begin{lstlisting}
@@ -219,41 +220,107 @@ class TreiberStack[A] {
 \label{fig:classic-treiber}
 \end{figure}
 
-\figref{classic-treiber} gives a classic example of a fine-grained
-concurrent data structure: Treiber's lock-free stack~\cite{?}.  The
-stack is represented as an \emph{immutable} linked list.  Mutation
-occurs solely through the \lstinline{head} pointer, represented here
-as an \lstinline{AtomicReference}.  The \lstinline{head} is mutated
-using \lstinline{compareAndSet} (here abbreviated as \lstinline{cas}),
-which takes an expected value and a new value, and atomically updates
-the reference
+\figref{classic-treiber} gives a classic example of a fine-grained concurrent
+data structure: Treiber's lock-free stack~\cite{?}.  The stack is represented as
+an \emph{immutable} linked list.  Mutation occurs solely through the
+\lstinline{head} pointer, represented here as an \lstinline{AtomicReference}.
+The \lstinline{head} is mutated using \lstinline{compareAndSet} (here
+abbreviated as \lstinline{cas}), which takes an expected value and a new value,
+and atomically updates the reference if it has the expected value.  It returns
+\lstinline{true} iff the update was successful.
 
-% OPTIMISTIC CONCURRENCY
+A word about Scala: the syntax 
+\begin{lstlisting}
+  exp match { case pat1 => body1 ... case patN => bodyN }
+\end{lstlisting}
+denotes pattern matching, where the value of \lstinline{exp} is matched in order
+against \lstinline{pat1} up to \lstinline{patN}.  In \figref{classic-treiber},
+we use the two list constructors \lstinline{Nil} and \lstinline{::} (an inline
+cons) in patterns.
+
+The \lstinline{push} and \lstinline{tryPop} operations are implemented in a
+typical \emph{optimistic} style: they take a snapshot of the head, perform some
+local computation with it, and then attempt to update it accordingly.  The
+computation is optimistic because it is performed without holding a lock.  The
+head might concurrently change, invalidating the \lstinline{cas} intended to
+update it.  To account for possible interference, the snapshot-compute-update
+code executes within a retry loop.  While the loop may retry forever, it can
+only do so by repeatedly failing to \lstinline{cas}, which in turn means that an
+unlimited number of other operations on the stack are succeeding.  In other
+words, \lstinline{push} and \lstinline{tryPop} are formally \emph{lock
+  free}~\cite{?}.
+
+To successfully \lstinline{cas}, a core must acquire the relevant cache line in
+\emph{exclusive} mode~\cite{?}, or something conceptually equivalent.  When
+several cores attempt to \lstinline{cas} a common reference, they must
+coordinate at the hardware level, using precious memory bandwidth and wasting
+processor cycles.  A failed \lstinline{cas} is evidence that there is
+\emph{contention} over a common location.  To increase the \lstinline{cas}
+success rate and conserve memory bandwidth, fine-grained concurrent algorithms
+employ a \emph{backoff} scheme, which here we have abstracted into a lightweight
+\lstinline{Backoff} class.  The class encapsulates the simplest scheme:
+busy-wait for a random amount of time that grows exponentially each time
+\lstinline{once} is invoked.  
 
 %notice: changed to less desirable representation to make CAS work
 
 %Most of the Scala code in this paper should be 
 %need to explain pattern matching and PartialFunction
 
-%% Say something about CONTENTION.
-
 Treiber's stack scales better than a lock-based stack mainly because it
-decreases the amount of shared data that must be updated per operation:
-instead of acquiring a shared lock, altering a shared stack pointer, and
-releasing the shared lock, Treiber's stack does a single CAS to update the
-shared pointer directly.  But the head pointer of the stack is still a
-centralized source of contention.  Spreading out the contention requires
-parallelizing stack operations---but how, given that they all involve
-modifying the top of the stack?
+decreases the amount of shared data that must be updated per operation: instead
+of acquiring a shared lock, altering a shared stack pointer, and releasing the
+shared lock, Treiber's stack does a single CAS to update the shared pointer
+directly.  However, that pointer is still a centralized source of contention.
+While exponential backoff helps relieve the contention, we can do better by
+parallelizing stack operations---which is counterintuitive, given that they all
+involve modifying the top of the stack.
 
-Parallelization requires a change of perspective.  Normally, we view
-concurrent operations on the same part of a data structure as competing to
-atomically update that data structure; we want the operations to be isolated.
-But if
+Parallelization requires a change of perspective.  Normally, we view concurrent
+operations on the same part of a data structure as competing to atomically
+update that data structure; we want the operations to be isolated.  On the other
+hand, sometimes operations can ``help'' each other: a \lstinline{push} and a
+\lstinline{tryPop} effectively cancel each other out.  This insight leads to a
+scheme called \emph{elimination backoff}~\cite{?}.  Operations first try the
+usual \lstinline{cas}-based code.  If the \lstinline{cas} fails, rather than
+busy-waiting, the operations advertise their presence on a side-channel,
+reducing the contention for the head pointer.  If a \lstinline{push} and
+\lstinline{tryPop} detect their mutual presence, the \lstinline{push} can pass
+its argument directly to \lstinline{tryPop} through the side-channel, and no
+change to the head pointer is necessary.  Atomicity is not violated, because had
+the \lstinline{push} and \lstinline{pop} executed in sequence, the head pointer
+would have been returned to its original value anyway.
+
+Both \lstinline{push} and \lstinline{tryPop} are \emph{total} operations: they
+can in principle succeed no patter what state the stack is in, and fail (and
+retry) only due to active interference from concurrent threads.  A true
+\lstinline{pop} operation, on the other hand, is \emph{partial}: it is undefined
+when the stack is empty.  Often this is taken to mean that the operation should
+block until another thread moves the stack into a state on which the operation
+is defined.  Partial operations introduce considerable complexity, because
+\emph{all} of the operations on the data structure must potentially signal
+blocked threads, depending on the changes being performed.  In some cases, it is
+possible to cleverly treat signalling in essentially the same way as atomic
+updates~\cite{?}.
+
+Synchronization and signalling is also subject to cache and memory bandwidth
+concerns.  For example, when a lock is released, how much memory traffic is
+generated?  If the lock is implemented as a single bit which threads attempt to
+\lstinline{cas} in a tight loop, any change to that bit will result in a cascade
+of memory traffic---even though only one waiting thread can actually win and
+acquire the lock.  The most important strategy for cutting down this traffic was
+introduced by Mellor-Crummey and Scott~\cite{?}, who suggested that waiting
+threads should place themselves in a lock-free queue, and the release operation
+should  % TODO: room for this??
 
 %talk about elimination backoff and blocking versions but don't show code.
 
-discuss the insight behind MCS locks
+%discuss the insight behind MCS locks
+
+The goal of reagents is to systematize these techniques and others into a
+uniform set of combinators that make algorithms easier to express, and allows
+algorithms to be composed and tailored by users.  In the next section, we will
+see how to write all of the above examples, concisely and composably.
 
 \elide{
 In \secref{background}, we saw a range of strategies for communication and
@@ -270,9 +337,6 @@ combinators for writing concurrent algorithms.  Some of the techniques are
 built into the combinators themselves, while others are expressible as
 reusable abstractions.
 }
-
-The goal of reagents is to systematize the expression of these
-disparate techniques into a uniform set of combinators
 
 \section{Reagents}
 \label{sec:reagents}
@@ -775,63 +839,6 @@ post-commit action for catching up tail
 
 \paragraph{A caveat for composition}
 
-\section{Semantics}
-\label{sec:semantics}
-
-Try to keep this minimal for the sake of space
-
-Purpose of the semantics is mainly to clarify the relationship between
-the shared-state and message-passing aspects of reagents.  We have
-ruthlessly stripped out ...
-
-(fractional?) permissions model
-
-Left bias in choice operator
-
-\begin{itemize}
-  \item read, cas
-  \item send
-  \item choice
-  \item react
-  \item bind and ret
-  \item computed?
-\end{itemize}
-
-Computed and lift cause problems: can potentially invoke a reagent
-inside another invocation.  Just drop these.  And probably ret too.
-Hmm.  This doesn't even allow us to express upd.  But upd itself is
-problematic for the same reasons.
-
-Could easily split out ``pure'' expressions.  Unsatisfying...  but
-this is essentially what Haskell's STM is doing.
-
-% NOTE: this leaves a nice opportunity later to give a full semantic
-% story
-
-\elide{
-\[
-\infer
-  {P_i, \sigma_i \cstep{t_i} P'_i, \sigma'_i}
-  {P_1 | \cdots | P_n,\ \sigma_1 \uplus \cdots \uplus \sigma_n\ \step\
-   P'_1 | \cdots | P'_n,\ \sigma'_1 \uplus \cdots \uplus \sigma'_n
-  }
-\]
-
-\[
-\infer
-  {r_i!v_i, \sigma_i \cstep{t_i} \ret{v'_i}, \sigma'_i}
-  {\procCtx[\prod \evalCtx_i[r_i ! v_i]],\ \biguplus \sigma_i \step
-   \procCtx[\prod \evalCtx_i[\ret{v'_i}]],\ \biguplus \sigma'_i}
-\]
-}
-
-\[
-\infer
-  {r_i\ \lstinline{!}\ v_i, \sigma_i \cstep{t_i} \ret{v'_i}, \sigma'_i}
-  {\prod \evalCtx_i[r_i ! v_i],\ \biguplus \sigma_i \step
-   \prod \evalCtx_i[\ret{v'_i}],\ \biguplus \sigma'_i}
-\]
-
 \section{Implementation}
 \label{sec:implementation}
 
@@ -976,14 +983,15 @@ reason not to use the pitch of extensible, composable j.u.c.?
 
 # Outline
 
-1.2 Title, abstract, intro, 
-1.0 Background
+1.2 Title, abstract, intro,             1.0
+1.0 Background                          1.0
 2.5 Library overview & examples         3.0
 1.5 Semantics 
-1.5 Implementation/algorithms           3.0
+1.5 Implementation/algorithms           2.0
 0.5 Performance results                 1.0
-1.0 Related work
-0.8 Bib
+1.0 Related work                        1.0
+0.3 Conclusion                          0.2
+0.8 Bib                                 0.8
 
 How much time should we spend covering scalable concurrency
 background?  This is perhaps tied to strategies for introducing the
@@ -1012,3 +1020,63 @@ Examples:
 \item Flat combining - doesn't work if commit is two-phase process.
   probably too much to bring into scope for this paper, anyway
 \end{itemize}
+
+
+\elide{
+\section{Semantics}
+\label{sec:semantics}
+
+Try to keep this minimal for the sake of space
+
+Purpose of the semantics is mainly to clarify the relationship between
+the shared-state and message-passing aspects of reagents.  We have
+ruthlessly stripped out ...
+
+(fractional?) permissions model
+
+Left bias in choice operator
+
+\begin{itemize}
+  \item read, cas
+  \item send
+  \item choice
+  \item react
+  \item bind and ret
+  \item computed?
+\end{itemize}
+
+Computed and lift cause problems: can potentially invoke a reagent
+inside another invocation.  Just drop these.  And probably ret too.
+Hmm.  This doesn't even allow us to express upd.  But upd itself is
+problematic for the same reasons.
+
+Could easily split out ``pure'' expressions.  Unsatisfying...  but
+this is essentially what Haskell's STM is doing.
+
+% NOTE: this leaves a nice opportunity later to give a full semantic
+% story
+
+\elide{
+\[
+\infer
+  {P_i, \sigma_i \cstep{t_i} P'_i, \sigma'_i}
+  {P_1 | \cdots | P_n,\ \sigma_1 \uplus \cdots \uplus \sigma_n\ \step\
+   P'_1 | \cdots | P'_n,\ \sigma'_1 \uplus \cdots \uplus \sigma'_n
+  }
+\]
+
+\[
+\infer
+  {r_i!v_i, \sigma_i \cstep{t_i} \ret{v'_i}, \sigma'_i}
+  {\procCtx[\prod \evalCtx_i[r_i ! v_i]],\ \biguplus \sigma_i \step
+   \procCtx[\prod \evalCtx_i[\ret{v'_i}]],\ \biguplus \sigma'_i}
+\]
+}
+
+\[
+\infer
+  {r_i\ \lstinline{!}\ v_i, \sigma_i \cstep{t_i} \ret{v'_i}, \sigma'_i}
+  {\prod \evalCtx_i[r_i ! v_i],\ \biguplus \sigma_i \step
+   \prod \evalCtx_i[\ret{v'_i}],\ \biguplus \sigma'_i}
+\]
+}
