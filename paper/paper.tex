@@ -844,6 +844,8 @@ post-commit action for catching up tail
 
 bags allow greatest degree of freedom and parallelism
 
+kcas implementations: \cite{Attiya2008,Fraser2007,Luchangco2003}
+
 \begin{lstlisting}
 def !(a: A): B = tryReact(a, Reaction.inert, null) match {
   case (_: BacktrackCommand) => {
@@ -910,25 +912,31 @@ and extended in Haskell's STM
 
 \subsection{Concurrent ML}
 
-parallel CML's implementation of choice
+pure cml~\cite{Reppy1991}
+
+parallel CML's implementation of choice~\cite{Reppy2009}
 
 \subsection{Software transactional memory}
 
 STM in general
 
-Haskell's STM
+Haskell's STM~\cite{Harris2005a}
 
 left-biased choice, but differently from \lstinline{orElse} in
 Haskell's STM.
 
 \subsection{Transactions that communicate}
 
-Communicating transactions and company, transactional events
+Communicating transactions~\cite{Lesani2011}, 
+Transaction synchronizers~\cite{Luchangco2005},
+Transaction communicators~\cite{Luchangco2011},
+transactional events~\cite{Donnelly2006}
 
 \subsection{Composing lock-free data structures}
 
-elastic transactions and company, Paper on composing lock-free data
-structure operations
+elastic transactions~\cite{Felber2009} and company, 
+
+Paper on composing lock-free data structure operations~\cite{Cederman2010}
 
 \section{Conclusion}
 
