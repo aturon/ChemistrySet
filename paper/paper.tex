@@ -164,8 +164,8 @@ without corruption and without clogging the limited memory bandwidth,
 even when many cores are communicating.  A simple way to provide
 atomicity is to associate a lock with each shared data structure,
 acquiring the lock before performing any operation.  The prevailing
-wisdom\footnote{With some notable exceptions, like the recent work on
-  \emph{flat combining}~\cite{?}, which we explore in \secref{?}.} is
+wisdom\footnote{With some dissenting opinions, as in the recent work on
+  \emph{flat combining}~\cite{Hendler2010}.} is
 that such \emph{coarse-grained} locking is inherently unscalable:
 \begin{itemize}
 \item It forces operations on the data structure to be serialized,
@@ -907,8 +907,10 @@ def tryReact(a: A, rx: Reaction, offer: Offer[B]): Any =
 \section{Related work}
 \label{sec:related}
 
+\elide{
 The design of reagents builds on a foundation laid by Concurrent ML
 and extended in Haskell's STM 
+}
 
 \subsection{Concurrent ML}
 
@@ -924,15 +926,66 @@ CML library, they appear as abstract, composable values.  Internally to the
 library, however, events can be decomposed into their constituent combinators,
 which allows CML to execute them.
 
-Although CML events do not form a monad~\cite{?}, the basic pattern of
-representing computations as abstract, composable values has become extremely
-common in monadic programming
+Reagents are clearly influenced by the design of CML's events, and include
+variants of CML's core event combinators (communication and choice).  Where
+CML is aimed squarely at capturing synchronous communication protocols,
+reagents are designed for writing and tailoring fine-grained concurrent data
+structures and synchronization primitives.  This difference in motivation led
+us to include a number of additional combinators, including those dealing
+directly with shared state.
 
-parallel CML's implementation of choice~\cite{Reppy2009}
+Originally, CML was focused on managing concurrency rather than profiting from
+parallelism, and this focus was reflected in its implementation.  More
+recently, a parallel implementation of CML was proposed~\cite{Reppy2009}.  The
+key challenge is resolving uses of choice both consistently and scalably.  It
+is addressed by \emph{sharing}: an event making a choice is enrolled as
+offering a communication corresponding to each possible choice, and when a
+communication is accepted, the (single, shared) event is atomically marked as
+consumed.  We follow a similar strategy in dealing with message passing, but
+where Parallel CML uses lock-based queues to store messages, we show how to
+use lock-free bags for increased parallelism~(\secref{implementation}).  We
+also show how to incorporate choice resolution with simultaneous shared-state
+updates and our conjunction combinators.
+
+\elide{
+Although CML events do not form a monad~\cite{?}, the basic pattern of
+representing effectful computations as abstract, composable values has become
+common in monadic programming~\cite{?}, including Haskell's STM and
+Transactional Events, both discussed below.
+}
 
 \subsection{Software transactional memory}
 
-STM in general
+Software transactional memory was originally intended ``to provide a general
+highly concurrent method for translating sequential object implementations
+into non-blocking ones''~\cite{Shavit1997}.  This ambitious goal has led to a
+remarkable research literature, which has been summarized in textbook
+form~\cite{Larus2006}.  Much of the research is devoted to achieving
+scalability on multiprocessors or multicores, sometimes by relaxing
+consistency guarantees~\cite{?} or only providing obstruction-freedom rather
+than lock-freemdom~\cite{?}.  %Work in the area is
+
+Reagents, on the other hand, are aimed at a less ambitious goal: enabling the
+concise expression, user tailoring, and composition of fine-grained concurrent
+algorithms.  That is, unlike STM, reagents do not attempt to provide a
+\emph{universal} fine-grained concurrent algorithm.  Instead, they assist in
+writing and using specific algorithms.  
+
+There is a clear tradeoff.  Using STM, one can implement a concurrent stack or
+queue by simply wrapping a sequential version in an \lstinline{atomic} block,
+which requires no algorithmic insight and is simpler than the stack or queue
+we give in~\secref{reagents}.  But even with a very clever STM, these
+implementations are unlikely to scale as well as our elimination stack or
+Michael-Scott queue; some evidence for that is shown in~\secref{performance}.
+
+Reagents carve out a middle ground between completely hand-written algorithms
+and the completely automatic \lstinline{atomic} blocks of STM.  When used in
+isolation, reagents are \emph{guaranteed} to perform only the CASes that the
+hand-written algorithm would, so they introduce no overhead on shared-memory
+operations\elide{; we know of no STM implementation that can provide similar
+  guarantees or a similar cost model}.  Yet, unlike hand-written algorithms,
+reagents can be tailored and composed using choice, adding blocking behavior,
+or combining sequentially into larger atomic blocks. %TODO
 
 Haskell's STM~\cite{Harris2005a}
 
@@ -941,18 +994,65 @@ Haskell's STM.
 
 \subsection{Transactions that communicate}
 
-Communicating transactions~\cite{Lesani2011}, 
+A central tenet of transactions is \emph{isolation}: transactions should not
+be aware of concurrent changes to memory from other transactions.  But
+sometimes it is desirable for concurrent transactions to coordinate or
+otherwise communicate while executing.  Two very recent papers have proposed
+mechanisms for incorporating communication with STM, in the form of
+Communicating Transactions~\cite{Lesani2011} and Transaction
+Communicators~\cite{Luchangco2011b} (the latter extends earlier work on
+Transaction Synchronizers~\cite{Luchangco2005}).  In both cases, a key
+question is how the expected isolation of shared memory can safely coexist
+with concurrent communication.  Communicating Transactions use explicit,
+asynchronous message passing to communicate; the mechanism is entirely
+separate from shared memory, which retains isolation.  On the other hand,
+Transaction Communicators allow isolation to be weakened in a controlled way.
 
-Transaction synchronizers~\cite{Luchangco2005},
-Transaction communicators~\cite{Luchangco2011},
+Our mixture of message-passing and shared-state combinators most closely
+resembles the work on Communicating Transactions.   %TODO
 
-transactional events~\cite{Donnelly2006}
+\elide{
+There has also been work treating pure message-passing in a transactional way,
+both explicitly in Transactional Events~\cite{Donnelly2006} and implicitly in
+the Join Calculus~\cite{?}.  The former combines CML with an atomic sequencing
+operator, while the latter introduces \emph{join patterns} that can receive
+from multiple channels simultaneously and atomically.  Both are expressible
+using reagents, through the combination of \lstinline{swap} and the
+conjunction combinators.  Thus, reagents provide a new implementation for both
+of these systems.  Previously, Transactional Events was implemented on top of
+Haskell's STM, while join patterns have largely been implemented via
+coarse-grained locking~\cite{?}.  
+}
 
-join patterns~\cite{?}
+There has also been work treating pure message-passing in a transactional way:
+Transactional Events~\cite{Donnelly2006} combines CML with an atomic
+sequencing operator.  Previously, Transactional Events were implemented on top
+of Haskell's STM, relied on lightweight search threads for matching
+communications, and used an STM-based representation of channels.  However,
+Transactional Events are expressible using reagents, through the combination
+of \lstinline{swap} and the conjunction combinators.  Doing so yields a new
+implementation that does not require search threads, performs parallel
+matching for communication, and represents channels as lock-free bags.  We are
+not in a position to do a head-to-head comparison, but based on the results
+in~\secref{performance}, we expect the reagent-based implementation to scale
+better on fine-grained workloads.
 
 \subsection{Composing lock-free data structures}
 
-elastic transactions~\cite{Felber2009} and company, 
+Most of the literature on fine-grained concurrent data structures studies only
+``within-object'' atomicity, for example developing algorithms for inserting
+or removing elements into a collection atomically.  However, there has been
+some nice work studying the problem of transferring data atomically between
+such fine-grained data structures~\cite{Cederman2010}.  The basic approach
+relies on a \emph{k}CAS operation in much the same way that reagent sequencing
+does.  The transfer methods must be defined manually, in advance, and with
+access to the internals of the relevant data structures, whereas reagents
+allow arbitrary new compositions, without manual definition, and without
+access to the code or internals of the involved data structures.  
+
+Atomic transfers between concurrent data structures 
+
+elastic transactions~\cite{Felber2009} and company,
 
 composing lock-free data structure operations~\cite{Cederman2010}
 
@@ -960,7 +1060,7 @@ composing lock-free data structure operations~\cite{Cederman2010}
 
 We believe it is crucial to have XX, YY together
 
-\newpage
+
 \bibliographystyle{abbrvnat}
 \bibliography{reagents}
 
@@ -1016,8 +1116,8 @@ reason not to use the pitch of extensible, composable j.u.c.?
 1.5 Implementation/algorithms           2.0
 0.5 Performance results                 1.0
 1.0 Related work                        1.0
-0.3 Conclusion                          0.2
-0.8 Bib                                 0.8
+0.3 Conclusion                          0.3
+0.8 Bib                                 0.7
 
 How much time should we spend covering scalable concurrency
 background?  This is perhaps tied to strategies for introducing the
