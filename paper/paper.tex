@@ -903,16 +903,30 @@ def tryReact(a: A, rx: Reaction, offer: Offer[B]): Any =
 \label{sec:performance}
 
 
-
+\newpage
 \section{Related work}
 \label{sec:related}
 
 The design of reagents builds on a foundation laid by Concurrent ML
-and extended in Haskell's STM
+and extended in Haskell's STM 
 
 \subsection{Concurrent ML}
 
-pure cml~\cite{Reppy1991}
+Concurrent ML~\cite{Reppy1991} was designed to resolve an apparent tension
+between abstraction and choice: if protocols are represented abstractly as
+functions, it is impossible to express the choice of two abstract protocols.
+The solution is \emph{higher-order concurrency}, in which synchronous
+message-passing protocols are represented abstractly as \emph{events}.  CML's
+events are built up from combinators, including a choice combinator,
+communication combinators, and combinators for arbitrary computations not
+involving communication.  Events are an abstract data type: externally to the
+CML library, they appear as abstract, composable values.  Internally to the
+library, however, events can be decomposed into their constituent combinators,
+which allows CML to execute them.
+
+Although CML events do not form a monad~\cite{?}, the basic pattern of
+representing computations as abstract, composable values has become extremely
+common in monadic programming
 
 parallel CML's implementation of choice~\cite{Reppy2009}
 
@@ -928,21 +942,25 @@ Haskell's STM.
 \subsection{Transactions that communicate}
 
 Communicating transactions~\cite{Lesani2011}, 
+
 Transaction synchronizers~\cite{Luchangco2005},
 Transaction communicators~\cite{Luchangco2011},
+
 transactional events~\cite{Donnelly2006}
+
+join patterns~\cite{?}
 
 \subsection{Composing lock-free data structures}
 
 elastic transactions~\cite{Felber2009} and company, 
 
-Paper on composing lock-free data structure operations~\cite{Cederman2010}
+composing lock-free data structure operations~\cite{Cederman2010}
 
 \section{Conclusion}
 
 We believe it is crucial to have XX, YY together
 
-
+\newpage
 \bibliographystyle{abbrvnat}
 \bibliography{reagents}
 
