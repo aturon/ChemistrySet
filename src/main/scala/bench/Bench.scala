@@ -251,7 +251,7 @@ object Bench extends App {
 //    List(100, 250, 500)
 //    List(0) ++ (for (i <- 0 to 15) yield pow(10, 1+i.toDouble * 0.25).toInt)
 //    (0 to 600 by 50)
-    List(100, 1000)
+    List(50, 500, 5000)
 //    (50 to 1000 by 50).toList
   else config.workList = config.workList.reverse
 

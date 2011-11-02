@@ -31,6 +31,20 @@ object EnqDeq extends Benchmark {
       }
     }
   } 
+  private object lock extends Entry {
+    def name = "lock"
+    type S = LockQueue[AnyRef]
+    def setup = new LockQueue()
+    def run(q: S, work: Int, iters: Int) {
+      val r = new Random
+      for (_ <- 1 to iters) {
+	q.enq(SomeData)
+	Util.noop(r.fuzz(work))
+	untilSome {q.tryDeq}
+	Util.noop(r.fuzz(work))
+      }
+    }
+  } 
   private object stm extends Entry {
     def name = "stm"
     type S = STMQueue[AnyRef]
@@ -101,6 +115,7 @@ object EnqDeq extends Benchmark {
       }
     }
   }
+/*
   private object lock extends Entry {
     def name = "lock"
     type S = (java.util.LinkedList[AnyRef], ReentrantLock)
@@ -124,6 +139,7 @@ object EnqDeq extends Benchmark {
       }
     }
   }
+*/
   private object fc extends Entry {
     def name = "fc"
     type S = FCQueue
@@ -173,7 +189,7 @@ object EnqDeq extends Benchmark {
   }
 */
 
-  def entries: List[Entry] = List(stm) //, simple, reagent, hand, juc)
+  def entries: List[Entry] = List(reagent, lock, hand, stm, simple, juc)
   // fc livelocks
   // basket is not licensed for distribution
 }

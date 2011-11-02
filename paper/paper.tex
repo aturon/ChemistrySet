@@ -6,8 +6,8 @@
 \begin{document}
 
 \authorinfo{}{}{}
-% yikes!
-%\title{Reagents: expressing and composing patterns of fine-grained concurrency}
+%\authorinfo{Aaron Turon}{Northeastern University}{turon@ccs.neu.edu}
+
 \title{Reagents: expressing and composing fine-grained concurrency}
 \maketitle
 
@@ -56,14 +56,13 @@ parallelism.
 
 Such libraries are an enormous undertaking---and one that must be repeated for
 new platforms.  They tend to be conservative, implementing only those data
-structures and primitives likely to fulfill common needs.  In addition, it is
-generally not possible to safely combine the facilities of the library.  For
-example, JUC provides queues, sets and maps, but not stacks or bags.  Its
-queues come in both blocking and nonblocking forms, while its sets and maps
-are nonblocking only.  Although the queues provide atomic (thread-safe)
-dequeuing and sets provide atomic insertion, it is not possible to combine
-these into a single atomic operation that moves an element from a queue into a
-set.
+structures and primitives likely to fulfill common needs, and it is generally
+not possible to safely combine the facilities of the library.  For example,
+JUC provides queues, sets and maps, but not stacks or bags.  Its queues come
+in both blocking and nonblocking forms, while its sets and maps are
+nonblocking only.  Although the queues provide atomic (thread-safe) dequeuing
+and sets provide atomic insertion, it is not possible to combine these into a
+single atomic operation that moves an element from a queue into a set.
 
 In short, libraries for fine-grained concurrency are indispensable, but hard
 to write, hard to extend by composition, and hard to tailor to the needs of
@@ -147,14 +146,15 @@ why is this different from STM
 \section{Background}
 \label{sec:background}
 
+\cite{Shavit1997a} %TODO: cite pure elimination
+
 Broadly, we are interested in data structures and algorithms for
-communication, synchronization, or both.  This section gives a brief
-survey of the most important techniques for communication and
-synchronization in a fine-grained setting---exactly the techniques
-that reagents abstract and generalize.  Readers already familiar with
-Treiber stacks~\cite{?}, elimination-backoff stacks~\cite{?}, dual
-stacks~\cite{?}, and MCS locks~\cite{?} can safely skip to
-\secref{reagents}.
+communication, synchronization, or both.  This section gives a brief survey of
+the most important techniques for communication and synchronization in a
+fine-grained setting---exactly the techniques that reagents abstract and
+generalize.  Readers already familiar with Treiber stacks~\cite{Treiber1986},
+elimination-backoff stacks~\cite{Hendler2004}, dual stacks~\cite{Scherer2004},
+and MCS locks~\cite{Mellor-Crummey1991} can safely skip to \secref{reagents}.
 
 Given our target of cache-coherent, shared-memory architectures, the
 most direct way of communicating between threads is modifying shared
@@ -773,6 +773,7 @@ class TreeBarrier {
 }
 }
 \subsection{Dynamic reagents and \lstinline{cas}}
+\label{sec:dynamic}
 
 The combinators introduced so far are powerful, but they impose a strict phase
 separation: reagents are constructed prior to, and independently from, the
@@ -921,18 +922,19 @@ The solution is \emph{higher-order concurrency}, in which synchronous
 message-passing protocols are represented abstractly as \emph{events}.  CML's
 events are built up from combinators, including a choice combinator,
 communication combinators, and combinators for arbitrary computations not
-involving communication.  Events are an abstract data type: externally to the
+involving communication.  \elide{
+Events are an abstract data type: externally to the
 CML library, they appear as abstract, composable values.  Internally to the
 library, however, events can be decomposed into their constituent combinators,
 which allows CML to execute them.
-
+}
 Reagents are clearly influenced by the design of CML's events, and include
-variants of CML's core event combinators (communication and choice).  Where
-CML is aimed squarely at capturing synchronous communication protocols,
-reagents are designed for writing and tailoring fine-grained concurrent data
-structures and synchronization primitives.  This difference in motivation led
-us to include a number of additional combinators, including those dealing
-directly with shared state.
+variants of CML's core event combinators\elide{(communication and choice)}.
+But where CML is aimed squarely at capturing synchronous communication
+protocols, reagents are designed for writing and tailoring fine-grained
+concurrent data structures and synchronization primitives.  This difference in
+motivation led us to include a number of additional combinators, including
+those dealing directly with shared state.
 
 Originally, CML was focused on managing concurrency rather than profiting from
 parallelism, and this focus was reflected in its implementation.  More
@@ -944,8 +946,8 @@ communication is accepted, the (single, shared) event is atomically marked as
 consumed.  We follow a similar strategy in dealing with message passing, but
 where Parallel CML uses lock-based queues to store messages, we show how to
 use lock-free bags for increased parallelism~(\secref{implementation}).  We
-also show how to incorporate choice resolution with simultaneous shared-state
-updates and our conjunction combinators.
+also show how to incorporate choice resolution with shared-state updates and
+our conjunction combinators.
 
 \elide{
 Although CML events do not form a monad~\cite{?}, the basic pattern of
@@ -955,6 +957,7 @@ Transactional Events, both discussed below.
 }
 
 \subsection{Software transactional memory}
+\label{sec:stm}
 
 Software transactional memory was originally intended ``to provide a general
 highly concurrent method for translating sequential object implementations
@@ -963,7 +966,7 @@ remarkable research literature, which has been summarized in textbook
 form~\cite{Larus2006}.  Much of the research is devoted to achieving
 scalability on multiprocessors or multicores, sometimes by relaxing
 consistency guarantees~\cite{?} or only providing obstruction-freedom rather
-than lock-freemdom~\cite{?}.  %Work in the area is
+than lock-freemdom~\cite{Herlihy2003}.  %Work in the area is
 
 Reagents, on the other hand, are aimed at a less ambitious goal: enabling the
 concise expression, user tailoring, and composition of fine-grained concurrent
@@ -982,15 +985,23 @@ Reagents carve out a middle ground between completely hand-written algorithms
 and the completely automatic \lstinline{atomic} blocks of STM.  When used in
 isolation, reagents are \emph{guaranteed} to perform only the CASes that the
 hand-written algorithm would, so they introduce no overhead on shared-memory
-operations\elide{; we know of no STM implementation that can provide similar
-  guarantees or a similar cost model}.  Yet, unlike hand-written algorithms,
-reagents can be tailored and composed using choice, adding blocking behavior,
-or combining sequentially into larger atomic blocks. %TODO
+operations; by recoding an algorithm use reagents, you lose nothing.\elide{;
+  we know of no STM implementation that can provide similar guarantees or a
+  similar cost model} Yet unlike hand-written algorithms, reagents can be
+composed using choice, tailored with new blocking behavior, or combined
+into larger atomic blocks. %TODO
 
-Haskell's STM~\cite{Harris2005a}
-
-left-biased choice, but differently from \lstinline{orElse} in
-Haskell's STM.
+Haskell's STM~\cite{Harris2005a} was inspirational in showing that
+transactions can be represented via monads~\cite{PeytonJones1993}, explicitly
+composed, and combined with blocking and choice operators.  Reagents also form
+a monad, but we have chosen an interface closer to
+\emph{arrows}~\cite{Hughes2000}, to encourage static reagent layout wherever
+possible~(\secref{dynamic}).  Like \lstinline{orElse} in Haskell's STM, our
+choice operator is left-biased.  But unlike \lstinline{orElse}, our choice
+operator will attempt the right-hand side even when the left-hand side has
+only failed transiently (rather than permanently).  While the distinction may
+appear somewhat technical, it is crucial for supporting examples like the
+elimination backoff stack~(\secref{choice}).
 
 \subsection{Transactions that communicate}
 
@@ -1009,7 +1020,12 @@ separate from shared memory, which retains isolation.  On the other hand,
 Transaction Communicators allow isolation to be weakened in a controlled way.
 
 Our mixture of message-passing and shared-state combinators most closely
-resembles the work on Communicating Transactions.   %TODO
+resembles the work on Communicating Transactions.  Of course, the most
+important difference is in the way we deal with shared state (and the
+guarantees provided thereby), which we discussed in~\secref{stm}.  Aside from
+that, we believe that \emph{synchronous} communication is a better choice for
+expressing patterns like elimination~(\secref{choice}), since the pattern
+relies on both participants being mutually-aware.  %TODO: say more here
 
 \elide{
 There has also been work treating pure message-passing in a transactional way,
@@ -1037,24 +1053,35 @@ not in a position to do a head-to-head comparison, but based on the results
 in~\secref{performance}, we expect the reagent-based implementation to scale
 better on fine-grained workloads.
 
-\subsection{Composing lock-free data structures}
+\subsection{Composing fine-grained concurrent data structures}
 
-Most of the literature on fine-grained concurrent data structures studies only
-``within-object'' atomicity, for example developing algorithms for inserting
-or removing elements into a collection atomically.  However, there has been
-some nice work studying the problem of transferring data atomically between
-such fine-grained data structures~\cite{Cederman2010}.  The basic approach
-relies on a \emph{k}CAS operation in much the same way that reagent sequencing
-does.  The transfer methods must be defined manually, in advance, and with
-access to the internals of the relevant data structures, whereas reagents
-allow arbitrary new compositions, without manual definition, and without
-access to the code or internals of the involved data structures.  
+Most of the literature on fine-grained concurrent data structures is focused
+on ``within-object'' atomicity, for example developing algorithms for
+inserting or removing elements into a collection atomically.  However, there
+has been some recent work studying the problem of transferring data atomically
+between such fine-grained data structures~\cite{Cederman2010}.  The basic
+approach relies on a \emph{k}CAS operation in much the same way that reagent
+sequencing does.  The transfer methods must be defined manually, in advance,
+and with access to the internals of the relevant data structures, whereas
+reagents allow arbitrary new compositions, without manual definition, and
+without access to the code or internals of the involved data structures.
+Nevertheless, the implementation of reagent composition yields an algorithm
+very similar to the manually-written transfer methods.
 
-Atomic transfers between concurrent data structures 
-
-elastic transactions~\cite{Felber2009} and company,
-
-composing lock-free data structure operations~\cite{Cederman2010}
+It is also possible to go in the other direction: start from STM, which
+provides composition, and add an ``escape hatch'' for writing arbitrary
+fine-grained concurrent algorithms within the scope of a transaction.  The
+escape hatch can be provided through unlogged reads and/or writes to memory
+locations being used by transactions, as in early release~\cite{Herlihy2003}
+or elastic transactions~\cite{Felber2009}.  As we discussed
+above~(\secref{stm}), we favor an approach where the focus is foremost on
+writing fine-grained algorithms, with \emph{guarantees} about the performance
+and shared-memory semantics of those algorithms.  Providing such guarantees
+via an escape hatch mechanism may be difficult or impossible, depending on the
+details of the STM implementation.  As we showed in~\secref{reagents}, it is
+also very useful to have combinators for choice, message-passing, and
+blocking, if one wishes to capture the full range of fine-grained concurrent
+algorithms.
 
 \section{Conclusion}
 

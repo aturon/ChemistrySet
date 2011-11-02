@@ -112,6 +112,13 @@ object PushPop extends Benchmark {
     def tryPop(s: S): Option[AnyRef]  = s.tryPop
   }
 */
+  private object lock extends Entry with Generic{
+    def name = "lock"
+    type S = LockStack[AnyRef]
+    def setup = new LockStack()
+    def push(s: S, x: AnyRef) = s.push(x)
+    def tryPop(s: S): Option[AnyRef]  = s.tryPop
+  } 
   private object hand extends Entry with Generic{
     def name = "hand"
     type S = HandStack[AnyRef]
@@ -191,5 +198,5 @@ private object rTreiberFast extends Entry with Generic {
 //  def entries = List(rTreiber, rElim, hand)
 //  def entries = List(rElim, rTreiber, handElim, hand, handPool)
 //  def entries: List[Entry] = List(rElim, handPool, handElim)
-  def entries: List[Entry] = List(stm) //List(rTreiber, stm, hand)
+  def entries: List[Entry] = List(rTreiber, lock, hand, stm, rElim)
 }
