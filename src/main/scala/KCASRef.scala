@@ -110,6 +110,8 @@ private final class KCAS(val casList: List[CAS[_]]) {
 
 private object KCAS {
   def tryCommit(casList: List[CAS[_]]): Boolean = {
+//    println("KCAS")
+
     // attempt to place KCAS record in each CASed reference.  returns null
     // if successful, and otherwise the point in the CAS list to rollback
     // from.
@@ -129,7 +131,8 @@ private object KCAS {
       if (start != end) start match {
 	case Nil => throw Util.Impossible // somehow went past the `end`
 	case CAS(ref, ov, nv) :: rest => {
-	  ref.data.compareAndSet(null, ov) // roll back to old value
+	  ref.data.lazySet(ov) // roll back to old value
+	  //ref.data.compareAndSet(null, ov) 
 	  rollBackBetween(rest, end)
 	}
       }

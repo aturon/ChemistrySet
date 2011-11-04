@@ -48,8 +48,8 @@ abstract class Reagent[-A, +B] {
 	tryReact(a, Reaction.inert, waiter) match {
 	  case (bc: BacktrackCommand) if wait => {
 	    bc.bottom(waiter, backoff, snoop(a))
-	    waiter.tryAbort	// rescind waiter,
-	    waiter.poll match { // but check if already completed
+	    waiter.tryAbort match { // rescind waiter, but check if already
+				    // completed
 	      case Some(ans) => ans.asInstanceOf[B] 
 	      case None      => retryLoop(bc.isBlock)
 	    }
@@ -144,8 +144,13 @@ private final case class Commit[A]() extends Reagent[A,A] {
   def tryReact(a: A, rx: Reaction, offer: Offer[A]): Any = {
     offer match {
       case null => if (rx.tryCommit) a else Retry
-      case (w: Waiter[_]) =>
-	if (w.rxWithAbort(rx).tryCommit) a else Retry
+//      case (w: Waiter[_]) => if (w.rxWithAbort(rx).tryCommit) a else Retry
+      case (w: Waiter[_]) => {
+	w.tryAbort match { // rescind waiter, but check if already completed
+	  case Some(ans) => ans
+	  case None      => if (rx.tryCommit) a else Retry
+	}
+      }
       case (_: Catalyst[_]) => {
 	rx.tryCommit
 	Block

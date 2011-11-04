@@ -198,5 +198,6 @@ private object rTreiberFast extends Entry with Generic {
 //  def entries = List(rTreiber, rElim, hand)
 //  def entries = List(rElim, rTreiber, handElim, hand, handPool)
 //  def entries: List[Entry] = List(rElim, handPool, handElim)
-  def entries: List[Entry] = List(rTreiber, lock, hand, stm, rElim)
+//  def entries: List[Entry] = List(rTreiber, lock, hand, stm, rElim)
+  def entries: List[Entry] = List(rElim, rTreiber)
 }

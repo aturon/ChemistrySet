@@ -5,6 +5,7 @@
 
 package chemistry
 
+import scala.annotation.tailrec
 import java.util.concurrent.locks._
 import java.util.concurrent.atomic._
 
@@ -65,23 +66,24 @@ private final class Waiter[-A](val blocking: Boolean)
   }
   
   @inline def isActive: Boolean = status.data.get == Waiting
-
-  // Poll current waiter value:
-  //   - None if Waiting or Aborted
-  //   - Some(ans) if completed with ans
-  // sadly, have to use `Any` to work around variance problems
-  @inline def poll: Option[Any] = status.data.get match {
-    case null => None
-    case (_:WaiterStatus) => None
+  
+  // Attempt to abort, returning 
+  //   - None if abort succeeded
+  //   - Some(ans) if waiter already completed with ans
+  @tailrec def tryAbort: Option[Any] = status.data.get match {
+    case null => tryAbort
+    case Aborted => None 
+    case Waiting => 
+      if (status.data.compareAndSet(Waiting, Aborted)) None
+      else tryAbort
     case ans => Some(ans)
   }
-  
-  // Attempt to abort, returning true iff successful
-  @inline def tryAbort = status.data.compareAndSet(Waiting, Aborted)
+
+
   @inline def rxWithAbort(rx: Reaction): Reaction =
     rx.withCAS(status, Waiting, Aborted)
 
-  def abortAndWake = if (tryAbort) wake()
+  def abortAndWake = if (tryAbort eq None) wake()
 
   @inline def tryComplete(a: A) = 
     status.data.compareAndSet(Waiting, a.asInstanceOf[AnyRef])

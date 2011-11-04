@@ -7,7 +7,7 @@ import scala.collection.mutable._
 // Queue w/ coarse-grained locking
 class LockQueue[A >: Null] {
   private val queue = new Queue[A]()
-  private val lock  = new ReentrantLock()
+  val lock  = new ReentrantLock()
 
   def enq(x: A) {
     lock.lock()

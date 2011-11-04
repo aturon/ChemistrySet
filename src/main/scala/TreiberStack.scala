@@ -97,6 +97,19 @@ final class TreiberStack[A >: Null] {
 
   val head = new Ref[List[A]](Nil)
 
+  private val pushForComp: Reagent[A,Unit] = head.upd[A,Unit] { 
+    case (xs,x) => (x::xs, ())
+  }
+
+  private val tryPopForComp: Reagent[Unit,Option[A]] = head.upd[Option[A]] {
+    case x::xs => (xs,  Some(x))
+    case Nil   => (Nil, None)
+  }
+
+  private val popForComp: Reagent[Unit,A] = head.upd[A] {
+    case x::xs => (xs, x)
+  }
+
   object push extends Reagent[A,Unit] {
     def tryReact(x:A, rx: Reaction, offer: Offer[Unit]): Any = {
       val cur = head.data.get
@@ -110,7 +123,7 @@ final class TreiberStack[A >: Null] {
 	  Retry
       }
     }
-    def composeI[B](next: Reagent[Unit,B]) = throw Util.Impossible
+    def composeI[B](next: Reagent[Unit,B]) = pushForComp >=> next
     def maySync = false
     def alwaysCommits = false
     def snoop(a: A) = false
@@ -128,13 +141,29 @@ final class TreiberStack[A >: Null] {
       else 
 	Retry 
     }
-    def composeI[B](next: Reagent[Option[A],B]) = throw Util.Impossible
+    def composeI[B](next: Reagent[Option[A],B]) = tryPopForComp >=> next
     def maySync = false
     def alwaysCommits = false
     def snoop(a: Unit) = false
   }
 
-  def pop: Reagent[Unit,A] = throw Util.Impossible
+  object pop extends Reagent[Unit,A] {
+    @inline def tryReact(u:Unit, rx: Reaction, offer: Offer[A]): Any = {
+      val cur = head.data.get
+      if (cur eq null) 
+	Retry
+      else if (cur.isEmpty)
+	Retry //nonblocking version
+      else if (head.data.compareAndSet(cur,cur.tail)) 
+	cur.head
+      else 
+	Retry 
+    }
+    def composeI[B](next: Reagent[A,B]) = popForComp >=> next
+    def maySync = false
+    def alwaysCommits = false
+    def snoop(a: Unit) = false
+  }
 
 /*
   object pop extends Reagent[Unit,A] {

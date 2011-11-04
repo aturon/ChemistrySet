@@ -17,4 +17,9 @@ class STMStack[A] {
       Some(cur.head)
     }
   }
+  def pop(): A = atomic {
+    val cur = state.get
+    state.set(cur.tail)
+    cur.head
+  }
 }

@@ -64,10 +64,11 @@ final class MSQueue[A >: Null] {
     }
     search
   }
-  // val tryDeq: Reagent[Unit, Option[A]] = head.upd[Option[A]] {
-  //   case Node(_, Ref(n@Node(x, _))) => (n, Some(x))
-  //   case emp => (emp, None)
-  // }
+
+  private val tryDeqForComp: Reagent[Unit, Option[A]] = head.upd[Option[A]] {
+    case Node(_, Ref(n@Node(x, _))) => (n, Some(x))
+    case emp => (emp, None)
+  }
   object tryDeq extends Reagent[Unit,Option[A]] {
     @inline def tryReact(u:Unit, rx: Reaction, offer: Offer[Option[A]]): Any = 
       head.data.get match {
@@ -76,14 +77,27 @@ final class MSQueue[A >: Null] {
 	  if (head.data.compareAndSet(old,n)) Some(x) else Retry
 	case _ => None
       }
-    def composeI[B](next: Reagent[Option[A],B]) = throw Util.Impossible
+    def composeI[B](next: Reagent[Option[A],B]) = tryDeqForComp >=> next
     def maySync = false
     def alwaysCommits = false
     def snoop(a: Unit) = false
   }
 
-  val deq: Reagent[Unit, A] = head.upd[A] {
+  private val deqForComp: Reagent[Unit, A] = head.upd[A] {
     case Node(_, Ref(n@Node(x, _))) => (n, x)
+  }
+  object deq extends Reagent[Unit,A] {
+    @inline def tryReact(u:Unit, rx: Reaction, offer: Offer[A]): Any = 
+      head.data.get match {
+	case null => Retry
+	case old@Node(_, Ref(n@Node(x, _))) =>
+	  if (head.data.compareAndSet(old,n)) x else Retry
+	case _ => Retry //nonblocking version
+      }
+    def composeI[B](next: Reagent[A,B]) = deqForComp >=> next
+    def maySync = false
+    def alwaysCommits = false
+    def snoop(a: Unit) = false
   }
 }
 
