@@ -900,11 +900,61 @@ def tryReact(a: A, rx: Reaction, offer: Offer[B]): Any =
     } else k.tryReact((), rx.withCAS(Ref.this, expect, update), offer)
 \end{lstlisting}
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 \section{Performance}
 \label{sec:performance}
 
+\begin{figure*}
+\newcommand{\gscale}{0.72}
+\hspace{-30pt}
+\begin{tabular}[t]{l@{\hspace{2mm}}c}
+\begin{sideways}
+\hspace{0.5in}
+\textbf{Throughput}: \quad
+  iterations/$\mu$s \quad
+  (bigger is better)
+\end{sideways} &
+\begin{tabular}[b]{l}
+\includegraphics[scale=\gscale]{graphs/PushPop-100.pdf}
+\hspace{1mm}
+\includegraphics[scale=\gscale]{graphs/PushPop-1000.pdf}
+\hspace{4mm}
+\includegraphics[scale=\gscale]{graphs/StackTransfer-100.pdf}
+\hspace{1mm}
+\includegraphics[scale=\gscale]{graphs/StackTransfer-1000.pdf}
+\\
+\\
+\includegraphics[scale=\gscale]{graphs/EnqDeq-100.pdf}
+\hspace{1mm}
+\includegraphics[scale=\gscale]{graphs/EnqDeq-1000.pdf}
+\hspace{4mm}
+\includegraphics[scale=\gscale]{graphs/QueueTransfer-100.pdf}
+\hspace{1mm}
+\includegraphics[scale=\gscale]{graphs/QueueTransfer-1000.pdf}
+\end{tabular}
+\\
+\\
+& \textbf{Threads}\quad (on 16-way machine)
+\end{tabular}
+\end{figure*}
 
-\newpage
+\subsection{Methodology and experimental setup}
+
+We follow standard practice for 
+
+0.25$\mu$s, 2.5$\mu$s
+
+Our benchmarks were run on a 3.46Ghz Intel Xeon X5677 (Westmere) with 32GB RAM
+and 12MB of shared L3 cache.  The machine has two physical processors with
+four hyperthreaded cores each, for a total of 16 hardware threads.  L1 and L2
+caches are per-core.  The software environment includes Ubuntu 10.04.3 and
+the Hotspot JVM 6u27.
+
+\subsection{Results}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 \section{Related work}
 \label{sec:related}
 

@@ -29,7 +29,7 @@ private object config {
   var doTP: Boolean = false
   var minCores = 1
   var maxCores = min(Runtime.getRuntime.availableProcessors, 8)
-  var warmupMillis = 2000
+  var warmupMillis = 1000
   var benchMillis = 1000
   var verbose = true
 }
@@ -118,7 +118,7 @@ abstract class Entry {
     // "communication" will be very fast relative to spin-work
     val trialIters: Int = (totalTP * (benchMillis + (100 * i)) * 
 //      (if (i == 1) 5 else 1) *     			   
-      (if (work > 0) 0.1 * scala.math.log(work) * scala.math.log(work)	 
+      (if (work > 0) 0.1 * scala.math.log(work) //* scala.math.log(work)	 
        else 1)
     ).toInt
     
@@ -264,7 +264,7 @@ object Bench extends App {
   } yield (b, 0, 1, 1)
   private val concBenches = for {
 //    b <- List(PushPop, EnqDeq, IncDec)
-    b <- List(StackTransfer, PushPop, QueueTransfer, EnqDeq)
+    b <- List(PushPop, StackTransfer, EnqDeq, QueueTransfer)
     w <- config.workList
   } yield (b, w, config.minCores, config.maxCores)
 

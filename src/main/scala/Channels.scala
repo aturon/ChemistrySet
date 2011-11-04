@@ -40,7 +40,9 @@ private final case class Endpoint[A,B,C](
 	if (retry) Retry else Block
       } else if ((n.data.offer eq offer) || rx.hasOffer(n.data.offer)) {
 	tryFrom(n.next, retry)
-      } else n.data.exchange.compose(k).tryReact(a, rx.withOffer(n.data.offer), offer) match {
+      } else n.data.exchange.compose(k).tryReact(a, 
+						 rx.withOffer(n.data.offer), 
+						 offer) match {
 	case Retry => tryFrom(n.next, true)
 	case Block => tryFrom(n.next, retry)
 	case ans   => ans
@@ -49,7 +51,9 @@ private final case class Endpoint[A,B,C](
     // send message if so requested.  note that we send the message
     // *before* attempting to react with existing messages in the
     // other direction.
-    if (offer != null) outgoing.put(new Message(a, rx, k, offer))
+    // TODO: should combine !maysync with blocking check
+    if (offer != null && !k.maySync)  
+      outgoing.put(new Message(a, rx, k, offer))
 
     // now attempt an immediate reaction
     tryFrom(incoming.cursor, false) match {

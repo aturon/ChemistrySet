@@ -19,7 +19,7 @@ private[chemistry] case object Block extends BacktrackCommand {
 }
 private[chemistry] case object Retry extends BacktrackCommand {
   def bottom[A](waiter: Waiter[A], backoff: Backoff, snoop: => Boolean): Unit =
-    backoff.once(waiter.isActive && !snoop, 2)
+    backoff.once(waiter.isActive && !snoop, 1)
   def isBlock: Boolean = false
 }
 
@@ -59,6 +59,7 @@ abstract class Reagent[-A, +B] {
 	  case ans => ans.asInstanceOf[B]
 	}
       }
+      backoff.once
       retryLoop(false)
     }
     case ans => ans.asInstanceOf[B]
@@ -224,7 +225,14 @@ object choice {
 	case ans => ans
       }
     def composeI[C](next: Reagent[B,C]) = 
-      Choice(r1.compose(next), r2.compose(next))
+      next match {
+	case Choice(next1, next2) =>
+	  Choice(r1 >=> next1,
+		 Choice(r1 >=> next2,
+			Choice(r2 >=> next1,
+			       r2 >=> next2)))
+	case _ => Choice(r1.compose(next), r2.compose(next))
+      }
     def alwaysCommits = r1.alwaysCommits && r2.alwaysCommits
     def maySync = r1.maySync || r2.maySync
     def snoop(a: A) = r2.snoop(a) || r1.snoop(a) 

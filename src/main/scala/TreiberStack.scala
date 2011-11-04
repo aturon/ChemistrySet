@@ -117,7 +117,7 @@ final class TreiberStack[A >: Null] {
 	Retry
       else {
 	val upd = x +: cur
-	if (head.data.compareAndSet(cur,upd)) 
+	if (head.data.compareAndSet(cur,upd))
 	  () 
 	else 
 	  Retry

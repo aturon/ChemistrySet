@@ -134,7 +134,7 @@ final class CircularPool[A <: DeletionFlag] extends Pool[A] {
     }
   }
 
-  private def size = math.max(1,Chemistry.procs)
+  private def size = 8//math.max(1,Chemistry.procs)
   private val cursors = new Array[LinkNode](size)
   for (i <- 0 to size-1) cursors(i) = new LinkNode
   for (i <- 0 to size-1) cursors(i).nextRef.set(cursors((i+1) % size))

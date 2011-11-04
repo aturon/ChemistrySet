@@ -121,7 +121,7 @@ object StackTransfer extends Benchmark {
     }
   }
 
-//  def entries: List[Entry] = List(rElim, reagent) //List(stm,rElim,lock,reagent)
-  def entries: List[Entry] = List(stm,lock,reagent) //rElim
+//  def entries: List[Entry] = List(rElim, reagent) 
+  def entries: List[Entry] = List(rElim,reagent,stm,lock)
 }
 
