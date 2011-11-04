@@ -21,4 +21,11 @@ class LockQueue[A >: Null] {
     lock.unlock()
     ret
   } 
+
+  def deq(): A = {
+    lock.lock()
+    val ret = queue.dequeue()
+    lock.unlock()
+    ret
+  } 
 }

@@ -18,4 +18,10 @@ class STMQueue[A] {
       Some(x)
     }
   }
+  def deq() = atomic {
+    val cur = state.get
+    val (x, xs) = cur.dequeue
+    state.set(xs)
+    x
+  }
 }

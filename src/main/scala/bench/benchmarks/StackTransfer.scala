@@ -5,7 +5,7 @@ import chemistry.bench._
 import chemistry.bench.competition._
 import chemistry.Util._
 
-object Transfer extends Benchmark {
+object StackTransfer extends Benchmark {
   def pureWork(work: Int, iters: Int) = {
     val r = new Random
     for (_ <-1 to iters) {
@@ -121,6 +121,7 @@ object Transfer extends Benchmark {
     }
   }
 
-  def entries: List[Entry] = List(rElim, reagent) //List(stm,rElim,lock,reagent)
+//  def entries: List[Entry] = List(rElim, reagent) //List(stm,rElim,lock,reagent)
+  def entries: List[Entry] = List(stm,lock,reagent) //rElim
 }
 

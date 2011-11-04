@@ -264,7 +264,7 @@ object Bench extends App {
   } yield (b, 0, 1, 1)
   private val concBenches = for {
 //    b <- List(PushPop, EnqDeq, IncDec)
-    b <- List(Transfer, PushPop, EnqDeq)
+    b <- List(StackTransfer, PushPop, QueueTransfer, EnqDeq)
     w <- config.workList
   } yield (b, w, config.minCores, config.maxCores)
 

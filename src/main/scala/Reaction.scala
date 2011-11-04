@@ -3,10 +3,12 @@
 
 package chemistry
 
+import scala.collection.immutable.HashSet
+
 private sealed class Reaction private (
   val casList: List[CAS[_]],		// k-cas built up so far
-  val pcList: List[Unit => Unit]	// post-commit actions
-//  val msgSet: HashSet[Message[_,_,_]]   // messages intended for consumption
+  val pcList: List[Unit => Unit],	// post-commit actions
+  val offerSet: HashSet[Offer[_]]       // offers intended for consumption
 ) {
   import Reaction._
   
@@ -22,12 +24,16 @@ private sealed class Reaction private (
     })
 
   def withPostCommit(postCommit: Unit => Unit): Reaction =
-    new Reaction(casList, postCommit +: pcList)
+    new Reaction(casList, postCommit +: pcList, offerSet)
   def withCAS[A <: AnyRef](ref: Ref[A], ov: A, nv: A): Reaction =
-    new Reaction(CAS(ref, ov, nv) +: casList, pcList)
+    new Reaction(CAS(ref, ov, nv) +: casList, pcList, offerSet)
+  def withOffer(offer: Offer[_]): Reaction = 
+    new Reaction(casList, pcList, offerSet + offer)
 
   def ++(rx: Reaction): Reaction = 
-    new Reaction(casList ++ rx.casList, pcList ++ rx.pcList)
+    new Reaction(casList ++ rx.casList, pcList ++ rx.pcList, offerSet union rx.offerSet)
+
+  def hasOffer(offer: Offer[_]): Boolean = offerSet.contains(offer)
 
   def tryCommit: Boolean = {
     val success: Boolean = casCount match {
@@ -41,5 +47,5 @@ private sealed class Reaction private (
   }
 }
 private object Reaction {
-  val inert = new Reaction(Nil, Nil)
+  val inert = new Reaction(Nil, Nil, HashSet.empty)
 }

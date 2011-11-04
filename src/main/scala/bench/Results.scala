@@ -14,7 +14,7 @@ case class Measurement(
   def format = " %4.1f |".format(throughput)
   def formatR = " %4.1f |".format(rawThroughput)
   def formatN(compTo: Double) = 
-    " %8.2f |".format(rawThroughput / compTo)
+    " %4.1f |".format(rawThroughput / compTo)
 }
 
 case class EntryResult(name: String, ms: Seq[Measurement]) {
