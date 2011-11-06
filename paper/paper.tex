@@ -923,10 +923,10 @@ Talk about more sophisticated algorithms, e.g. skiplists
 
 \elide{
 High level concepts:
-  Data abstraction/internal normalized syntactic representation
+x Reactions
+x Data abstraction/internal normalized syntactic representation
+x Retry versus Block
   Continuations/Commit
-  Reactions
-  Retry versus Block
   Offers
 
 Specific combinators:
@@ -1009,48 +1009,75 @@ combinator.  Each subclass provides an implementation of the
 The \lstinline{Any} type in Scala lies at the top of the subtyping hierarchy,
 akin to \lstinline{Object} in Java.  Here we are using \lstinline{Any} to
 represent a union of the type \lstinline{B} with the type
-\lstinline{BacktrackCommand}, where the latter has just two singleton instances,
+\lstinline{Failure}, where the latter has just two singleton instances,
 \lstinline{Block} and \lstinline{Retry}, corresponding to permanent and
 transient failures.  
 
 In other words, \lstinline{tryReact} takes the input (type \lstinline{A}) to the
-reagent and the reaction built up so far, and either completes the reaction and
-returns its result (type \lstinline{B}) or one of the failure singletons
-(\lstinline{Block} or \lstinline{Retry}).
+reagent and the reaction built up so far, and either completes the reaction,
+returning a result (type \listinline{B}), or fails, returning one of the
+failure singletons (\lstinline{Block} or \lstinline{Retry}).
 
 \subsection{The entry point: reacting}
 \label{sec:impl-reaction}
 
 shown in \figref{reaction}
 
-\begin{figure}
-\begin{lstlisting}
+\elide{
 def !(a: A): B = tryReact(a, empty, null) match {
-  case (_: BacktrackCommand) => {
+  case (_: Failure) => {
     val backoff = new Backoff
-    val maySync = this.maySync // cache
     def retryLoop(shouldBlock: Boolean): B = {
-      val wait = maySync || shouldBlock
-      val waiter = if (wait) new Waiter[B](shouldBlock) 
-                   else null
+      val offer = if (maySync || shouldBlock) 
+                    new Offer[B]
+                  else null
+      tryReact(a, empty, offer) match {
+        case (f: Failure) => {
+          if (f == Block && offer != null) 
+            LockSupport.park 
+          else backoff.once
 
-      tryReact(a, empty, waiter) match {
-        case (bc: BacktrackCommand) if wait => {
-          bc.bottom(waiter, backoff, snoop(a))
-          waiter.tryAbort      // rescind waiter,
-          waiter.poll match { // but check if completed
-            case Some(ans) => ans.asInstanceOf[B] 
-            case None       => retryLoop(bc.isBlock)
-          }
+          // rescind offer, but check for completion
+          if (offer != null && offer.tryAbort)
+            offer.answer
+          else
+            retryLoop(f == Block)
         }
-        case Retry => backoff.once; retryLoop(false)
-        case Block => retryLoop(true)
         case ans   => ans.asInstanceOf[B]
       }
     }
+    backoff.once
     retryLoop(false)
   }
   case ans => ans.asInstanceOf[B]
+}
+}
+
+\begin{figure}
+\begin{lstlisting}
+def !(a: A): B = {
+  val backoff = new Backoff
+  def retryLoop(shouldBlock: Boolean): B = {
+    if (maySync || shouldBlock) {
+      val offer = new Offer[B]
+      tryReact(a, empty, offer) match {
+        case Block => 
+          LockSupport.park
+          if (offer.rescind) retryLoop(true)
+          else offer.answer
+        case Retry =>
+          backoff.once
+          if (offer.rescind) retryLoop(maySync)
+          else offer.answer
+      }
+    } else {
+      tryReact(a, empty, null) match {
+        case Block => retryLoop(true)
+        case Retry => backoff.once; retryLoop(maySync)
+        case ans   => ans.asInstanceOf[B]
+      }
+    }
+  retryLoop(false)
 }
 \end{lstlisting}
 \nocaptionrule
@@ -1097,6 +1124,11 @@ def tryReact(a: A, rx: Reaction, offer: Offer[B]) =
 \end{lstlisting}
 
 \subsection{Computed reagents}
+
+\begin{lstlisting}
+  def tryReact(a: A, rx: Reaction, offer: Offer[B]): Any = 
+    c(a).tryReact((), rx, offer)
+\end{lstlisting}
 
 \subsection{Channels}
 
