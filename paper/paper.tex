@@ -160,7 +160,7 @@ the new atomic compositions are used.
 We test this principle empirically in~\secref{performance} by comparing multiple
 reagent-based collections to their hand-written counterparts, as well as to
 lock-based and STM-based implementations.  The benchmarks include both single
-operations used in isolation (where little overhead for reagentes is expected)
+operations used in isolation (where little overhead for reagents is expected)
 and combined atomic transfers.  We compare at both high and low levels of
 contention.  Reagents perform universally better than the lock- and STM-based
 implementations, and are indeed competetive with hand-written lock-free
@@ -671,7 +671,7 @@ patterns laid out in \secref{background}.  On the other hand,
 stack \lstinline{s} may be empty.  This failure is permanent in the
 sense that only activity by another thread can enable the reagent to
 proceed.  When faced with a permanent failure, a reagent should block
-until signalled that the underlying state has changed.
+until signaled that the underlying state has changed.
 
 For choice, failure depends on the underlying reagents.  A choice
 reagent fails permanently only when \emph{both} of its underlying
@@ -742,7 +742,7 @@ conjoined operations will potentially use elimination on both
 simultaneously.  This behavior is entirely emergent; it does not
 require any code on the part of the stack author, and it does not
 require the stack user to know anything about the implementation.
-Reagents can be composed in unanticpated ways.
+Reagents can be composed in unanticipated ways.
 
 % TODO: ``remarkable'' the emergent behavior.  explain in more detail what
 % emerges -- the potential for transfer eliminations
@@ -1013,15 +1013,18 @@ represent a union of the type \lstinline{B} with the type
 \lstinline{Block} and \lstinline{Retry}, corresponding to permanent and
 transient failures.  
 
-In other words, \lstinline{tryReact} takes the input (type \lstinline{A}) to the
-reagent and the reaction built up so far, and either completes the reaction,
-returning a result (type \listinline{B}), or fails, returning one of the
-failure singletons (\lstinline{Block} or \lstinline{Retry}).
+In other words, \lstinline{tryReact} takes the input (type \lstinline{A}) to
+the reagent and the reaction built up so far, and either completes the
+reaction, returning a result (type \listinline{B}), or fails, returning one of
+the failure singletons (\lstinline{Block} or \lstinline{Retry}).  The
+remaining argument, \lstinline{offer}, is used for synchronization and
+communication between reagents, which we explain next.
+
+\subsection{Offers, communication and continuations}
+\label{sec:offers}
 
 \subsection{The entry point: reacting}
 \label{sec:impl-reaction}
-
-shown in \figref{reaction}
 
 \elide{
 def !(a: A): B = tryReact(a, empty, null) match {
@@ -1057,27 +1060,24 @@ def !(a: A): B = tryReact(a, empty, null) match {
 \begin{lstlisting}
 def !(a: A): B = {
   val backoff = new Backoff
-  def retryLoop(shouldBlock: Boolean): B = {
-    if (maySync || shouldBlock) {
-      val offer = new Offer[B]
-      tryReact(a, empty, offer) match {
-        case Block => 
-          LockSupport.park
-          if (offer.rescind) retryLoop(true)
-          else offer.answer
-        case Retry =>
-          backoff.once
-          if (offer.rescind) retryLoop(maySync)
-          else offer.answer
-      }
-    } else {
-      tryReact(a, empty, null) match {
-        case Block => retryLoop(true)
-        case Retry => backoff.once; retryLoop(maySync)
-        case ans   => ans.asInstanceOf[B]
-      }
+  def withoutOffer(): B =
+    tryReact(a, empty, null) match {
+      case Block => withOffer()
+      case Retry => 
+        backoff.once()
+        if (maySync) withOffer() else withoutOffer()
+      case ans   => ans.asInstanceOf[B]
     }
-  retryLoop(false)
+  def withOffer(): B = {
+    val offer = new Offer[B]
+    tryReact(a, empty, offer) match {
+      case (f: Failure) => 
+        if (f == Block) park() else backoff.once()
+        if (offer.rescind) withOffer() else offer.answer
+      case ans => ans.asInstanceOf[B]
+    }
+  }
+  withoutOffer()
 }
 \end{lstlisting}
 \nocaptionrule
@@ -1086,49 +1086,121 @@ def !(a: A): B = {
 \end{figure}
 %TODO: note tail recursion
 
+The code for performing a reaction is given in the \lstinline{!} method
+definition for \lstinline{Reagent[A,B]}, shown in~\figref{reaction}.  This
+method provides two generalized versions of the optimistic retry loops we
+described in~\secref{background}.  The retry loops are written as a local,
+tail-recursive functions, which Scala compiles down to loops.
+
+The first retry loop, \lstinline{withoutOffer}, attempts to perform the
+reaction without making visible offers to other reagents.  It may, however,
+find and consume offers from other reagents as necessary for message passing.
+To initiate the reaction, \lstinline{withoutOffer} calls the abstract
+\lstinline{tryReact} method with the input \lstinline{a}, an empty reaction to
+start with, and no offer.  If the reaction fails in the first phase (a
+permanent failure, represented by \lstinline{Block}), the next attempt must be
+made with an offer, to set up the blocking/signaling protocol.  If the
+reaction fails in the second phase (a transient failure, represented by
+\lstinline{Retry}), there is likely contention over shared data.  To reduce
+the contention, it performs one cycle of exponential backoff before retrying.
+If the reagent includes communication attempts, the retry is performed with an
+offer, since doing so increases chances of elimination~(\secref{choice})
+without further contention.  Finally, if both phases of the reaction succeed,
+the final answer is returned.
+
+The second retry loop, \lstinline{withOffer}, is similar, but begins by
+allocating an \lstinline{Offer} object to make visible to other reagents.
+%TODO: finish this
+
+Initially, the reaction is attempted using \lstinline{withoutOffer},
+representing optimism that the reaction can be completed without making a
+visible offer.
+
+\begin{figure}
+\begin{lstlisting}[frame=single]
+class Commit[A] extends Reagent[A,A] {
+  def tryReact(a: A, rx: Reaction, offer: Offer[A]) = 
+    if (offer != null && !offer.rescind) offer.answer
+    else if (rx.commit) a 
+    else Retry
+}
+\end{lstlisting}
+\vskip -12pt
+\begin{lstlisting}[frame=single]
+class CAS[A](ref: Ref[A], oldV: A, newV: A) 
+  extends Reagent[Unit,Unit] {
+  def tryReact(u: Unit, rx: Reaction, offer: Offer[B]) = 
+    if (!rx.hasCAS && !k.hasCAS)
+      if (ref.cas(oldV, newV))
+        k.tryReact((), rx, offer)
+      else Retry
+    else
+      k.tryReact((), rx.withCAS(ref, oldV, newV), offer)
+}
+\end{lstlisting}
+\vskip -12pt
+\begin{lstlisting}[frame=single]
+class Choice[A,B](r1: Reagent[A,B], r2: Reagent[A,B]) 
+  extends Reagent[A,B] {
+  def tryReact(a: A, rx: Reaction, offer: Offer[B]) = 
+    r1.tryReact(a, rx, offer) match {
+    case Retry => 
+        r2.tryReact(a, rx, offer) match {
+          case Retry => Retry
+          case Block => Retry // must still retry r1
+          case ans   => ans
+        }
+      case Block => r2.tryReact(a, rx, offer)
+      case ans => ans
+    }
+}
+\end{lstlisting}
+\vskip -12pt
+\begin{lstlisting}[frame=single]
+class Computed[A,B](c: A => Reagent[Unit,B]) 
+  extends Reagent[A,B] {
+  def tryReact(a: A, rx: Reaction, offer: Offer[B]) = 
+    c(a).tryReact((), rx, offer)
+}
+\end{lstlisting}
+\nocaptionrule
+\caption{Excerpts from core reagent subclasses}
+\end{figure}
+
 \subsection{The exit point: committing}
 \label{sec:impl-commit}
 
+As mentioned in~\secref{offers}, the initial continuation for reagents is the
+\lstinline{Commit} continuation:
 
+
+If the reagent has made an offer, but has also completed the first phase of
+reaction, the offer must be rescinded before the commit phase is
+attempted---otherwise, the reaction could complete twice.  As with the
+\lstinline{!} method, the attempt to rescind the offer is in a race with other
+reagents that may be completing the offer.  If \lstinline{Commit} loses the
+race, it returns the answer provided by the offer.  Otherwise, it attempts to
+commit the reaction, and if successful simply returns its input, which is the
+final answer for the reaction.
+
+Committing a reaction requires a $k$CAS operation: $k$ compare and sets must
+be performed atomically.  This operation, which forms the basis of STM, is in
+general expensive and not available through hardware.  There are several
+software implementations that provide various progress
+guarantees~\cite{Fraser2007,Luchangco2003,Attiya2008}, but they tend to 
 
 \subsection{Shared state}
 \label{sec:impl-state}
 
-kcas implementations: \cite{Fraser2007,Luchangco2003,Attiya2008}
 
-\begin{lstlisting}
-def tryReact(u: Unit, rx: Reaction, offer: Offer[B]) = 
-  if (!rx.hasCAS && !k.hasCAS) {
-    if (ref.cas(oldV, newV))
-      k.tryReact((), rx, offer)
-    else Retry
-  } else {
-    k.tryReact((), rx.withCAS(ref, oldV, newV), offer)
-  }
-\end{lstlisting}
 
 \subsection{Choice}
 
-\begin{lstlisting}
-def tryReact(a: A, rx: Reaction, offer: Offer[B]) = 
-  r1.tryReact(a, rx, offer) match {
-    case Retry => 
-      r2.tryReact(a, rx, offer) match {
-        case Retry => Retry
-        case Block => Retry // must still retry r1
-        case ans   => ans
-      }
-    case Block => r2.tryReact(a, rx, offer)
-    case ans => ans
-  }
-\end{lstlisting}
+
 
 \subsection{Computed reagents}
 
-\begin{lstlisting}
-  def tryReact(a: A, rx: Reaction, offer: Offer[B]): Any = 
-    c(a).tryReact((), rx, offer)
-\end{lstlisting}
+
 
 \subsection{Channels}
 
@@ -1137,9 +1209,6 @@ implementation.
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-\section{Performance}
-\label{sec:performance}
 
 \begin{figure*}
 \newcommand{\gscale}{0.72}
@@ -1174,6 +1243,9 @@ implementation.
 & \textbf{Threads}\quad (on 16-way machine)
 \end{tabular}
 \end{figure*}
+
+\section{Performance}
+\label{sec:performance}
 
 \subsection{Methodology and experimental setup}
 
