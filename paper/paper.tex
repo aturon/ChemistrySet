@@ -1,4 +1,4 @@
-\documentclass[preprint]{sigplanconf}
+\documentclass[preprint,nocopyrightspace]{sigplanconf}
 
 \input{packages}
 \input{macros}
@@ -46,13 +46,12 @@ sequential code.
 %become more common.
 
 Another answer is: communicate efficiently.  The past two
-decades\footnote{Herlihy/Wing, Mellor-Crummey/Scott} have produced a sizable
-collection of algorithms for synchronization, communication, and shared
-storage which minimize the use of memory bandwidth and avoid unnecessary
-waiting.  This research effort has led to industrial-strength
-libraries---\texttt{java.util.concurrent} (JUC) the most prominent---offering
-a wide range of concurrency primitives appropriate for fine-grained
-parallelism.
+decades\footnote{Herlihy/Wing~\cite{?}, Mellor-Crummey/Scott~\cite{?}} have
+produced a sizable collection of algorithms for synchronization, communication,
+and shared storage which minimize the use of memory bandwidth and avoid
+unnecessary waiting.  This research effort has led to industrial-strength
+libraries---\texttt{java.util.concurrent} (JUC) the most prominent---offering a
+wide range of concurrency primitives appropriate for fine-grained parallelism.
 
 Such libraries are an enormous undertaking---and one that must be repeated for
 new platforms.  They tend to be conservative, implementing only those data
@@ -94,21 +93,85 @@ algorithms:
 %% a small set of primitives for fine-grained concurrency that
 %% are \emph{expressive} and \emph{composable}:
 
-\paragraph{Expressive}  .
+\paragraph{Expressive}  
+Reagents provide a basic set of building blocks for writing concurrent data
+structures and synchronizers.  The building blocks include isolated atomic
+updates to shared state, and interactive synchronous communication through
+message passing.  This blend of isolation and interaction is essential for
+expressing the full range of fine-grained concurrent
+algorithms~(\secref{choice}).  The building blocks also bake in many common
+concurrency patterns, like optimistic retry loops, backoff schemes, and blocking
+and signalling.  Using reagents, it is possible to express sophisticated
+concurrency algorithms at a higher level of abstraction, while retaining the
+performance and scalability of direct, hand-written implementations.
 
-\paragraph{Composable} .
+\paragraph{Composable}
+Reagents also provide a set of composition operators, including choice,
+sequencing and pairing.  Using these operators, clients can extend and tailor
+concurrency primitives without knowledge of the underlying algorithms.  For
+example, if a reagent provides only a nonblocking version of an operation like
+\lstinline{dequeue}, a user can easily tailor it to a version that blocks if the
+queue is empty; this extension will work regardless of how \lstinline{dequeue}
+is defined, and will continue to work even if the \lstinline{dequeue}
+implementation is changed.  Similarly, clients of reagent libraries can sequence
+operations together to provide atomic move operations between arbitrary
+concurrent collections---again, without access to or knowledge of the
+implementations.  Compositionality is also useful to algorithm designers, since
+many sophisticated algorithms can be understood as compositions of simpler
+ones~(\secref{choice}, \secref{conjunction}).
 
-We see this work as serving the needs of two distinct groups: concurrency
-experts and concurrency users.  Using reagents, experts can write algorithms
-more easily, because common patterns are expressible as abstractions and many
-are built-in.  Users can compose, extend, and tailor the library without
-detailed knowledge of the algorithms involved.
+\vskip 6pt
+\noindent
+We begin in~\secref{background} by illustrating, through examples, some of the
+common patterns, tradeoffs and concerns in designing fine-grained concurrent
+algorithms.  The two subsequent sections contain our core technical
+contributions:
+\begin{itemize}
+\item The \textbf{design} of the reagent combinators is given
+  in~\secref{reagents}.  Each combinator is motivated by specific needs and
+  patterns in concurrent algorithms; the section shows in
+  particular how to write all of the algorithms described in~\secref{background}
+  concisely and at a higher-than-usual level of abstraction.
+\item The \textbf{implementation} of reagents is detailed
+  in~\secref{implementation}, via both high-level discussion and excerpts from
+  our code in Scala.  It reveals the extent to which reagents turn patterns of
+  fine-grained concurrency into a general algorithmic framework.  It also shows
+  how certain choices in the design of reagents enable important optimizations
+  in their implementation.
+\end{itemize}
+Reagents have a clear cost model that provides an important guarantee: they do
+not impose extra overhead on the atomic updates performed by individual
+concurrent algorithms.  That is, a reagent-based algorithm manipulates shared
+memory in exactly the same way as its hand-written counterpart, even if it reads
+and writes many disparate locations.  This is a guarantee not generally provided
+by concurrency abstractions like software transactional memory (STM), which
+employ redo or undo logs or other mechanisms to support composable atomicity.
+Reagents only impose overheads when \emph{multiple} algorithms are sequenced
+into a large atomic block, \emph{e.g.}  in an atomic transfer between
+collections.
 
-blend shared-state and message-passing concurrency
+\emph{In principle, then, reagents offer a strictly better situation than with
+  current libraries}: when used to express the algorithms provided by current
+libraries, reagents provide a higher level of abstraction yet impose negligible
+overhead; nothing is lost.  But unlike with current libraries, the algorithms
+can then be extended, tailored, and combined.  Extra costs are only paid when
+the new atomic compositions are used.  
 
-implemented a Scala library
+We test this principle empirically in~\secref{performance} by comparing multiple
+reagent-based collections to their hand-written counterparts, as well as to
+lock-based and STM-based implementations.  The benchmarks include both single
+operations used in isolation (where little overhead for reagentes is expected)
+and combined atomic transfers.  We compare at both high and low levels of
+contention.  Reagents perform universally better than the lock- and STM-based
+implementations, and are indeed competetive with hand-written lock-free
+implementations.
 
-CLEAR COST MODEL
+Finally, it is worth noting in passing that reagents generalize both Concurrent
+ML~\cite{?} and Transactional Events~\cite{?}, yielding the first lock-free
+implementation for both.  We give a thorough discussion of this and other
+related work---especially STM---in~\secref{related}.
+
+%CML and TE?
 
 \elide{
 # Contributions
@@ -143,10 +206,10 @@ by no means a silver bullet.
 why is this different from STM
 }
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 \section{Background}
 \label{sec:background}
-
-\cite{Shavit1997a} %TODO: cite pure elimination
 
 Broadly, we are interested in data structures and algorithms for
 communication, synchronization, or both.  This section gives a brief survey of
@@ -281,15 +344,16 @@ operations on the same part of a data structure as competing to atomically
 update that data structure; we want the operations to be isolated.  On the other
 hand, sometimes operations can ``help'' each other: a \lstinline{push} and a
 \lstinline{tryPop} effectively cancel each other out.  This insight leads to a
-scheme called \emph{elimination backoff}~\cite{?}.  Operations first try the
-usual \lstinline{cas}-based code.  If the \lstinline{cas} fails, rather than
-busy-waiting, the operations advertise their presence on a side-channel,
-reducing the contention for the head pointer.  If a \lstinline{push} and
-\lstinline{tryPop} detect their mutual presence, the \lstinline{push} can pass
-its argument directly to \lstinline{tryPop} through the side-channel, and no
-change to the head pointer is necessary.  Atomicity is not violated, because had
-the \lstinline{push} and \lstinline{pop} executed in sequence, the head pointer
-would have been returned to its original value anyway.
+scheme called \emph{elimination backoff}~\cite{Shavit1997a,Hendler2004}.
+Operations first try the usual \lstinline{cas}-based code.  If the
+\lstinline{cas} fails, rather than busy-waiting, the operations advertise their
+presence on a side-channel, reducing the contention for the head pointer.  If a
+\lstinline{push} and \lstinline{tryPop} detect their mutual presence, the
+\lstinline{push} can pass its argument directly to \lstinline{tryPop} through
+the side-channel, and no change to the head pointer is necessary.  Atomicity is
+not violated, because had the \lstinline{push} and \lstinline{pop} executed in
+sequence, the head pointer would have been returned to its original value
+anyway.
 
 Both \lstinline{push} and \lstinline{tryPop} are \emph{total} operations: they
 can in principle succeed no patter what state the stack is in, and fail (and
@@ -337,6 +401,8 @@ combinators for writing concurrent algorithms.  Some of the techniques are
 built into the combinators themselves, while others are expressible as
 reusable abstractions.
 }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 \section{Reagents}
 \label{sec:reagents}
@@ -461,11 +527,11 @@ In Scala, anonymous partial functions are written as a series of cases
 enclosed in braces.  For \lstinline{push} and \lstinline{tryPop}, the case
 analyses are exhaustive, so the update functions are in fact total.
 
-Being reagents, \lstinline{push} and \lstinline{tryPop} are inert values.
-They can be invoked using the \lstinline{!} method provided by reagents; for a
-\lstinline{Reagent[A,B]} the \lstinline{!} method takes an \lstinline{A} and
-returns a \lstinline{B}.  Scala permits infix notation for methods, so we can
-use a \lstinline{TreiberStack} as follows:
+Being reagents, \lstinline{push} and \lstinline{tryPop} are inert values.  They
+can be invoked using the \lstinline{!} method provided by reagents, which is
+read ``react''.  For a \lstinline{Reagent[A,B]} the \lstinline{!} method takes
+an \lstinline{A} and returns a \lstinline{B}.  Scala permits infix notation for
+methods, so we can use a \lstinline{TreiberStack} as follows:
 \begin{lstlisting}
   var s = new TreiberStack[Int]; s.push ! 42
 \end{lstlisting}
@@ -520,6 +586,7 @@ Roughly equivalent to the unfair JUC semaphore implementation.
 %% \end{lstlisting}
 
 \subsection{Synchronization: how reagents react}
+\label{sec:sync}
 
 %% References allow threads to communicate through atomic changes to
 %% shared state.  The atomic updates appear to happen in a sequence
@@ -677,6 +744,9 @@ require any code on the part of the stack author, and it does not
 require the stack user to know anything about the implementation.
 Reagents can be composed in unanticpated ways.
 
+% TODO: ``remarkable'' the emergent behavior.  explain in more detail what
+% emerges -- the potential for transfer eliminations
+
 The double-pop reagent implicitly gives a solution to the Dining
 Philosophers problem~\cite{?}: two resources are atomically acquired.
 Internally, the reagent library ensures dead- and live-lock freedom
@@ -813,7 +883,9 @@ class MSQueue[A] {
 \end{figure}
 
 An example of this phenomenon is the classic Michael-Scott lock-free
-queue~\cite{?}. 
+queue~\cite{?}.   
+
+%TODO: note tail recursion
 
 \elide{
 The \lstinline{read} combinator has a straightforward signature: if
@@ -840,24 +912,129 @@ post-commit action for catching up tail
 
 \paragraph{A caveat for composition}
 
+Talk about more sophisticated algorithms, e.g. skiplists
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 \section{Implementation}
 \label{sec:implementation}
 
-bags allow greatest degree of freedom and parallelism
+%TODO: talk about dissolve
 
-kcas implementations: \cite{Attiya2008,Fraser2007,Luchangco2003}
+\elide{
+High level concepts:
+  Data abstraction/internal normalized syntactic representation
+  Continuations/Commit
+  Reactions
+  Retry versus Block
+  Offers
 
+Specific combinators:
+  Choice
+  CAS - esp. when 1CAS vs kCAS
+  Upd?
+  Channels - including bag implementation
+    bags allow greatest degree of freedom and parallelism
+  Computed?
+  Sequencing (works by continuation plumbing)
+
+Low-level details:
+  kcas implementation
+  Inlining
+}
+
+Having seen the design and application of reagents, we now turn to their
+implementation.  We begin with a high-level overview~(\secref{impl-approach})
+introducing the key techniques and data structures we use.  We then delve into
+the core code of our Scala implementation, beginning with the primary entry
+point (the \lstinline{!} method,~\secref{impl-reaction}) and continuing with the
+key combinators.
+
+\subsection{The basic approach}
+\label{sec:impl-approach}
+
+When invoked, reagents attempt to \emph{react}, which is \emph{conceptually} a
+two phase process: first, the desired reaction is built up; second, the reaction
+is atomically committed.  We emphasize ``conceptually'' because, as discussed in
+the introduction, reagents are designed to avoid this kind of overhead in the
+common case.  We first discuss the general case (which imposes overhead) but
+return momentarily to the common (no overhead) case.
+
+An attempt to react can fail during either phase.  A failure during the first
+phase, \emph{i.e.} a failure to build up the desired reaction, is always a
+permanent failure~(\secref{choice}).  Permanent failures indicate that the
+reagent cannot proceed given current conditions, and should therefore block
+until another thread intervenes and causes conditions to change.  On the other
+hand, a failure during the second phase, \emph{i.e.} a failure to commit, is
+always a transient failure~(\secref{choice}).  Transient failures indicate that
+the reagent should retry, since the reaction was halted due to active
+interference from another thread.  In slogan form, we have
+\begin{quotation}\noindent
+\begin{tabular}{l@{\ }l}
+Permanent failure:&wait for intervention\\
+Transient failure:&retry due to interference
+\end{tabular}
+\end{quotation}
+In general, a reaction encompasses three pieces of data:
+\begin{enumerate}
+\item a list of CASes to be performed,
+\item a list of messages to be consumed, and
+\item a list of actions to be performed after committing.
+\end{enumerate}
+It thus resembles the redo log used in some STM implementations~\cite{?}.
+
+In the common case that a reagent only performs one visible~(\secref{dynamic})
+CAS or message swap, those components of the reaction are not necessary and
+hence are not used.  Instead, the CAS or swap is performed immediately,
+compressing the two phases of reaction.  Aside from avoiding extra allocations,
+this key optimization means that in the common case a \lstinline{cas} or
+\lstinline{upd} in a reagents leads to exactly one executed CAS during reaction,
+with no extra overhead.  When a reaction encompasses multiple visible CASes, a
+costlier \emph{k}CAS protocol must be used to ensure atomicity.  We discuss the
+\emph{k}CAS protocol in~\secref{impl-commit}, and the common case single CAS
+in~\secref{impl-state}.
+
+In the implementation, \lstinline{Reagent[A,B]} is an abstract class all of
+whose subclasses are hidden.  The subclasses roughly correspond to the
+combinator functions (which are responsible for instantiating them), and
+instances of the subclasses store the arguments given to their corresponding
+combinator.  Each subclass provides an implementation of the
+\lstinline{tryReact} method, which is an abstract method of
+\lstinline{Reagent[A,B]} with the following signature:\footnote{ Functional
+  programming afficianados should regard \lstinline{tryReact} as a kind of
+  Kleisli arrow for reagents.}
 \begin{lstlisting}
-def !(a: A): B = tryReact(a, Reaction.inert, null) match {
+  def tryReact(a: A, rx: Reaction, offer: Offer[B]): Any
+\end{lstlisting}
+The \lstinline{Any} type in Scala lies at the top of the subtyping hierarchy,
+akin to \lstinline{Object} in Java.  Here we are using \lstinline{Any} to
+represent a union of the type \lstinline{B} with the type
+\lstinline{BacktrackCommand}, where the latter has just two singleton instances,
+\lstinline{Block} and \lstinline{Retry}, corresponding to permanent and
+transient failures.  
+
+In other words, \lstinline{tryReact} takes the input (type \lstinline{A}) to the
+reagent and the reaction built up so far, and either completes the reaction and
+returns its result (type \lstinline{B}) or one of the failure singletons
+(\lstinline{Block} or \lstinline{Retry}).
+
+\subsection{The entry point: reacting}
+\label{sec:impl-reaction}
+
+shown in \figref{reaction}
+
+\begin{figure}
+\begin{lstlisting}
+def !(a: A): B = tryReact(a, empty, null) match {
   case (_: BacktrackCommand) => {
     val backoff = new Backoff
     val maySync = this.maySync // cache
-    @tailrec def retryLoop(shouldBlock: Boolean): B = {
+    def retryLoop(shouldBlock: Boolean): B = {
       val wait = maySync || shouldBlock
       val waiter = if (wait) new Waiter[B](shouldBlock) 
                    else null
 
-      tryReact(a, Reaction.inert, waiter) match {
+      tryReact(a, empty, waiter) match {
         case (bc: BacktrackCommand) if wait => {
           bc.bottom(waiter, backoff, snoop(a))
           waiter.tryAbort      // rescind waiter,
@@ -876,14 +1053,42 @@ def !(a: A): B = tryReact(a, Reaction.inert, null) match {
   case ans => ans.asInstanceOf[B]
 }
 \end{lstlisting}
+\nocaptionrule
+\caption{The \lstinline{!} method, defined in \lstinline{Reagent[A,B]}}
+\label{fig:reaction}
+\end{figure}
+%TODO: note tail recursion
+
+\subsection{The exit point: committing}
+\label{sec:impl-commit}
+
+
+
+\subsection{Shared state}
+\label{sec:impl-state}
+
+kcas implementations: \cite{Fraser2007,Luchangco2003,Attiya2008}
 
 \begin{lstlisting}
-def tryReact(a: A, rx: Reaction, offer: Offer[B]): Any = 
+def tryReact(u: Unit, rx: Reaction, offer: Offer[B]) = 
+  if (!rx.hasCAS && !k.hasCAS) {
+    if (ref.cas(oldV, newV))
+      k.tryReact((), rx, offer)
+    else Retry
+  } else {
+    k.tryReact((), rx.withCAS(ref, oldV, newV), offer)
+  }
+\end{lstlisting}
+
+\subsection{Choice}
+
+\begin{lstlisting}
+def tryReact(a: A, rx: Reaction, offer: Offer[B]) = 
   r1.tryReact(a, rx, offer) match {
     case Retry => 
       r2.tryReact(a, rx, offer) match {
         case Retry => Retry
-        case Block => Retry // must retry r1
+        case Block => Retry // must still retry r1
         case ans   => ans
       }
     case Block => r2.tryReact(a, rx, offer)
@@ -891,14 +1096,13 @@ def tryReact(a: A, rx: Reaction, offer: Offer[B]): Any =
   }
 \end{lstlisting}
 
-\begin{lstlisting}
-  def tryReact(u: Unit, rx: Reaction, offer: Offer[B]): Any = 
-    if (rx.canCASImmediate(k, offer)) {
-      if (casI(expect, update))
-        k.tryReact((), rx, offer)
-      else Retry
-    } else k.tryReact((), rx.withCAS(Ref.this, expect, update), offer)
-\end{lstlisting}
+\subsection{Computed reagents}
+
+\subsection{Channels}
+
+Message passing is by far the most complicated aspect of the reagent
+implementation.
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -941,7 +1145,14 @@ def tryReact(a: A, rx: Reaction, offer: Offer[B]): Any =
 
 \subsection{Methodology and experimental setup}
 
-We follow standard practice for 
+Fine-grained concurrent data structures are usually evaluated by targetted
+microbenchmarking, with focus on contention effects and fine-grained parallel
+speedup~\cite{?}.  In addition to those basic aims, we wish to evaluate (1) the
+extent to which reagent-based algorithms can compete with their hand-built
+counterparts and (2) whether reagent composition is a plausible approach for
+scalable atomic transfers.
+
+To this end, we designed a series of benchmarks 
 
 0.25$\mu$s, 2.5$\mu$s
 
@@ -952,6 +1163,14 @@ caches are per-core.  The software environment includes Ubuntu 10.04.3 and
 the Hotspot JVM 6u27.
 
 \subsection{Results}
+
+Performance measurements from our initial implementation show that reagents are
+competetive with hand-built concurrent data structures, yet also provide
+scalable composed operations that are rarely provided for such data structures.
+
+\subsection{Potential improvements}
+
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -1137,6 +1356,11 @@ algorithms.
 
 We believe it is crucial to have XX, YY together
 
+We see this work as serving the needs of two distinct groups: concurrency
+experts and concurrency users.  Using reagents, experts can write libraries more
+easily, because common patterns are expressible as abstractions and many are
+built-in.  Users can then extend, tailor and compose the resulting library
+without detailed knowledge of the algorithms involved.
 
 \bibliographystyle{abbrvnat}
 \bibliography{reagents}
@@ -1190,11 +1414,11 @@ reason not to use the pitch of extensible, composable j.u.c.?
 1.0 Background                          1.0
 2.5 Library overview & examples         3.0
 1.5 Semantics 
-1.5 Implementation/algorithms           2.0
+1.5 Implementation/algorithms           2.2
 0.5 Performance results                 1.0
 1.0 Related work                        1.0
 0.3 Conclusion                          0.3
-0.8 Bib                                 0.7
+0.8 Bib                                 0.5
 
 How much time should we spend covering scalable concurrency
 background?  This is perhaps tied to strategies for introducing the
