@@ -219,6 +219,8 @@ generalize.  Readers already familiar with Treiber stacks~\cite{Treiber1986},
 elimination-backoff stacks~\cite{Hendler2004}, dual stacks~\cite{Scherer2004},
 and MCS locks~\cite{Mellor-Crummey1991} can safely skip to \secref{reagents}.
 
+%TODO: cite art of multiprocessor programming
+
 Given our target of cache-coherent, shared-memory architectures, the
 most direct way of communicating between threads is modifying shared
 memory.  The challenge is to provide both \emph{atomicity} and
@@ -253,7 +255,7 @@ update must consist of changing a single word of memory---a constraint
 which is often quite challenging to meet.
 
 \begin{figure}
-\begin{lstlisting}
+\begin{lstlisting}[frame=single]
 class TreiberStack[A] {
   private val head = new AtomicReference[List[A]](Nil)
   def push(a: A) {
@@ -388,7 +390,7 @@ see how to write all of the above examples, concisely and composably.
 
 \elide{
 In \secref{background}, we saw a range of strategies for communication and
-synchronizion at a fine grain:
+synchronization at a fine grain:
 \begin{itemize}
 \item using CAS to make direct, optimistic, and atomic updates;
 \item using exponential backoff to ease contention; 
@@ -421,7 +423,7 @@ swap: Endpoint[A,B] => Reagent[A,B]
 // combinators for composition
 +  : Reagent[A,B] * Reagent[A,B] => Reagent[A,B]
 >> : Reagent[A,B] * Reagent[B,C] => Reagent[A,C]
-|||  : Reagent[A,B] * Reagent[A,C] => Reageng[A,(B,C)]  
+|||  : Reagent[A,B] * Reagent[A,C] => Reagent[A,(B,C)]  
 
 // combinators for computation
 ret: A => Reagent[Unit, A]
@@ -429,6 +431,8 @@ computed: PartialFunction[A, Reagent[Unit, B]]
           => Reagent[A,B]
 postCommit: (A => Unit) => Reagent[A,A]
 \end{lstlisting}
+\nocaptionrule
+\caption{The Reagent API}
 \label{fig:combinators}
 \end{figure}
 
@@ -526,6 +530,8 @@ class TreiberStack[A] {
 In Scala, anonymous partial functions are written as a series of cases
 enclosed in braces.  For \lstinline{push} and \lstinline{tryPop}, the case
 analyses are exhaustive, so the update functions are in fact total.
+\lstinline{Unit} is akin to \lstinline{void}: it is a type with a single
+member, written \lstinline{()}.
 
 Being reagents, \lstinline{push} and \lstinline{tryPop} are inert values.  They
 can be invoked using the \lstinline{!} method provided by reagents, which is
@@ -800,8 +806,8 @@ def zip(in1: Endpoint[Unit,  A],
 \end{lstlisting}
 The \lstinline{dissolve} function takes a \lstinline{Reagent[Unit, Unit]} and
 introduces it as a catalyst.\footnote{For simplicity, we have not given a way
-  to \emph{cancel} catalysts after they have been introduced, but cancellation
-  is easy to add.}  Operationally, in this example, that just means sending
+  to cancel catalysts after they have been introduced, but cancellation is
+  easy to add.}  Operationally, in this example, that just means sending
 messages along \lstinline{in1} and \listinline{in2} that are marked as
 catalyzing messages, and hence are not consumed during reaction.  The upshot
 is that senders along \lstinline{in1} will see the catalyzing messages, look
@@ -854,11 +860,11 @@ the structure of the computation to be performed depends on the input or other
 dynamic data.
 
 \begin{figure}
-\begin{lstlisting}
+\begin{lstlisting}[frame=single]
 class MSQueue[A] {
   private case class Node(data: A, next: Ref[Node])
-  private val head = new Ref(Node(null))
-  private val tail = new Ref(head.read ! ())
+  private val head = new Ref(new Node(null))  // sentinel
+  private val tail = new Ref(read(head) ! ()) // sentinel
   val tryDeq: Reagent[Unit, Option[A]] = upd(head) {
     case (Node(_, Ref(n@Node(x, _))), ()) => (n, Some(x))
     case (emp,                        ()) => (emp, None)
@@ -873,7 +879,7 @@ class MSQueue[A] {
         findAndEnq(n)
     }
   val enq: Reagent[A, Unit] = computed { 
-    (x: A) => findAndEnq(Node(x, new Ref(null)))
+    (x: A) => findAndEnq(new Node(x, new Ref(null)))
   }
 }
 \end{lstlisting}
@@ -883,41 +889,151 @@ class MSQueue[A] {
 \end{figure}
 
 An example of this phenomenon is the classic Michael-Scott lock-free
-queue~\cite{?}.   
+queue~\cite{Michael1996}.  Unlike a stack, in which all activity focuses on
+the head, queues have two loci of updates.  That means, in particular, that
+the \lstinline{Ref}s used by its reagents may vary depending on the current
+state of the queue.
+
+Here is a brief overview of the Michael-Scott queue.  The queue is represented
+as a \emph{mutable} linked list, with a sentinel node at the head (front) of
+the queue.  The head pointer always points to the current sentinel node; nodes
+are dequeues by a CAS to this pointer, just like Treiber stacks (but lagged by
+one node).  The tail of the queue is the unique node, reachable from the head
+pointer, with a null \lstinline{next} pointer; thanks to the sentinel, such a
+node is guaranteed to exist.  If the queue is empty, the same node will be the
+head (sentinel) and tail.  Finally, as an optimization for enqueing, a tail
+\emph{pointer} is maintained with the invariant that the real tail is always
+reachable from it.  The tail pointer may lag behind, however, which allows the
+algorithm to work using only single-word CAS instructions.
+
+Our reagent-based implementation of the Michael-Scott queue is shown
+in~\figref{msqueue}.  The node representation is given as an inner \emph{case}
+class.  In Scala, case classes provide two features we take advantage of.
+First, the parameters to their constructors (here \lstinline{data} and
+\lstinline{next}) are automatically added as final fields to the class, which
+are initialized to the constructor argument values.  Second, they extend
+pattern matching through \lstinline{case} so that instances can be
+\emph{deconstructed}.  A pattern like \lstinline{case Node(d, n)} matches any
+instance of the node class, binding \lstinline{d} to its \lstinline{data}
+field and \lstinline{n} to its \lstinline{next} field.
+
+The \lstinline{head} and \lstinline{tail} references of the queue are
+initialized to the same sentinel node.  Here we use a new reagent,
+\lstinline{read}~(\figref{combinators}), to extract the sentinel value from
+the head when constructing the tail.  The read reagent in \lstinline{tail}'s
+initializing expression is immediately executed during construction of an
+\lstinline{MSQueue} instance.
+
+The \lstinline{tryDeq} reagent is very similar to the \lstinline{tryPop}
+reagent in \lstinline{TreiberStack}, modulo the sentinel node.  The reagent
+pattern matches on the sentinel node, ignoring its \lstinline{data} field by
+using \lstinline{_}, the wildcard.  The \lstinline{next} field is then matched
+to a nested pattern, \lstinline{Ref(n@Node(x, _))}.  This pattern immediately
+reads the current value of the reference stored in \lstinline{next}, binds
+that value to \lstinline{n}, and then matches the
+pattern~\lstinline{Node(x,_)} against \lstinline{n}.  If the pattern
+matches---which it will any time the \lstinline{next} field of the sentinel is
+non-null---the node \lstinline{n} becomes the new \lstinline{head} (and hence
+the new sentinel).  
+%TODO: picture?
+
+Since the location of the tail node is determined dynamically by the data in
+the queue, the \lstinline{enq} reagent must itself be determined dynamically.
+
+The \lstinline{enq} reagent, on the other hand, must work with the shifting
+position of the tail, which requires new combinators.
+
+
+The \lstinline{cas} combinator~(\figref{combinators}) takes a
+\lstinline{Ref[A]} and two \lstinline{A} arguments, giving the expected and
+updated values, respectively.  Unlike its counterpart for
+\lstinline{AtomicReference}, a \lstinline{cas} reagent does \emph{not} yield a
+boolean result.  Instead, the reagent library builds in handling of failed
+CASes, including an optimistic retry loop and exponential backoff.  A failure
+to CAS is, as discussed in \secref{choice}, a transient failure that causes
+the reagent to retry.
+
+%TODO: treat !? as shorthand?
 
 %TODO: note tail recursion
 
-\elide{
-The \lstinline{read} combinator has a straightforward signature: if
-\lstinline{r} has type \lstinline{Ref[A]}, then \lstinline{read(r)} is a
-\emph{value} of type \lstinline{Reagent[Unit, A]} which, when invoked, takes a
-unit\footnote{\lstinline{Unit} in Scala is akin to \lstinline{void}: it is a
-  type with a single member, written \lstinline{()}.} argument and yields an
-\lstinline{A} result.
-
-The \lstinline{cas} combinator takes two additional \lstinline{A} arguments,
-giving the expected and updated values, respectively.  Unlike its counterpart
-for \lstinline{AtomicReference}, a \lstinline{cas} reagent does \emph{not}
-yield a boolean result.  Instead, the reagent library builds in handling of
-failed CASes, including an optimistic retry loop and exponential backoff.  The
-failure mechanics depend on which other combinators are involved, so we delay
-a complete discussion until \secref{failure}.
+\elide{ The \lstinline{read} combinator has a straightforward signature: if
+  \lstinline{r} has type \lstinline{Ref[A]}, then \lstinline{read(r)} is a
+  \emph{value} of type \lstinline{Reagent[Unit, A]} which, when invoked, takes
+  a unit argument and yields an \lstinline{A} result.
 }
- 
-% tail recursive
 
 This is where the differences from STM really start to show.
 
 post-commit action for catching up tail
 
-\paragraph{A caveat for composition}
-
 Talk about more sophisticated algorithms, e.g. skiplists
+
+\subsection{Caveats for composition}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 \section{Implementation}
 \label{sec:implementation}
+
+\elide{
+def !(a: A): B = tryReact(a, empty, null) match {
+  case (_: Failure) => {
+    val backoff = new Backoff
+    def retryLoop(shouldBlock: Boolean): B = {
+      val offer = if (maySync || shouldBlock) 
+                    new Offer[B]
+                  else null
+      tryReact(a, empty, offer) match {
+        case (f: Failure) => {
+          if (f == Block && offer != null) 
+            LockSupport.park 
+          else backoff.once
+
+          // rescind offer, but check for completion
+          if (offer != null && offer.tryAbort)
+            offer.answer
+          else
+            retryLoop(f == Block)
+        }
+        case ans   => ans.asInstanceOf[B]
+      }
+    }
+    backoff.once
+    retryLoop(false)
+  }
+  case ans => ans.asInstanceOf[B]
+}
+}
+
+\begin{figure}
+\begin{lstlisting}[frame=single]
+def !(a: A): B = {
+  val backoff = new Backoff
+  def withoutOffer(): B =
+    tryReact(a, empty, null) match {
+      case Block => withOffer()
+      case Retry => 
+        backoff.once()
+        if (maySync) withOffer() else withoutOffer()
+      case ans   => ans.asInstanceOf[B]
+    }
+  def withOffer(): B = {
+    val offer = new Offer[B]
+    tryReact(a, empty, offer) match {
+      case (f: Failure) => 
+        if (f == Block) park() else backoff.once()
+        if (offer.rescind) withOffer() else offer.answer
+      case ans => ans.asInstanceOf[B]
+    }
+  }
+  withoutOffer()
+}
+\end{lstlisting}
+\nocaptionrule
+\caption{The \lstinline{!} method, defined in \lstinline{Reagent[A,B]}}
+\label{fig:reaction}
+\end{figure}
 
 %TODO: talk about dissolve
 
@@ -1001,7 +1117,7 @@ instances of the subclasses store the arguments given to their corresponding
 combinator.  Each subclass provides an implementation of the
 \lstinline{tryReact} method, which is an abstract method of
 \lstinline{Reagent[A,B]} with the following signature:\footnote{ Functional
-  programming afficianados should regard \lstinline{tryReact} as a kind of
+  programming aficionados should regard \lstinline{tryReact} as a kind of
   Kleisli arrow for reagents.}
 \begin{lstlisting}
   def tryReact(a: A, rx: Reaction, offer: Offer[B]): Any
@@ -1025,65 +1141,6 @@ communication between reagents, which we explain next.
 
 \subsection{The entry point: reacting}
 \label{sec:impl-reaction}
-
-\elide{
-def !(a: A): B = tryReact(a, empty, null) match {
-  case (_: Failure) => {
-    val backoff = new Backoff
-    def retryLoop(shouldBlock: Boolean): B = {
-      val offer = if (maySync || shouldBlock) 
-                    new Offer[B]
-                  else null
-      tryReact(a, empty, offer) match {
-        case (f: Failure) => {
-          if (f == Block && offer != null) 
-            LockSupport.park 
-          else backoff.once
-
-          // rescind offer, but check for completion
-          if (offer != null && offer.tryAbort)
-            offer.answer
-          else
-            retryLoop(f == Block)
-        }
-        case ans   => ans.asInstanceOf[B]
-      }
-    }
-    backoff.once
-    retryLoop(false)
-  }
-  case ans => ans.asInstanceOf[B]
-}
-}
-
-\begin{figure}
-\begin{lstlisting}
-def !(a: A): B = {
-  val backoff = new Backoff
-  def withoutOffer(): B =
-    tryReact(a, empty, null) match {
-      case Block => withOffer()
-      case Retry => 
-        backoff.once()
-        if (maySync) withOffer() else withoutOffer()
-      case ans   => ans.asInstanceOf[B]
-    }
-  def withOffer(): B = {
-    val offer = new Offer[B]
-    tryReact(a, empty, offer) match {
-      case (f: Failure) => 
-        if (f == Block) park() else backoff.once()
-        if (offer.rescind) withOffer() else offer.answer
-      case ans => ans.asInstanceOf[B]
-    }
-  }
-  withoutOffer()
-}
-\end{lstlisting}
-\nocaptionrule
-\caption{The \lstinline{!} method, defined in \lstinline{Reagent[A,B]}}
-\label{fig:reaction}
-\end{figure}
 %TODO: note tail recursion
 
 The code for performing a reaction is given in the \lstinline{!} method
@@ -1127,15 +1184,15 @@ class Commit[A] extends Reagent[A,A] {
 \end{lstlisting}
 \vskip -12pt
 \begin{lstlisting}[frame=single]
-class CAS[A](ref: Ref[A], oldV: A, newV: A) 
-  extends Reagent[Unit,Unit] {
+class CAS[A,B](ref: Ref[A], ov: A, nv: A, k: Reagent[A,B]) 
+  extends Reagent[Unit,B] {
   def tryReact(u: Unit, rx: Reaction, offer: Offer[B]) = 
     if (!rx.hasCAS && !k.hasCAS)
-      if (ref.cas(oldV, newV))
+      if (ref.cas(ov, nv))
         k.tryReact((), rx, offer)
       else Retry
     else
-      k.tryReact((), rx.withCAS(ref, oldV, newV), offer)
+      k.tryReact((), rx.withCAS(ref, ov, nv), offer)
 }
 \end{lstlisting}
 \vskip -12pt
@@ -1206,6 +1263,8 @@ guarantees~\cite{Fraser2007,Luchangco2003,Attiya2008}, but they tend to
 
 Message passing is by far the most complicated aspect of the reagent
 implementation.
+
+\subsection{Catalysis}
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
