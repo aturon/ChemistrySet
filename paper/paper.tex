@@ -3,6 +3,8 @@
 \input{packages}
 \input{macros}
 
+%\usepackage[compact]{titlesec}
+
 \begin{document}
 
 \authorinfo{}{}{}
@@ -12,18 +14,19 @@
 \maketitle
 
 \begin{abstract}
-blah blah\\
-blah blah\\
-blah blah\\
-blah blah\\
-blah blah\\
-blah blah
+Efficient communication and synchronization is crucial for fine-grained
+parallelism.  Libraries providing such features, while indispensable, are
+difficult to write, and often cannot be tailored or composed to meet the needs
+of specific users.  We introduce \emph{reagents}, a set of combinators for
+concisely expressing concurrency algorithms.  Reagents scale as well as their
+hand-coded counterparts, while providing the composability existing libraries
+lack.
 \end{abstract}
 
 \section{Introduction}
 
 \hspace{\stretch{1}}\emph{Programs are what happens between cache
-  misses}.\footnote{Folklore; origin unknown.}
+  misses}. %{\small[origin unknown]}%\footnote{Folklore; origin unknown.}
 
 \subsection*{The problem}
 
@@ -582,9 +585,8 @@ structure (\secref{choice}, \secref{conjunction}).
 While \lstinline{tryPop} handles both empty and nonempty stacks, we
 can write a variant that drops the empty case:
 \begin{lstlisting}
-val pop: Reagent[Unit, A] = upd(head) {
-  case (x::xs, ()) => (xs, x)
-}
+val pop: Reagent[Unit, A] = 
+  upd(head) { case (x::xs, ()) => (xs, x) }
 \end{lstlisting}
 Now our update function is partial.  An invocation \lstinline{s.pop ! ()} will
 block the calling thread unless or until the stack is nonempty.  Blocking and
@@ -717,10 +719,9 @@ and \lstinline{swap(elimPop)} can fail permanently if there are no
 offers from pushers.
 
 When \lstinline{push} or \lstinline{pop} retry, they follow an
-exponential backoff pattern with \emph{spinwaiting} for elimination
-offers, exactly as described in \secref{background}.  The backoff
-logic follows directly from the implementation of reagents; see
-\secref{implementation} for details.
+exponential backoff pattern with spinwaiting for elimination
+offers\elide{, exactly as described in \secref{background}}.  The backoff
+logic follows directly from the implementation of reagents~(\secref{implementation}).
 
 \elide{
 On each retry, \lstinline{push} will \emph{spinwait} for
@@ -1092,65 +1093,6 @@ lock-free set algorithm~\cite{Heller2006}.  With any of these examples, we reap 
 \section{Implementation}
 \label{sec:implementation}
 
-\elide{
-def !(a: A): B = tryReact(a, empty, null) match {
-  case (_: Failure) => {
-    val backoff = new Backoff
-    def retryLoop(shouldBlock: Boolean): B = {
-      val offer = if (maySync || shouldBlock) 
-                    new Offer[B]
-                  else null
-      tryReact(a, empty, offer) match {
-        case (f: Failure) => {
-          if (f == Block && offer != null) 
-            LockSupport.park 
-          else backoff.once
-
-          // rescind offer, but check for completion
-          if (offer != null && offer.tryAbort)
-            offer.answer
-          else
-            retryLoop(f == Block)
-        }
-        case ans   => ans.asInstanceOf[B]
-      }
-    }
-    backoff.once
-    retryLoop(false)
-  }
-  case ans => ans.asInstanceOf[B]
-}
-}
-
-\begin{figure}
-\begin{lstlisting}[frame=single]
-def !(a: A): B = {
-  val backoff = new Backoff
-  def withoutOffer(): B =
-    tryReact(a, empty, null) match {
-      case Block => withOffer()
-      case Retry => 
-        backoff.once()
-        if (maySync) withOffer() else withoutOffer()
-      case ans   => ans.asInstanceOf[B]
-    }
-  def withOffer(): B = {
-    val offer = new Offer[B]
-    tryReact(a, empty, offer) match {
-      case (f: Failure) => 
-        if (f == Block) park() else backoff.once(offer)
-        if (offer.rescind) withOffer() else offer.answer
-      case ans => ans.asInstanceOf[B]
-    }
-  }
-  withoutOffer()
-}
-\end{lstlisting}
-\nocaptionrule
-\caption{The \lstinline{!} method, defined in \lstinline{Reagent[A,B]}}
-\label{fig:reaction}
-\end{figure}
-
 %TODO: talk about dissolve
 
 \elide{
@@ -1229,9 +1171,9 @@ combinator functions (which are responsible for instantiating them), and
 instances of the subclasses store the arguments given to their corresponding
 combinator.  Each subclass provides an implementation of the
 \lstinline{tryReact} method, which is an abstract method of
-\lstinline{Reagent[A,B]} with the following signature:\footnote{ Functional
+\lstinline{Reagent[A,B]} with the following signature:\elide{\footnote{ Functional
   programming aficionados should regard \lstinline{tryReact} as a kind of
-  Kleisli arrow for reagents.}
+  Kleisli arrow for reagents.}}
 \begin{lstlisting}
   def tryReact(a: A, rx: Reaction, offer: Offer[B]): Any
 \end{lstlisting}
@@ -1302,6 +1244,35 @@ Each reagent initially begins with the empty continuation, called
 The sequencing combinator then merely plumbs together the continuation arguments
 of its parameters.
 
+\begin{figure}
+\begin{lstlisting}[frame=single]
+def !(a: A): B = {
+  val backoff = new Backoff
+  def withoutOffer(): B =
+    tryReact(a, empty, null) match {
+      case Block => withOffer()
+      case Retry => 
+        backoff.once()
+        if (maySync) withOffer() else withoutOffer()
+      case ans   => ans.asInstanceOf[B]
+    }
+  def withOffer(): B = {
+    val offer = new Offer[B]
+    tryReact(a, empty, offer) match {
+      case (f: Failure) => 
+        if (f == Block) park() else backoff.once(offer)
+        if (offer.rescind) withOffer() else offer.answer
+      case ans => ans.asInstanceOf[B]
+    }
+  }
+  withoutOffer()
+}
+\end{lstlisting}
+\nocaptionrule
+\caption{The \lstinline{!} method, defined in \lstinline{Reagent[A,B]}}
+\label{fig:reaction}
+\end{figure}
+
 \subsection{The entry point: reacting}
 \label{sec:impl-reaction}
 
@@ -1352,7 +1323,7 @@ class Commit[A] extends Reagent[A,A] {
     else Retry
 }
 \end{lstlisting}
-\vskip -21pt
+\vskip -4pt
 \begin{lstlisting}[frame=single]
 class CAS[A,R](ref: Ref[A], ov: A, nv: A, k: Reagent[A,R]) 
   extends Reagent[Unit,R] {
@@ -1364,22 +1335,22 @@ class CAS[A,R](ref: Ref[A], ov: A, nv: A, k: Reagent[A,R])
       k.tryReact((), rx.withCAS(ref, ov, nv), offer)
 }
 \end{lstlisting}
-\vskip -21pt
+\vskip -4pt
 \begin{lstlisting}[frame=single]
 class Choice[A,B](r1: Reagent[A,B], r2: Reagent[A,B]) 
   extends Reagent[A,B] {
   def tryReact(a: A, rx: Reaction, offer: Offer[B]) = 
     r1.tryReact(a, rx, offer) match {
-    case Retry => r2.tryReact(a, rx, offer) match {
-      case (_: Failutre) => Retry // must retry r1
-      case ans           => ans
+      case Retry => r2.tryReact(a, rx, offer) match {
+        case (_: Failutre) => Retry // must retry r1
+        case ans           => ans
+      }
+      case Block => r2.tryReact(a, rx, offer)
+      case ans   => ans
     }
-    case Block => r2.tryReact(a, rx, offer)
-    case ans   => ans
-  }
 }
 \end{lstlisting}
-\vskip -21pt
+\vskip -4pt
 \begin{lstlisting}[frame=single]
 class Computed[A,B](c: PartialFunction[A, Reagent[Unit,B]]) 
   extends Reagent[A,B] {
@@ -1388,7 +1359,7 @@ class Computed[A,B](c: PartialFunction[A, Reagent[Unit,B]])
     else Block
 }
 \end{lstlisting}
-\vskip -21pt
+\vskip -4pt
 \begin{lstlisting}[frame=single]
 class Swap[A,B,R](ep: Endpoint[A,B], k: Reagent[B, R]) 
 extends Reagent[A,R] {
@@ -1565,6 +1536,7 @@ look for other messages.  If any reaction failed transiently, then the entire
 \end{tabular}
 \\
 & \textbf{Threads}\quad (on 16-way machine) \\
+\\
 & 
 \includegraphics[scale=0.9]{graphs/reagent-based.pdf}
 \qquad\qquad
@@ -1723,17 +1695,16 @@ operations; by recoding an algorithm use reagents, you lose nothing.\elide{;
 composed using choice, tailored with new blocking behavior, or combined
 into larger atomic blocks. %TODO
 
-Haskell's STM~\cite{Harris2005a} was inspirational in showing that
-transactions can be represented via monads~\cite{PeytonJones1993}, explicitly
-composed, and combined with blocking and choice operators.  Reagents also form
-a monad, but we have chosen an interface closer to
-\emph{arrows}~\cite{Hughes2000}, to encourage static reagent layout wherever
-possible~(\secref{dynamic}).  Like \lstinline{orElse} in Haskell's STM, our
-choice operator is left-biased.  But unlike \lstinline{orElse}, our choice
-operator will attempt the right-hand side even when the left-hand side has
-only failed transiently (rather than permanently).  While the distinction may
-appear somewhat technical, it is crucial for supporting examples like the
-elimination backoff stack~(\secref{choice}).
+Haskell's STM~\cite{Harris2005a} was inspirational in showing that transactions
+can be represented via monads~\cite{PeytonJones1993}, explicitly composed, and
+combined with blocking and choice operators.  Reagents also form a monad, but we
+have chosen an interface closer to \emph{arrows}~\cite{Hughes2000}, to encourage
+static reagent layout wherever possible~(\secref{dynamic}).  Like
+\lstinline{orElse} in Haskell's STM, our choice operator is left-biased.  But
+unlike \lstinline{orElse}, our choice operator will attempt the right-hand side
+even when the left-hand side has only failed transiently (rather than
+permanently).  While the distinction appears technical, it is crucial for
+supporting examples like the elimination backoff stack~(\secref{choice}).
 
 \subsection{Transactions that communicate}
 
@@ -1743,8 +1714,8 @@ sometimes it is desirable for concurrent transactions to coordinate or
 otherwise communicate while executing.  Two very recent papers have proposed
 mechanisms for incorporating communication with STM, in the form of
 Communicating Transactions~\cite{Lesani2011} and Transaction
-Communicators~\cite{Luchangco2011b} (the latter extends earlier work on
-Transaction Synchronizers~\cite{Luchangco2005}).  In both cases, a key
+Communicators~\cite{Luchangco2011b}\elide{ (the latter extends earlier work on
+Transaction Synchronizers~\cite{Luchangco2005})}.  In both cases, a key
 question is how the expected isolation of shared memory can safely coexist
 with concurrent communication.  Communicating Transactions use explicit,
 asynchronous message passing to communicate; the mechanism is entirely
@@ -1752,12 +1723,12 @@ separate from shared memory, which retains isolation.  On the other hand,
 Transaction Communicators allow isolation to be weakened in a controlled way.
 
 Our mixture of message-passing and shared-state combinators most closely
-resembles the work on Communicating Transactions.  Of course, the most
-important difference is in the way we deal with shared state (and the
-guarantees provided thereby), which we discussed in~\secref{stm}.  Aside from
-that, we believe that \emph{synchronous} communication is a better choice for
-expressing patterns like elimination~(\secref{choice}), since the pattern
-relies on both participants being mutually-aware.  %TODO: say more here
+resembles the work on Communicating Transactions.  Of course, the most important
+difference is in the way we deal with shared state \elide{(and the guarantees
+  provided thereby), which we} discussed in~\secref{stm}.  We also
+believe that \emph{synchronous} communication is better for expressing
+patterns like elimination~(\secref{choice}), since they rely on 
+participants being mutually-aware.  %TODO: say more here
 
 \elide{
 There has also been work treating pure message-passing in a transactional way,
