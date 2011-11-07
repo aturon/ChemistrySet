@@ -104,7 +104,7 @@ message passing.  This blend of isolation and interaction is essential for
 expressing the full range of fine-grained concurrent
 algorithms~(\secref{choice}).  The building blocks also bake in many common
 concurrency patterns, like optimistic retry loops, backoff schemes, and blocking
-and signalling.  Using reagents, it is possible to express sophisticated
+and signaling.  Using reagents, it is possible to express sophisticated
 concurrency algorithms at a higher level of abstraction, while retaining the
 performance and scalability of direct, hand-written implementations.
 
@@ -166,7 +166,7 @@ lock-based and STM-based implementations.  The benchmarks include both single
 operations used in isolation (where little overhead for reagents is expected)
 and combined atomic transfers.  We compare at both high and low levels of
 contention.  Reagents perform universally better than the lock- and STM-based
-implementations, and are indeed competetive with hand-written lock-free
+implementations, and are indeed competitive with hand-written lock-free
 implementations.
 
 Finally, it is worth noting in passing that reagents generalize both Concurrent
@@ -369,10 +369,10 @@ block until another thread moves the stack into a state on which the operation
 is defined.  Partial operations introduce considerable complexity, because
 \emph{all} of the operations on the data structure must potentially signal
 blocked threads, depending on the changes being performed.  In some cases, it is
-possible to cleverly treat signalling in essentially the same way as atomic
+possible to cleverly treat signaling in essentially the same way as atomic
 updates~\cite{Scherer2004}.
 
-Synchronization and signalling is also subject to cache and memory bandwidth
+Synchronization and signaling is also subject to cache and memory bandwidth
 concerns, but it would take us too far afield to discuss these in depth.
 Mellor-Crummey and Scott pioneered the now-common techniques for grappling with
 these concerns~\cite{Mellor-Crummey1991}, and we apply their techniques in
@@ -590,7 +590,7 @@ val pop: Reagent[Unit, A] =
 \end{lstlisting}
 Now our update function is partial.  An invocation \lstinline{s.pop ! ()} will
 block the calling thread unless or until the stack is nonempty.  Blocking and
-signalling are entirely handled by the reagent implementation; there is
+signaling are entirely handled by the reagent implementation; there is
 therefore no risk of a lost wakeup.  %TODO: add more here?
 
 \elide{
@@ -647,7 +647,7 @@ and \lstinline{B}, for example) and receive each other's value.  We
 call a successful communication a \emph{reaction} between reagents.
 On the other hand, if no complementary message is available,
 \lstinline{swap} will block until a reaction can take place.  Once
-again, the waiting and signalling protocol is managed internally by
+again, the waiting and signaling protocol is managed internally by
 the reagent implementation, so lost wakeups are impossible.
 
 The \lstinline{swap} combinator alone is not powerful enough to
@@ -1197,10 +1197,10 @@ communication between reagents, which we explain next.
 Message passing between reagents is synchronous, meaning that both reagents take
 part in a single, common reaction.  In the implementation, this works by one
 reagent placing an \emph{offer} to react in a location visible to the other.
-The reagent accepting the offer combines the accumulated reactions of both
-reagents, and attempts to commit them together.  The reagent making the offer
-either spinwaits or blocks until the offer is fulfilled; if it spinwaits, it may
-later decide to withdraw the offer.  Fulfilling the offer means, in particular,
+The reagent making the offer either spinwaits or blocks until the offer is
+fulfilled; if it spinwaits, it may later decide to withdraw the offer.  The
+reagent accepting the offer combines the accumulated reactions of both reagents,
+and attempts to commit them together. Fulfilling the offer means, in particular,
 providing a final ``answer'' value that should be returned by the reagent that
 made the offer.  Each offer includes a status field, which is either
 \lstinline{Pending}, \lstinline{Rescinded}, or a final answer.  Hence, the
@@ -1416,8 +1416,8 @@ deadlock.  The advantage of this implementation, other than its simplicity, is
 that is has no impact on the performance of single-word CASes to references,
 which we expect to be the common case.  Our experimental results
 in~\secref{performance} indicate that the blocking implementation provides good
-performance---much better than STM or coarse-grained locking---but we expect
-that a more sophisticated $k$CAS would further improve the results.
+performance---much better than STM or coarse-grained locking---but a more
+sophisticated $k$CAS would likely do even better.
 
 \subsection{Shared state}
 \label{sec:impl-state}
@@ -1500,6 +1500,11 @@ result is returned (and the result for the other reagent is separately written
 to its offer status).  If the reaction fails, \lstinline{tryFrom} continues to
 look for other messages.  If any reaction failed transiently, then the entire
 \lstinline{swap} fails transiently; this is necessary to avoid lost wakeups.
+
+The code sketch we have given for channels glosses over several details of the
+real implementation, including avoiding fulfilling one's own offer or a single
+offer multiple times, and allowing multiple interactions between two reagents
+within a single reaction.
 
 %\subsection{Catalysis}
 
