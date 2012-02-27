@@ -65,10 +65,20 @@ final class MSQueue[A >: Null] {
     search
   }
 
+  val tryDeq: Reagent[Unit, Option[A]] = head.upd[Option[A]] {
+    case Node(_, Ref(n@Node(x, _))) => (n, Some(x))
+    case emp => (emp, None)
+  }
+  val deq: Reagent[Unit, A] = head.upd[A] {
+    case Node(_, Ref(n@Node(x, _))) => (n, x)
+  }
+
+/*
   private val tryDeqForComp: Reagent[Unit, Option[A]] = head.upd[Option[A]] {
     case Node(_, Ref(n@Node(x, _))) => (n, Some(x))
     case emp => (emp, None)
   }
+
   object tryDeq extends Reagent[Unit,Option[A]] {
     @inline def tryReact(u:Unit, rx: Reaction, offer: Offer[Option[A]]): Any = 
       head.data.get match {
@@ -99,6 +109,7 @@ final class MSQueue[A >: Null] {
     def alwaysCommits = false
     def snoop(a: Unit) = false
   }
+*/
 }
 
 

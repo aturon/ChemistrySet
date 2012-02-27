@@ -189,7 +189,10 @@ object EnqDeq extends Benchmark {
   }
 */
 
-  def entries: List[Entry] = List(reagent, lock, hand, stm, simple, juc)
+//  def entries: List[Entry] = List(reagent, lock, hand, stm, simple, juc)
+
+  // for PLDI:
+  def entries: List[Entry] = List(reagent, lock, hand, stm)
   // fc livelocks
   // basket is not licensed for distribution
 }

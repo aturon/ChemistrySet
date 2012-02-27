@@ -95,8 +95,22 @@ final class TreiberStack[A >: Null] {
   }
 */
 
-  val head = new Ref[List[A]](Nil)
+  private val head = new Ref[List[A]](Nil)
 
+  val push: Reagent[A,Unit] = head.upd[A,Unit] { 
+    case (xs,x) => (x::xs, ())
+  }
+
+  val tryPop: Reagent[Unit,Option[A]] = head.upd[Option[A]] {
+    case x::xs => (xs,  Some(x))
+    case Nil   => (Nil, None)
+  }
+
+  val pop: Reagent[Unit,A] = head.upd[A] {
+    case x::xs => (xs, x)
+  }
+
+/*
   private val pushForComp: Reagent[A,Unit] = head.upd[A,Unit] { 
     case (xs,x) => (x::xs, ())
   }
@@ -109,7 +123,9 @@ final class TreiberStack[A >: Null] {
   private val popForComp: Reagent[Unit,A] = head.upd[A] {
     case x::xs => (xs, x)
   }
+*/
 
+/*
   object push extends Reagent[A,Unit] {
     def tryReact(x:A, rx: Reaction, offer: Offer[Unit]): Any = {
       val cur = head.data.get
@@ -164,6 +180,7 @@ final class TreiberStack[A >: Null] {
     def alwaysCommits = false
     def snoop(a: Unit) = false
   }
+*/
 
 /*
   object pop extends Reagent[Unit,A] {

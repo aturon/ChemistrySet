@@ -28,7 +28,7 @@ private object config {
   var trialsMax = 25
   var doTP: Boolean = false
   var minCores = 1
-  var maxCores = min(Runtime.getRuntime.availableProcessors, 8)
+  var maxCores = Runtime.getRuntime.availableProcessors
   var warmupMillis = 1000
   var benchMillis = 1000
   var verbose = true
@@ -251,7 +251,7 @@ object Bench extends App {
 //    List(100, 250, 500)
 //    List(0) ++ (for (i <- 0 to 15) yield pow(10, 1+i.toDouble * 0.25).toInt)
 //    (0 to 600 by 50)
-    List(30, 300, 3000)
+    List(100, 1000)
 //    (50 to 1000 by 50).toList
   else config.workList = config.workList.reverse
 

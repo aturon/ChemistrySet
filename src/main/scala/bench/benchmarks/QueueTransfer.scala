@@ -121,6 +121,9 @@ object QueueTransfer extends Benchmark {
     }
   }
 
-  def entries: List[Entry] = List(stm,reagent,lock,simple)
+//  def entries: List[Entry] = List(stm,reagent,lock,simple)
+
+  // for PLDI:
+  def entries: List[Entry] = List(stm,reagent,lock)
 }
 
