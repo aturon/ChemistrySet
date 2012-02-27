@@ -9,3 +9,5 @@ project/boot/
 *.log
 *.pdf
 unlicensed/
+.DS_Store
+lib/
