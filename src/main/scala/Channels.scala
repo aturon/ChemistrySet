@@ -1,5 +1,4 @@
-// Message passing constructions: synchronous channels and swap
-// channels.
+// Message passing constructions: synchronous channels and swap channels.
 
 package chemistry
 
@@ -18,13 +17,13 @@ final private class Message[A,B,C](
       offer.consumeAndContinue(
 	c, payload, rx ++ senderRx, receiverK, enclosingOffer)
     def composeI[E](next: Reagent[D,E]): Reagent[C,E] =
-      CompleteExchange(receiverK >=> next)
+      CompleteExchange(receiverK >> next)
     def maySync = receiverK.maySync
     def alwaysCommits = false
     def snoop(c: C) = offer.isActive && receiverK.snoop(payload)
   }
 
-  val exchange: Reagent[B, A] = senderK >=> CompleteExchange(Commit[A]())
+  val exchange: Reagent[B, A] = senderK >> CompleteExchange(Commit[A]())
   def isDeleted = !offer.isActive
 }
 

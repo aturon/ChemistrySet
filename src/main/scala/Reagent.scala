@@ -76,21 +76,19 @@ abstract class Reagent[-A, +B] {
     }
   }
 
-  @inline final def dissolve(a:A) = Reagent.dissolve(ret(a) >=> this)
+  @inline final def dissolve(a:A) = Reagent.dissolve(ret(a) >> this)
 
   @inline final def flatMap[C](k: B => Reagent[Unit,C]): Reagent[A,C] = 
     compose(computed(k))
   @inline final def map[C](f: B => C): Reagent[A,C] = 
     compose(lift(f))
- @inline final def >>[C](next: Reagent[Unit,C]): Reagent[A,C] = 
-   compose(lift((_:B) => ()).compose(next))
   @inline final def mapFilter[C](f: PartialFunction[B, C]): Reagent[A,C] =
     compose(lift(f))
   @inline final def withFilter(f: B => Boolean): Reagent[A,B] =
     compose(lift((_: B) match { case b if f(b) => b }))
-  @inline final def <+>[C <: A, D >: B](that: Reagent[C,D]): Reagent[C,D] = 
+  @inline final def +[C <: A, D >: B](that: Reagent[C,D]): Reagent[C,D] = 
     choice(this, that)
-  @inline final def >=>[C](k: Reagent[B,C]): Reagent[A,C] =
+  @inline final def >>[C](k: Reagent[B,C]): Reagent[A,C] =
     compose(k)
 }
 private object Reagent {
@@ -118,7 +116,7 @@ private abstract class AutoContImpl[A,B,C](val k: Reagent[B, C])
       case b => k.tryReact(b.asInstanceOf[B], newRx(a, rx), offer)
     }
   final def composeI[D](next: Reagent[C,D]) = 
-    new AutoContImpl[A,B,D](k >=> next) {
+    new AutoContImpl[A,B,D](k >> next) {
       def retValue(a: A): Any = 
 	AutoContImpl.this.retValue(a)
       override def newRx(a: A, rx: Reaction): Reaction = 
@@ -172,7 +170,7 @@ object never extends Reagent[Any, Nothing] {
   def alwaysCommits = false
   def maySync = false
 }
-/*
+
 object computed {
   private final case class Computed[A,B,C](c: A => Reagent[Unit,B], 
 					   k: Reagent[B,C]) 
@@ -186,20 +184,6 @@ object computed {
   }
   @inline def apply[A,B](c: A => Reagent[Unit,B]): Reagent[A,B] = 
     Computed(c, Commit[B]())
-}
-*/
-object computed {
-  private final case class Computed[A,B](c: A => Reagent[Unit,B]) 
-		     extends Reagent[A,B] {
-    def snoop(a: A) = false
-    def tryReact(a: A, rx: Reaction, offer: Offer[B]): Any = 
-      c(a).tryReact((), rx, offer)
-    def composeI[C](next: Reagent[B,C]) = throw Util.Impossible
-    def alwaysCommits = false
-    def maySync = true
-  }
-  @inline def apply[A,B](c: A => Reagent[Unit,B]): Reagent[A,B] = 
-    Computed(c)
 }
 
 object lift {
@@ -227,10 +211,10 @@ object choice {
     def composeI[C](next: Reagent[B,C]) = 
       next match {
 	case Choice(next1, next2) =>
-	  Choice(r1 >=> next1,
-		 Choice(r1 >=> next2,
-			Choice(r2 >=> next1,
-			       r2 >=> next2)))
+	  Choice(r1 >> next1,
+		 Choice(r1 >> next2,
+			Choice(r2 >> next1,
+			       r2 >> next2)))
 	case _ => Choice(r1.compose(next), r2.compose(next))
       }
     def alwaysCommits = r1.alwaysCommits && r2.alwaysCommits

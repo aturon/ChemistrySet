@@ -79,7 +79,6 @@ private final class Waiter[-A](val blocking: Boolean)
     case ans => Some(ans)
   }
 
-
   @inline def rxWithAbort(rx: Reaction): Reaction =
     rx.withCAS(status, Waiting, Aborted)
 

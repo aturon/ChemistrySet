@@ -25,7 +25,7 @@ final class Ref[A <: AnyRef](init: A) {
 	case ans => ans
       }
     }
-    def composeI[C](next: Reagent[B,C]) = Read(k >=> next)
+    def composeI[C](next: Reagent[B,C]) = Read(k >> next)
     def maySync = k.maySync
     def alwaysCommits = k.alwaysCommits
     def snoop(u: Unit) = data.get match {
@@ -46,7 +46,7 @@ final class Ref[A <: AnyRef](init: A) {
 	else Retry
       } else k.tryReact((), rx.withCAS(Ref.this, expect, update), offer)
 
-    def composeI[C](next: Reagent[B,C]) = CAS(expect, update, k >=> next)
+    def composeI[C](next: Reagent[B,C]) = CAS(expect, update, k >> next)
     def maySync = k.maySync
     def alwaysCommits = false
     def snoop(u: Unit) = false

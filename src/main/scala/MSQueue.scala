@@ -4,44 +4,6 @@ package chemistry
 
 import scala.annotation.tailrec
 
-/*
-final class MSQueue[A >: Null] {
-  private final case class Node(data: A, next: Ref[Node] = Ref(null))
-  private val head = Ref(Node(null))
-//  private val tail = Ref(head.read!())
-  private var tail = head.read!()
-
-  val enq: Reagent[A, Unit] = computed { (x:A) =>
-    val newNode = Node(x)
-    @tailrec def search: Reagent[Unit,Unit] = tail match {
-      case    Node(_, r@Ref(null)) => r.cas(null, newNode)
-      case ov@Node(_, Ref(nv))     => tail = nv; search //tail.casI(ov,nv); search
-    }
-    search
-  }
-  // val tryDeq: Reagent[Unit, Option[A]] = head.upd[Option[A]] {
-  //   case Node(_, Ref(n@Node(x, _))) => (n, Some(x))
-  //   case emp => (emp, None)
-  // }
-  object tryDeq extends Reagent[Unit,Option[A]] {
-    @inline def tryReact(u:Unit, rx: Reaction, offer: Offer[Option[A]]): Any = 
-      head.getI match {
-	case old@Node(_, Ref(n@Node(x, _))) =>
-	  if (head.casI(old,n)) Some(x) else Retry
-	case _ => None
-      }
-    def composeI[B](next: Reagent[Option[A],B]) = throw Util.Impossible
-    def maySync = false
-    def alwaysCommits = false
-    def snoop(a: Unit) = false
-  }
-
-  val deq: Reagent[Unit, A] = head.upd[A] {
-    case Node(_, Ref(n@Node(x, _))) => (n, x)
-  }
-}
-*/
-
 final class MSQueue[A >: Null] {
   private abstract class Q
   private final case class Node(data: A, next: Ref[Q] = Ref(Emp)) extends Q
@@ -72,44 +34,6 @@ final class MSQueue[A >: Null] {
   val deq: Reagent[Unit, A] = head.upd[A] {
     case Node(_, Ref(n@Node(x, _))) => (n, x)
   }
-
-/*
-  private val tryDeqForComp: Reagent[Unit, Option[A]] = head.upd[Option[A]] {
-    case Node(_, Ref(n@Node(x, _))) => (n, Some(x))
-    case emp => (emp, None)
-  }
-
-  object tryDeq extends Reagent[Unit,Option[A]] {
-    @inline def tryReact(u:Unit, rx: Reaction, offer: Offer[Option[A]]): Any = 
-      head.data.get match {
-	case null => Retry
-	case old@Node(_, Ref(n@Node(x, _))) =>
-	  if (head.data.compareAndSet(old,n)) Some(x) else Retry
-	case _ => None
-      }
-    def composeI[B](next: Reagent[Option[A],B]) = tryDeqForComp >=> next
-    def maySync = false
-    def alwaysCommits = false
-    def snoop(a: Unit) = false
-  }
-
-  private val deqForComp: Reagent[Unit, A] = head.upd[A] {
-    case Node(_, Ref(n@Node(x, _))) => (n, x)
-  }
-  object deq extends Reagent[Unit,A] {
-    @inline def tryReact(u:Unit, rx: Reaction, offer: Offer[A]): Any = 
-      head.data.get match {
-	case null => Retry
-	case old@Node(_, Ref(n@Node(x, _))) =>
-	  if (head.data.compareAndSet(old,n)) x else Retry
-	case _ => Retry //nonblocking version
-      }
-    def composeI[B](next: Reagent[A,B]) = deqForComp >=> next
-    def maySync = false
-    def alwaysCommits = false
-    def snoop(a: Unit) = false
-  }
-*/
 }
 
 
