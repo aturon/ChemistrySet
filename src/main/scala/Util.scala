@@ -46,32 +46,65 @@ private object Util {
   def cov(ds: Seq[Double]): Double = 100 * (stddev(ds) / abs(mean(ds)))
   
   // compute6 from j.u.c.
-  @inline def noop(times: Int = 1) {
-    var seed = 1;
-    for (_ <- 1 to times) {
+  def noop(times: Int = 1): Int = {
+    var seed: Int = 1
+    var n: Int = times
+    while (seed == 1 || n > 0) { // need to inspect seed or is optimized away
       seed = seed ^ (seed << 1)
       seed = seed ^ (seed >>> 3)
       seed = seed ^ (seed << 10)
+      n -= 1
     }
     seed
   }
+
+  // Handy exception to throw at unreachable code locations
+  object Impossible extends Exception
+
+  object Implicits {
+    implicit def functionToPartialFunction[A,B](f: A => B):
+      PartialFunction[A,B] = 
+      new PartialFunction[A,B] {
+	def isDefinedAt(x:A) = true
+	def apply(x:A) = f(x)
+      }
+  }
+
+  // Untagged unions, due to Miles Sabin
+  // see www.chuusai.com/2011/06/09/scala-union-types-curry-howard/
+  type Not[A] = A => Nothing
+  type NotNot[A] = Not[Not[A]]
+  type UntaggedSum[A,B] = { type F[X] = NotNot[X] <:< Not[Not[A] with Not[B]] }
 }
 
 // an unsynchronized, but thread-varying RNG
-private final class Random {
-  private var seed = Thread.currentThread.getId
-  private def nextSeed() {
+private final class Random(var seed: Long = 1) {
+  def nextSeed {
+    seed = Random.nextSeed(seed)
+  }
+
+  def next(max: Int): Int = {    
+    nextSeed
+    Random.scale(seed, max)
+  }
+
+  def fuzz(around: Int, percent: Int = 50): Int = {
+    val max = (around * percent) / 100
+    math.max(around + next(max) - (max >> 1), 0)
+  }
+}
+private object Random {
+  def nextSeed(oldSeed: Long): Long = {
+    var seed = oldSeed
     seed = seed ^ (seed << 13)
     seed = seed ^ (seed >>> 7)
     seed = seed ^ (seed << 17)
+    seed
   }
-
-  def next(max: Int): Int = {
-    nextSeed
-    if (max == 0) 0 else seed.toInt % max    
-  }
-
-  def fuzz(around: Int, percent: Int = 10): Int = {
-    around + next((around * percent) / 100)
+  def scale(seed: Long, max: Int): Int = {
+    if (max <= 0) max else {
+      val r = (seed % max).toInt
+      if (r < 0) -r else r
+    }
   }
 }

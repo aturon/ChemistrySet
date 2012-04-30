@@ -1,5 +1,6 @@
 target/
 reports/
+*#*#
 *~
 lib_managed/
 src_managed/
@@ -8,3 +9,5 @@ project/boot/
 *.log
 *.pdf
 unlicensed/
+.DS_Store
+lib/

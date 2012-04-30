@@ -10,7 +10,7 @@ final class LaggingQueue[A >: Null] {
   private val head = Ref(Node(null))
   private var tail = head.read!()
 
-  val enq: Reagent[A, Unit] = loop { (x:A) =>
+  val enq: Reagent[A, Unit] = computed { (x:A) =>
     @tailrec def search: Reagent[Unit,Unit] = tail match {
       case Node(_, r@Ref(null)) => r.cas(null, Node(x))
       case Node(_, Ref(nv))     => tail = nv; search

@@ -2,19 +2,23 @@
 
 package chemistry
 
-final class TreiberStack[A] {
-  private val head = Ref[List[A]](List())
+import scala.annotation.tailrec
+import java.util.concurrent.atomic._
+import scala.collection.immutable._
 
-  val push: Reagent[A,Unit] = head.upd { 
-    (xs,x) => (x::xs, ())
+final class TreiberStack[A >: Null] {
+  private val head = new Ref[List[A]](Nil)
+
+  val push: Reagent[A,Unit] = head.upd[A,Unit] { 
+    case (xs,x) => (x::xs, ())
   }
 
   val tryPop: Reagent[Unit,Option[A]] = head.upd[Option[A]] {
-    case (x::xs) => (xs,  Some(x))
-    case emp     => (emp, None)
+    case x::xs => (xs,  Some(x))
+    case Nil   => (Nil, None)
   }
 
   val pop: Reagent[Unit,A] = head.upd[A] {
-    case (x::xs) => (xs, x)
+    case x::xs => (xs, x)
   }
 }

@@ -1,7 +1,6 @@
 Need to read:
 
  - asynchronous events
- - more on lightweight threading (good blog fodder)
  - F# async workflows
 
 To try coding:
@@ -12,24 +11,73 @@ To try coding:
  - other classic join calculus examples
  - classic CML examples
  - hand-over-hand set
+
+Done(ish)
+
+ - kcas
+ - channels
+ - blocking (for channels)
+ - elimination backoff stack
+ - choice
+ - guards/never
+ - bags
+ - synchronization examples from Scalable Joins (using Refs)
  
 Todo:
 
- - kcas
+ - blocking (for refs)
+ - synchronization examples from Scalable Joins (using chans)
  - lazy set
- ~ channels 
- - blocking
- x elimination backoff stack
- ~ synchronization examples from Scalable Joins
- x choice
- x guards/never
- - bags
  - skiplist
  - condition variables
  - asynchronous channels (via simple queues)
  - kcss
  - skiplist-based map
  - hashtable
+ - better testing support
+ - implicits for configuration?
+ - framework for collecting stats
+ - comparison to STM
+
+## 10/24/2011
+
+At some point, think about whether there is really a strong case for
+systematic search through message bags on blocking failure.  If this
+is dropped, channels might no longer need special treatment as
+reagents.
+
+## 10/3/2011
+
+Reaction probably forms a commutative monad.
+
+## 8/5/2011
+
+One problem with enrolling waiters as complete reagents (rather than
+at their midpoints): no record of the choices made leading up to the
+possible communication.  Has to be rediscovered, which could be
+expensive.  Conversely, if the choice space is exponential, you get
+exponential enrollment.
+
+## 8/4/2011
+
+Seems like we must enroll reagent as waiter at every stateful
+interaction up to the one that actually blocked.  Choices force blowup
+in waiter enrollment---and message passing is particularly bad.
+
+Possible tradeoff: enrolling waiters as being in the middle of a
+reaction means it's easier to tell whether they can react, but
+requires more work/space during enrollment.
+
+Every use of >>= forces an exponential search on the left when the
+right is blocked, because we do not know how data flowing from left to
+right may be influencing the blocking, and hence must try all
+possibilities.
+
+Want to think about the common case.  
+
+Note: stealing of async sends to send recvs should fall out
+automatically if using queues directly to implement them: it will just
+depend on the structure of wakeup for `Ref` cell changes.
  
 ## 8/3/2011
 

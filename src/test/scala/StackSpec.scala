@@ -2,92 +2,80 @@ import scala.annotation.tailrec
 import System.out._
 import scala.concurrent.ops._
 import com.codahale.simplespec.Spec
+import com.codahale.simplespec.annotation.test
 import chemistry._
 
-object StackSpec extends Spec {
-  class `a stack` {    
-    def `should tryPop as None when empty` {
-      var s = new TreiberStack[java.lang.Integer]()
-      s.tryPop ! () must beNone
-    }
-    // def `should tryPopAll as nil when empty` {
-    //   var s = new TreiberStack[java.lang.Integer]()
-    //   s.tryPopAll must have size(0)
-    // }
-    def `should tryPop as Some _ when full` {
-      var s = new TreiberStack[java.lang.Integer]()
-      s.push ! 1;
-      s.tryPop ! () must beSome
-    }
-    // def `should tryPopAll as nonempty when full` {
-    //   var s = new TreiberStack[java.lang.Integer]()
-    //   s push 1
-    //   s.tryPopAll.size must be_>(0)
-    // }
-    def `should tryPop as None after emptying` {
-      var s = new TreiberStack[java.lang.Integer]()
-      s.push ! 1;
-      s.tryPop ! ();
-      s.tryPop ! () must beNone
-    }
-    // def `should tryPop as None after tryPopAll` {
-    //   var s = new TreiberStack[java.lang.Integer]()
-    //   s push 1
-    //   s push 2
-    //   s.tryPopAll
-    //   s.tryPop must beNone
-    // }
-    def `should tryPop in reverse order` {
-      var s = new TreiberStack[java.lang.Integer]()
-      s.push ! 1;
-      s.push ! 2;
-      (s.tryPop!(), s.tryPop!()) must beEqualTo(Some(2), Some(1))
-    }
-    // def `should tryPopAll in reverse order` {
-    //   var s = new TreiberStack[java.lang.Integer]()
-    //   s push 1
-    //   s push 2
-    //   s.tryPopAll must beEqualTo(List(2,1))
-    // }
+trait StackTests {
+  import org.specs2.matcher.MustMatchers._
 
-    def `should push from multiple threads in locally-ordered way` {
-      var s = new TreiberStack[java.lang.Integer]()
-      TestUtil.spawnAndJoin (List(
-    	() => for (i <-      1 to 100000) s.push ! i,
-    	() => for (i <- 100001 to 200000) s.push ! i))
-      var left = 100000
-      var right = 200000
+  type stack[A >: Null] <: {
+    val tryPop: Reagent[Unit,Option[A]]
+    val push: Reagent[A,Unit]
+    val pop: Reagent[Unit,A]
+  }
+  protected def newStack[A >: Null](): stack[A]
 
-      @tailrec def check: Boolean = s.tryPop!() match {
-	case None => true
-	case Some(ii) => {
-	  val i = ii.intValue // yuck
-	  if (i <= 100000) {
-	    if (left != i) {
-	      print("failed at ")
-	      print(left)
-	      print(" got ")
-	      println(i)
-	      false
-	    } else {
-	      left -= 1
-	      check
-	    }
-	  } else {
-	    if (right != i) {
-	      print("failed at ")
-	      print(right)
-	      print(" got ")
-	      println(i)
-	      false
-	    } else {
-	      right -= 1	  
-	      check
-	    }
-	  }
-	}
+  @test def `should tryPop as None when empty` {
+    val s = newStack[java.lang.Integer]()
+    s.tryPop ! () must beNone
+  }
+  @test def `should tryPop as Some _ when full` {
+    val s = newStack[java.lang.Integer]()
+    s.push ! 1;
+    s.tryPop ! () must beSome
+  }
+  @test def `should tryPop as None after emptying` {
+    val s = newStack[java.lang.Integer]()
+    s.push ! 1;
+    s.tryPop ! ();
+    s.tryPop ! () must beNone
+  }
+  @test def `should tryPop in reverse order` {
+    val s = newStack[java.lang.Integer]()
+    s.push ! 1;
+    s.push ! 2;
+    (s.tryPop!(), s.tryPop!()) must beEqualTo(Some(2), Some(1))
+  }
+
+  def stackToTrav[A >: Null](s: stack[A]) = new Traversable[A] {
+    def foreach[U](f: A => U) {
+      while (true) s.tryPop ! () match {
+	case None => return ()
+	case Some(a) => f(a)
       }
-      check must beTrue
     }
   }
+
+  def concTest: Boolean = {
+    val max = 100000
+    val s = newStack[java.lang.Integer]()
+
+    TestUtil.spawnAndJoin (List(
+      () => for (i <- 1 to max) s.push ! i,
+      () => for (i <- max+1 to 2*max) s.push ! i))
+
+    val outcome = stackToTrav(s).map(_.intValue)
+    val left  = for (i <- outcome if i <= max) yield i
+    val right = for (i <- outcome if i >  max) yield i
+    val comp  = left.toSeq.reverse ++ right.toSeq.reverse
+    val eqs   = for ((i,j) <- comp zip (1 to 2*max)) yield i == j
+
+    (true /: eqs)(_ && _)
+  }
+
+  @test def `should push from multiple threads in locally-ordered way` {
+    val testResults = for (_ <- 1 to 10) yield concTest
+    (true /: testResults)(_ && _) must beTrue
+  }
+}
+
+object StackSpec extends Spec {
+  class `a TreiberStack` extends StackTests {    
+    type stack[A >: Null] = TreiberStack[A]
+    protected def newStack[A >: Null]() = new TreiberStack[A]()
+  }
+ class `an EliminationStack` extends StackTests {    
+   type stack[A >: Null] = EliminationStack[A]
+   protected def newStack[A >: Null]() = new EliminationStack[A]()
+ }
 }
